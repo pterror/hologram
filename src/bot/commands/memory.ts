@@ -11,11 +11,12 @@ import { storeFact, retrieveRelevantFacts } from "../../memory/rag";
 import { getImportantFacts, deleteFact, getFact } from "../../db/facts";
 import { getMemoryStats } from "../../memory/consolidate";
 import { getActiveCharacter } from "../events/message";
-import { getOptionValue, getSubcommand } from "./index";
+import { getOptionValue, getSubcommand, USER_APP_INTEGRATION } from "./index";
 
 export const memoryCommand: CreateApplicationCommand = {
   name: "memory",
   description: "Manage memories and facts",
+  ...USER_APP_INTEGRATION,
   options: [
     {
       name: "add",

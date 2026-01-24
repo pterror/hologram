@@ -23,11 +23,12 @@ import {
   findEntityByName,
   type LocationData,
 } from "../../db/entities";
-import { getOptionValue, getSubcommand } from "./index";
+import { getOptionValue, getSubcommand, USER_APP_INTEGRATION } from "./index";
 
 export const worldCommand: CreateApplicationCommand = {
   name: "world",
   description: "Manage world state",
+  ...USER_APP_INTEGRATION,
   options: [
     {
       name: "create",

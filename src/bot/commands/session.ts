@@ -23,11 +23,12 @@ import {
 } from "../../memory/tiers";
 import { assembleContext } from "../../ai/context";
 import { debugContext, formatDebugInfo } from "../../ai/debug";
-import { getOptionValue, getSubcommand } from "./index";
+import { getOptionValue, getSubcommand, USER_APP_INTEGRATION } from "./index";
 
 export const sessionCommand: CreateApplicationCommand = {
   name: "session",
   description: "Manage RP session",
+  ...USER_APP_INTEGRATION,
   options: [
     {
       name: "enable",

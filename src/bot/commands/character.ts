@@ -16,11 +16,12 @@ import {
   type CharacterData,
 } from "../../db/entities";
 import { setActiveCharacter, getActiveCharacter } from "../events/message";
-import { getOptionValue, getSubcommand } from "./index";
+import { getOptionValue, getSubcommand, USER_APP_INTEGRATION } from "./index";
 
 export const characterCommand: CreateApplicationCommand = {
   name: "character",
   description: "Manage characters",
+  ...USER_APP_INTEGRATION,
   options: [
     {
       name: "create",
