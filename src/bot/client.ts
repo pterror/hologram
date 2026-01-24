@@ -1,4 +1,5 @@
 import { createBot, Intents } from "@discordeno/bot";
+import { handleMessage } from "./events/message";
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -24,14 +25,17 @@ export const bot = createBot({
       channelId: true,
       guildId: true,
       author: true,
-      mentions: true,
+      mentionedUserIds: true as const,
     },
   },
 });
 
+let botUserId: bigint | null = null;
+
 // Event handlers
 bot.events.ready = (payload) => {
   console.log(`Logged in as ${payload.user.username}`);
+  botUserId = payload.user.id;
 };
 
 bot.events.messageCreate = async (message) => {
@@ -41,16 +45,34 @@ bot.events.messageCreate = async (message) => {
   // Ignore messages without content
   if (!message.content) return;
 
-  // For now, just log messages - context assembly and LLM call will go here
+  // Check if bot is mentioned
+  const isBotMentioned =
+    botUserId !== null && message.mentionedUserIds?.includes(botUserId);
+
   console.log(
-    `[${message.guildId}] ${message.author.username}: ${message.content}`
+    `[${message.guildId ?? "DM"}] ${message.author.username}: ${message.content}`
   );
 
-  // TODO: Check if bot is mentioned or in RP channel
-  // TODO: Assemble context
-  // TODO: Call LLM
-  // TODO: Extract state changes
-  // TODO: Send response
+  // Handle the message
+  const response = await handleMessage(
+    message.channelId.toString(),
+    message.guildId?.toString(),
+    message.author.id.toString(),
+    message.author.username,
+    message.content,
+    isBotMentioned ?? false
+  );
+
+  // Send response if we got one
+  if (response) {
+    try {
+      await bot.helpers.sendMessage(message.channelId, {
+        content: response,
+      });
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
+  }
 };
 
 export async function startBot() {
