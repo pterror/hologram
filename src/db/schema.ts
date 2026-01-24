@@ -60,6 +60,41 @@ export function initSchema(db: Database) {
 
     CREATE INDEX IF NOT EXISTS idx_facts_entity ON facts(entity_id);
     CREATE INDEX IF NOT EXISTS idx_facts_importance ON facts(importance DESC);
+
+    -- Scenes: active play sessions
+    CREATE TABLE IF NOT EXISTS scenes (
+      id INTEGER PRIMARY KEY,
+      world_id INTEGER REFERENCES worlds(id),
+      channel_id TEXT NOT NULL,
+      location_id INTEGER REFERENCES entities(id),
+      time_day INTEGER DEFAULT 1,
+      time_hour INTEGER DEFAULT 8,
+      time_minute INTEGER DEFAULT 0,
+      weather TEXT,
+      ambience TEXT,
+      status TEXT DEFAULT 'active',
+      config JSON,
+      created_at INTEGER DEFAULT (unixepoch()),
+      last_active_at INTEGER DEFAULT (unixepoch()),
+      ended_at INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_scenes_channel ON scenes(channel_id, status);
+    CREATE INDEX IF NOT EXISTS idx_scenes_world ON scenes(world_id);
+
+    -- Scene participants
+    CREATE TABLE IF NOT EXISTS scene_characters (
+      scene_id INTEGER REFERENCES scenes(id) ON DELETE CASCADE,
+      character_id INTEGER REFERENCES entities(id),
+      is_ai BOOLEAN DEFAULT 1,
+      is_active BOOLEAN DEFAULT 0,
+      is_present BOOLEAN DEFAULT 1,
+      player_id TEXT,
+      joined_at INTEGER DEFAULT (unixepoch()),
+      PRIMARY KEY (scene_id, character_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_scene_chars_scene ON scene_characters(scene_id);
   `);
 }
 

@@ -33,6 +33,7 @@ import { worldCommand, handleWorldCommand } from "./world";
 import { memoryCommand, handleMemoryCommand } from "./memory";
 import { sessionCommand, handleSessionCommand } from "./session";
 import { configCommand, handleConfigCommand, handleConfigWizardComponent } from "./config";
+import { sceneCommand, handleSceneCommand } from "./scene";
 
 // All slash commands
 export const commands: CreateApplicationCommand[] = [
@@ -41,6 +42,7 @@ export const commands: CreateApplicationCommand[] = [
   memoryCommand,
   sessionCommand,
   configCommand,
+  sceneCommand,
 ];
 
 // Register commands with Discord
@@ -111,6 +113,9 @@ export async function handleInteraction(
         break;
       case "config":
         await handleConfigCommand(bot, interaction);
+        break;
+      case "scene":
+        await handleSceneCommand(bot, interaction);
         break;
       default:
         await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
