@@ -72,7 +72,39 @@ ANTHROPIC_API_KEY=   # For Claude (optional)
 OPENAI_API_KEY=      # For OpenAI (optional)
 ```
 
-## Development Rules
+## Core Rules
 
-- **Any problems, tech debt, or issues spotted MUST be immediately added to TODO.md backlog**
-- Don't leave workarounds or hacks undocumented
+- **Note things down immediately:** problems, tech debt, or issues spotted MUST be added to TODO.md backlog
+- **Do the work properly.** Don't leave workarounds or hacks undocumented.
+
+## Negative Constraints
+
+Do not:
+- Announce actions ("I will now...") - just do them
+- Leave work uncommitted
+- Use `--no-verify` - fix the issue or fix the hook
+- Assume tools are missing - check if `bun` is available in the environment
+
+## Design Principles
+
+**Unify, don't multiply.** One interface for multiple cases > separate interfaces. Plugin systems > hardcoded switches.
+
+**Simplicity over cleverness.** Plain objects > class hierarchies. Built-in APIs > extra dependencies. Functions > abstractions until you need the abstraction.
+
+**Explicit over implicit.** Log when skipping. Show what's at stake before refusing.
+
+**Separate niche from shared.** Don't bloat shared config with feature-specific data. Use separate files for specialized data.
+
+## Commit Convention
+
+Use conventional commits: `type(scope): message`
+
+Types:
+- `feat` - New feature
+- `fix` - Bug fix
+- `refactor` - Code change that neither fixes a bug nor adds a feature
+- `docs` - Documentation only
+- `chore` - Maintenance (deps, CI, etc.)
+- `test` - Adding or updating tests
+
+Scope is optional but recommended.

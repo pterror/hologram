@@ -201,6 +201,49 @@ export function initSchema(db: Database) {
 
     CREATE INDEX IF NOT EXISTS idx_events_scene ON scheduled_events(scene_id, fired);
     CREATE INDEX IF NOT EXISTS idx_events_trigger ON scheduled_events(trigger_day, trigger_hour, trigger_minute);
+
+    -- Combat encounters
+    CREATE TABLE IF NOT EXISTS combats (
+      id INTEGER PRIMARY KEY,
+      scene_id INTEGER REFERENCES scenes(id) ON DELETE CASCADE,
+      active BOOLEAN DEFAULT 1,
+      round INTEGER DEFAULT 1,
+      current_turn INTEGER DEFAULT 0,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_combats_scene ON combats(scene_id, active);
+
+    -- Combat participants
+    CREATE TABLE IF NOT EXISTS combat_participants (
+      id INTEGER PRIMARY KEY,
+      combat_id INTEGER REFERENCES combats(id) ON DELETE CASCADE,
+      character_id INTEGER REFERENCES entities(id),
+      initiative INTEGER DEFAULT 0,
+      hp INTEGER,
+      max_hp INTEGER,
+      ac INTEGER,
+      conditions JSON DEFAULT '[]',
+      is_active BOOLEAN DEFAULT 1,
+      turn_order INTEGER DEFAULT 0,
+      UNIQUE(combat_id, character_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_combat_parts ON combat_participants(combat_id);
+
+    -- Combat log
+    CREATE TABLE IF NOT EXISTS combat_log (
+      id INTEGER PRIMARY KEY,
+      combat_id INTEGER REFERENCES combats(id) ON DELETE CASCADE,
+      round INTEGER,
+      turn INTEGER,
+      actor_id INTEGER,
+      action TEXT NOT NULL,
+      details TEXT,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_combat_log ON combat_log(combat_id);
   `);
 }
 
