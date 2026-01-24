@@ -1,5 +1,6 @@
 import { createBot, Intents } from "@discordeno/bot";
 import { handleMessage } from "./events/message";
+import { registerCommands, handleInteraction } from "./commands";
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -27,15 +28,28 @@ export const bot = createBot({
       author: true,
       mentionedUserIds: true as const,
     },
+    interaction: {
+      id: true,
+      type: true,
+      data: true,
+      channelId: true,
+      guildId: true,
+      user: true,
+      token: true,
+      member: true,
+    },
   },
 });
 
 let botUserId: bigint | null = null;
 
 // Event handlers
-bot.events.ready = (payload) => {
+bot.events.ready = async (payload) => {
   console.log(`Logged in as ${payload.user.username}`);
   botUserId = payload.user.id;
+
+  // Register slash commands
+  await registerCommands(bot);
 };
 
 bot.events.messageCreate = async (message) => {
@@ -73,6 +87,11 @@ bot.events.messageCreate = async (message) => {
       console.error("Error sending message:", error);
     }
   }
+};
+
+// Handle slash command interactions
+bot.events.interactionCreate = async (interaction) => {
+  await handleInteraction(bot, interaction);
 };
 
 export async function startBot() {
