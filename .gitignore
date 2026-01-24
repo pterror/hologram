@@ -1,0 +1,31 @@
+# Nix
+result
+.direnv/
+
+# Node/Bun
+node_modules/
+
+# Docs
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Database
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Env
+.env
+.env.local
+
+# ML models cache
+.transformers_cache/
+
+# Build
+dist/

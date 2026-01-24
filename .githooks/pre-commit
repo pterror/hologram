@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -e
+
+# Use nix develop if bun isn't in PATH
+if ! command -v bun &> /dev/null; then
+  exec nix develop --command "$0" "$@"
+fi
+
+echo "Running oxlint..."
+bun run lint
+
+echo "Running type check..."
+bun run check:types
+
+echo "Pre-commit checks passed!"
