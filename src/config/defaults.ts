@@ -11,6 +11,7 @@ import type {
   RelationshipConfig,
   ContextConfig,
 } from "./types";
+import { getDb } from "../db";
 
 // === Default Configurations ===
 
@@ -361,3 +362,29 @@ export const features = {
   factions: (config: WorldConfig) =>
     config.relationships.enabled && config.relationships.useFactions,
 };
+
+/** Get the resolved config for a world (DB config merged with defaults) */
+export function getWorldConfig(worldId: number): WorldConfig {
+  const db = getDb();
+  const row = db.prepare("SELECT config FROM worlds WHERE id = ?").get(worldId) as {
+    config: string | null;
+  } | null;
+
+  if (!row?.config) return { ...DEFAULT_CONFIG };
+
+  try {
+    const partial = JSON.parse(row.config) as PartialWorldConfig;
+    return mergeConfig(partial);
+  } catch {
+    return { ...DEFAULT_CONFIG };
+  }
+}
+
+/** Save config for a world */
+export function setWorldConfig(worldId: number, config: PartialWorldConfig): void {
+  const db = getDb();
+  db.prepare("UPDATE worlds SET config = ? WHERE id = ?").run(
+    JSON.stringify(config),
+    worldId
+  );
+}
