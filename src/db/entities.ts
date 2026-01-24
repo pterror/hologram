@@ -19,9 +19,36 @@ export interface CharacterData {
   [key: string]: unknown;
 }
 
+export type LocationType = "location" | "region" | "zone" | "world";
+
+export interface LocationConnection {
+  targetId: number;
+  type?: string;            // "door", "path", "portal", "hidden", etc.
+  bidirectional?: boolean;  // Default true
+  travelTime?: number;      // Minutes
+  description?: string;     // "A narrow passage leads north"
+  hidden?: boolean;         // Not shown until discovered
+}
+
 export interface LocationData {
   description: string;
-  connectedTo?: number[]; // IDs of connected locations
+  connectedTo?: number[]; // IDs of connected locations (legacy)
+
+  // Hierarchy
+  parentId?: number;          // Region/zone this is inside
+  locationType?: LocationType;
+
+  // Connections (new format)
+  connections?: LocationConnection[];
+
+  // Properties
+  properties?: Record<string, boolean | string | number>;
+  // e.g., { indoor: true, lightLevel: "dim", temperature: "cold" }
+
+  // Ambience
+  ambience?: string;          // Default scene ambience when here
+  enterMessage?: string;      // Shown when arriving
+
   [key: string]: unknown;
 }
 
