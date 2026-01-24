@@ -116,6 +116,19 @@ export function initSchema(db: Database) {
     CREATE INDEX IF NOT EXISTS idx_chronicle_perspective ON chronicle(perspective);
     CREATE INDEX IF NOT EXISTS idx_chronicle_importance ON chronicle(importance DESC);
     CREATE INDEX IF NOT EXISTS idx_chronicle_type ON chronicle(type);
+
+    -- Webhook cache for character impersonation
+    CREATE TABLE IF NOT EXISTS character_webhooks (
+      id INTEGER PRIMARY KEY,
+      channel_id TEXT NOT NULL,
+      character_id INTEGER REFERENCES entities(id),
+      webhook_id TEXT NOT NULL,
+      webhook_token TEXT NOT NULL,
+      created_at INTEGER DEFAULT (unixepoch()),
+      UNIQUE(channel_id, character_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_webhooks_channel ON character_webhooks(channel_id);
   `);
 }
 
