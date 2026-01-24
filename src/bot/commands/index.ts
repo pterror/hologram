@@ -32,7 +32,7 @@ import { characterCommand, handleCharacterCommand } from "./character";
 import { worldCommand, handleWorldCommand } from "./world";
 import { memoryCommand, handleMemoryCommand } from "./memory";
 import { sessionCommand, handleSessionCommand } from "./session";
-import { configCommand, handleConfigCommand } from "./config";
+import { configCommand, handleConfigCommand, handleConfigWizardComponent } from "./config";
 
 // All slash commands
 export const commands: CreateApplicationCommand[] = [
@@ -77,6 +77,16 @@ export async function handleInteraction(
   bot: AnyBot,
   interaction: AnyInteraction
 ): Promise<void> {
+  // Handle component interactions (buttons, selects)
+  if (interaction.type === InteractionTypes.MessageComponent) {
+    // Route to appropriate handler based on custom_id prefix
+    if (await handleConfigWizardComponent(bot, interaction)) {
+      return;
+    }
+    // Unknown component, ignore
+    return;
+  }
+
   // Only handle slash commands
   if (interaction.type !== InteractionTypes.ApplicationCommand) {
     return;

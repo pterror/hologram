@@ -1,6 +1,8 @@
 import {
   type CreateApplicationCommand,
   ApplicationCommandOptionTypes,
+  MessageComponentTypes,
+  ButtonStyles,
 } from "@discordeno/bot";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -93,6 +95,11 @@ export const configCommand: CreateApplicationCommand = {
     {
       name: "reset",
       description: "Reset configuration to defaults",
+      type: ApplicationCommandOptionTypes.SubCommand,
+    },
+    {
+      name: "wizard",
+      description: "Interactive configuration builder",
       type: ApplicationCommandOptionTypes.SubCommand,
     },
   ],
@@ -194,9 +201,280 @@ export async function handleConfigCommand(
       break;
     }
 
+    case "wizard": {
+      const config = getWorldConfig(db, worldState.id);
+      await respondWithWizard(bot, interaction, config, worldState.id);
+      break;
+    }
+
     default:
       await respond(bot, interaction, "Unknown subcommand.");
   }
+}
+
+// Wizard state stored in custom_id: "config_wizard:{worldId}:{json_state}"
+interface WizardState {
+  chronicle: boolean;
+  scenes: boolean;
+  inventory: boolean;
+  locations: boolean;
+  time: boolean;
+  characterState: boolean;
+  dice: boolean;
+  relationships: boolean;
+}
+
+function stateFromConfig(config: WorldConfig): WizardState {
+  return {
+    chronicle: config.chronicle.enabled,
+    scenes: config.scenes.enabled,
+    inventory: config.inventory.enabled,
+    locations: config.locations.enabled,
+    time: config.time.enabled,
+    characterState: config.characterState.enabled,
+    dice: config.dice.enabled,
+    relationships: config.relationships.enabled,
+  };
+}
+
+function encodeWizardId(worldId: number, state: WizardState): string {
+  // Encode as bits to keep custom_id short (100 char limit)
+  const bits =
+    (state.chronicle ? 1 : 0) |
+    (state.scenes ? 2 : 0) |
+    (state.inventory ? 4 : 0) |
+    (state.locations ? 8 : 0) |
+    (state.time ? 16 : 0) |
+    (state.characterState ? 32 : 0) |
+    (state.dice ? 64 : 0) |
+    (state.relationships ? 128 : 0);
+  return `cfgwiz:${worldId}:${bits}`;
+}
+
+function decodeWizardId(customId: string): { worldId: number; state: WizardState } | null {
+  const match = customId.match(/^cfgwiz:(\d+):(\d+)/);
+  if (!match) return null;
+
+  const worldId = parseInt(match[1], 10);
+  const bits = parseInt(match[2], 10);
+
+  return {
+    worldId,
+    state: {
+      chronicle: (bits & 1) !== 0,
+      scenes: (bits & 2) !== 0,
+      inventory: (bits & 4) !== 0,
+      locations: (bits & 8) !== 0,
+      time: (bits & 16) !== 0,
+      characterState: (bits & 32) !== 0,
+      dice: (bits & 64) !== 0,
+      relationships: (bits & 128) !== 0,
+    },
+  };
+}
+
+async function respondWithWizard(
+  bot: AnyBot,
+  interaction: AnyInteraction,
+  config: WorldConfig,
+  worldId: number
+): Promise<void> {
+  const state = stateFromConfig(config);
+  const baseId = encodeWizardId(worldId, state);
+
+  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+    type: 4,
+    data: {
+      content: formatWizardMessage(state),
+      components: buildWizardComponents(baseId, state),
+    },
+  });
+}
+
+function formatWizardMessage(state: WizardState): string {
+  const lines = [
+    "**Configuration Wizard**",
+    "Toggle features on/off, then click Apply.\n",
+  ];
+
+  const features = [
+    ["Chronicle", state.chronicle, "Memory & fact extraction"],
+    ["Scenes", state.scenes, "Scene lifecycle management"],
+    ["Inventory", state.inventory, "Items & equipment"],
+    ["Locations", state.locations, "Places & connections"],
+    ["Time", state.time, "Time tracking & calendar"],
+    ["Character State", state.characterState, "Attributes, forms, effects"],
+    ["Dice", state.dice, "Dice rolling & combat"],
+    ["Relationships", state.relationships, "Affinity & factions"],
+  ] as const;
+
+  for (const [name, enabled, desc] of features) {
+    const icon = enabled ? "+" : "-";
+    lines.push(`${icon} **${name}**: ${desc}`);
+  }
+
+  return lines.join("\n");
+}
+
+function buildWizardComponents(
+  baseId: string,
+  state: WizardState
+): Array<{
+  type: MessageComponentTypes;
+  components: Array<unknown>;
+}> {
+  const features: Array<[keyof WizardState, string]> = [
+    ["chronicle", "Chronicle"],
+    ["scenes", "Scenes"],
+    ["inventory", "Inventory"],
+    ["locations", "Locations"],
+    ["time", "Time"],
+    ["characterState", "Char State"],
+    ["dice", "Dice"],
+    ["relationships", "Relations"],
+  ];
+
+  // Row 1: First 4 toggles
+  const row1 = features.slice(0, 4).map(([key, label]) => ({
+    type: MessageComponentTypes.Button,
+    style: state[key] ? ButtonStyles.Success : ButtonStyles.Secondary,
+    label: label,
+    customId: `${baseId}:toggle:${key}`,
+  }));
+
+  // Row 2: Next 4 toggles
+  const row2 = features.slice(4, 8).map(([key, label]) => ({
+    type: MessageComponentTypes.Button,
+    style: state[key] ? ButtonStyles.Success : ButtonStyles.Secondary,
+    label: label,
+    customId: `${baseId}:toggle:${key}`,
+  }));
+
+  // Row 3: Quick presets
+  const row3 = [
+    {
+      type: MessageComponentTypes.Button,
+      style: ButtonStyles.Primary,
+      label: "All On",
+      customId: `${baseId}:all_on`,
+    },
+    {
+      type: MessageComponentTypes.Button,
+      style: ButtonStyles.Primary,
+      label: "All Off",
+      customId: `${baseId}:all_off`,
+    },
+    {
+      type: MessageComponentTypes.Button,
+      style: ButtonStyles.Success,
+      label: "Apply",
+      customId: `${baseId}:apply`,
+    },
+    {
+      type: MessageComponentTypes.Button,
+      style: ButtonStyles.Danger,
+      label: "Cancel",
+      customId: `${baseId}:cancel`,
+    },
+  ];
+
+  return [
+    { type: MessageComponentTypes.ActionRow, components: row1 },
+    { type: MessageComponentTypes.ActionRow, components: row2 },
+    { type: MessageComponentTypes.ActionRow, components: row3 },
+  ];
+}
+
+/** Handle wizard button clicks */
+export async function handleConfigWizardComponent(
+  bot: AnyBot,
+  interaction: AnyInteraction
+): Promise<boolean> {
+  const customId = interaction.data?.customId;
+  if (!customId?.startsWith("cfgwiz:")) return false;
+
+  const decoded = decodeWizardId(customId);
+  if (!decoded) return false;
+
+  const { worldId, state } = decoded;
+  const action = customId.split(":").slice(3).join(":");
+
+  let newState = { ...state };
+  let done = false;
+  let message = "";
+
+  if (action.startsWith("toggle:")) {
+    const key = action.replace("toggle:", "") as keyof WizardState;
+    if (key in newState) {
+      newState[key] = !newState[key];
+    }
+  } else if (action === "all_on") {
+    newState = {
+      chronicle: true,
+      scenes: true,
+      inventory: true,
+      locations: true,
+      time: true,
+      characterState: true,
+      dice: true,
+      relationships: true,
+    };
+  } else if (action === "all_off") {
+    newState = {
+      chronicle: false,
+      scenes: false,
+      inventory: false,
+      locations: false,
+      time: false,
+      characterState: false,
+      dice: false,
+      relationships: false,
+    };
+  } else if (action === "apply") {
+    // Save config
+    const db = getDb();
+    const currentConfig = getWorldConfig(db, worldId);
+    const updatedConfig: WorldConfig = {
+      ...currentConfig,
+      chronicle: { ...currentConfig.chronicle, enabled: state.chronicle },
+      scenes: { ...currentConfig.scenes, enabled: state.scenes },
+      inventory: { ...currentConfig.inventory, enabled: state.inventory },
+      locations: { ...currentConfig.locations, enabled: state.locations },
+      time: { ...currentConfig.time, enabled: state.time },
+      characterState: { ...currentConfig.characterState, enabled: state.characterState },
+      dice: { ...currentConfig.dice, enabled: state.dice },
+      relationships: { ...currentConfig.relationships, enabled: state.relationships },
+    };
+    saveWorldConfig(db, worldId, updatedConfig);
+    done = true;
+    message = "Configuration saved!";
+  } else if (action === "cancel") {
+    done = true;
+    message = "Configuration wizard cancelled.";
+  }
+
+  if (done) {
+    // Update message to show result, remove components
+    await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+      type: 7, // UpdateMessage
+      data: {
+        content: message,
+        components: [],
+      },
+    });
+  } else {
+    // Update message with new state
+    const newBaseId = encodeWizardId(worldId, newState);
+    await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+      type: 7, // UpdateMessage
+      data: {
+        content: formatWizardMessage(newState),
+        components: buildWizardComponents(newBaseId, newState),
+      },
+    });
+  }
+
+  return true;
 }
 
 function getWorldConfig(db: ReturnType<typeof getDb>, worldId: number): WorldConfig {
