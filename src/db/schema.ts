@@ -95,6 +95,27 @@ export function initSchema(db: Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_scene_chars_scene ON scene_characters(scene_id);
+
+    -- Chronicle: perspective-aware memory system
+    CREATE TABLE IF NOT EXISTS chronicle (
+      id INTEGER PRIMARY KEY,
+      scene_id INTEGER REFERENCES scenes(id),
+      world_id INTEGER REFERENCES worlds(id),
+      type TEXT NOT NULL,
+      content TEXT NOT NULL,
+      importance INTEGER DEFAULT 5,
+      perspective TEXT NOT NULL,
+      visibility TEXT DEFAULT 'public',
+      source TEXT DEFAULT 'auto',
+      source_message_id TEXT,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_chronicle_scene ON chronicle(scene_id);
+    CREATE INDEX IF NOT EXISTS idx_chronicle_world ON chronicle(world_id);
+    CREATE INDEX IF NOT EXISTS idx_chronicle_perspective ON chronicle(perspective);
+    CREATE INDEX IF NOT EXISTS idx_chronicle_importance ON chronicle(importance DESC);
+    CREATE INDEX IF NOT EXISTS idx_chronicle_type ON chronicle(type);
   `);
 }
 
