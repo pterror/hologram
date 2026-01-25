@@ -259,6 +259,21 @@ export function initSchema(db: Database) {
 
     CREATE INDEX IF NOT EXISTS idx_faction_members_faction ON faction_members(faction_id);
     CREATE INDEX IF NOT EXISTS idx_faction_members_char ON faction_members(character_id);
+
+    -- User personas (SillyTavern-style user identity)
+    CREATE TABLE IF NOT EXISTS user_personas (
+      id INTEGER PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      world_id INTEGER REFERENCES worlds(id),
+      name TEXT NOT NULL,
+      persona TEXT,
+      avatar TEXT,
+      data JSON,
+      created_at INTEGER DEFAULT (unixepoch()),
+      UNIQUE(user_id, world_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_personas_user ON user_personas(user_id);
   `);
 }
 
