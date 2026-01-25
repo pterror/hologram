@@ -41,12 +41,24 @@ export interface Effect {
   createdAt: number;
 }
 
+export interface OutfitItem {
+  name: string;
+  slot?: string;        // "body", "feet", "head", etc.
+  description?: string;
+}
+
+export interface OutfitData {
+  description?: string;   // Freeform text: "A flowing red dress with gold trim"
+  items?: OutfitItem[];   // Structured clothing items
+}
+
 export interface CharacterState {
   id: number;
   characterId: number;
   sceneId: number | null;
   attributes: Record<string, number>;
   body: Record<string, unknown>;
+  outfit: OutfitData | null;
   updatedAt: number;
 }
 
@@ -60,7 +72,7 @@ export function getCharacterState(
   const db = getDb();
 
   const stmt = db.prepare(`
-    SELECT id, character_id, scene_id, attributes, body, updated_at
+    SELECT id, character_id, scene_id, attributes, body, outfit, updated_at
     FROM character_state
     WHERE character_id = ? AND (scene_id = ? OR (scene_id IS NULL AND ? IS NULL))
   `);
@@ -71,6 +83,7 @@ export function getCharacterState(
     scene_id: number | null;
     attributes: string | null;
     body: string | null;
+    outfit: string | null;
     updated_at: number;
   } | null;
 
@@ -82,6 +95,7 @@ export function getCharacterState(
     sceneId: row.scene_id,
     attributes: row.attributes ? JSON.parse(row.attributes) : {},
     body: row.body ? JSON.parse(row.body) : {},
+    outfit: row.outfit ? JSON.parse(row.outfit) : null,
     updatedAt: row.updated_at,
   };
 }
@@ -93,6 +107,7 @@ export function setCharacterState(
   updates: {
     attributes?: Record<string, number>;
     body?: Record<string, unknown>;
+    outfit?: OutfitData | null;
   }
 ): CharacterState {
   const db = getDb();
@@ -107,17 +122,21 @@ export function setCharacterState(
     const newBody = updates.body !== undefined
       ? { ...existing.body, ...updates.body }
       : existing.body;
+    const newOutfit = updates.outfit !== undefined
+      ? updates.outfit
+      : existing.outfit;
 
     const stmt = db.prepare(`
       UPDATE character_state
-      SET attributes = ?, body = ?, updated_at = unixepoch()
+      SET attributes = ?, body = ?, outfit = ?, updated_at = unixepoch()
       WHERE id = ?
-      RETURNING id, character_id, scene_id, attributes, body, updated_at
+      RETURNING id, character_id, scene_id, attributes, body, outfit, updated_at
     `);
 
     const row = stmt.get(
       JSON.stringify(newAttributes),
       JSON.stringify(newBody),
+      newOutfit ? JSON.stringify(newOutfit) : null,
       existing.id
     ) as {
       id: number;
@@ -125,6 +144,7 @@ export function setCharacterState(
       scene_id: number | null;
       attributes: string;
       body: string;
+      outfit: string | null;
       updated_at: number;
     };
 
@@ -134,27 +154,30 @@ export function setCharacterState(
       sceneId: row.scene_id,
       attributes: JSON.parse(row.attributes),
       body: JSON.parse(row.body),
+      outfit: row.outfit ? JSON.parse(row.outfit) : null,
       updatedAt: row.updated_at,
     };
   } else {
     // Create
     const stmt = db.prepare(`
-      INSERT INTO character_state (character_id, scene_id, attributes, body)
-      VALUES (?, ?, ?, ?)
-      RETURNING id, character_id, scene_id, attributes, body, updated_at
+      INSERT INTO character_state (character_id, scene_id, attributes, body, outfit)
+      VALUES (?, ?, ?, ?, ?)
+      RETURNING id, character_id, scene_id, attributes, body, outfit, updated_at
     `);
 
     const row = stmt.get(
       characterId,
       sceneId,
       JSON.stringify(updates.attributes ?? {}),
-      JSON.stringify(updates.body ?? {})
+      JSON.stringify(updates.body ?? {}),
+      updates.outfit ? JSON.stringify(updates.outfit) : null
     ) as {
       id: number;
       character_id: number;
       scene_id: number | null;
       attributes: string;
       body: string;
+      outfit: string | null;
       updated_at: number;
     };
 
@@ -164,6 +187,7 @@ export function setCharacterState(
       sceneId: row.scene_id,
       attributes: JSON.parse(row.attributes),
       body: JSON.parse(row.body),
+      outfit: row.outfit ? JSON.parse(row.outfit) : null,
       updatedAt: row.updated_at,
     };
   }
@@ -203,6 +227,80 @@ export function setBodyTrait(
   return setCharacterState(characterId, sceneId, {
     body: { [trait]: value },
   });
+}
+
+// Outfit management
+
+/** Set outfit (freeform description and/or structured items) */
+export function setOutfit(
+  characterId: number,
+  sceneId: number | null,
+  outfit: OutfitData | null
+): CharacterState {
+  return setCharacterState(characterId, sceneId, { outfit });
+}
+
+/** Set outfit from a plain text description */
+export function setOutfitDescription(
+  characterId: number,
+  sceneId: number | null,
+  description: string
+): CharacterState {
+  const existing = getCharacterState(characterId, sceneId);
+  const outfit: OutfitData = { ...existing?.outfit, description };
+  return setCharacterState(characterId, sceneId, { outfit });
+}
+
+/**
+ * Resolve the character's current outfit.
+ * If equipped items are provided (from inventory/equipment system), those
+ * take precedence for structured items. The freeform description is always
+ * preserved as a fallback/supplement.
+ */
+export function getResolvedOutfit(
+  characterId: number,
+  sceneId: number | null,
+  equippedClothing?: Array<{ slot: string; name: string; description?: string }>
+): OutfitData | null {
+  const state = getCharacterState(characterId, sceneId);
+  const freeform = state?.outfit;
+
+  // If we have equipped clothing items, build outfit from those
+  if (equippedClothing && equippedClothing.length > 0) {
+    return {
+      // Equipment-derived items take precedence
+      items: equippedClothing.map((e) => ({
+        name: e.name,
+        slot: e.slot,
+        description: e.description,
+      })),
+      // Preserve freeform description as supplement
+      description: freeform?.description,
+    };
+  }
+
+  // Fall back to freeform outfit
+  return freeform ?? null;
+}
+
+/** Format outfit for LLM context */
+export function formatOutfitForContext(outfit: OutfitData | null): string {
+  if (!outfit) return "";
+
+  const lines: string[] = [];
+
+  if (outfit.items && outfit.items.length > 0) {
+    const itemList = outfit.items
+      .map((i) => i.slot ? `${i.name} (${i.slot})` : i.name)
+      .join(", ");
+    lines.push(`Wearing: ${itemList}`);
+  }
+
+  if (outfit.description) {
+    lines.push(`Outfit: ${outfit.description}`);
+  }
+
+  return lines.join("\n");
 }
 
 // Effect management
@@ -460,7 +558,7 @@ export function hasFlag(
 export function formatStateForDisplay(
   characterId: number,
   sceneId: number | null,
-  options?: { showHidden?: boolean }
+  options?: { showHidden?: boolean; outfit?: OutfitData | null }
 ): string {
   const lines: string[] = [];
 
@@ -479,6 +577,21 @@ export function formatStateForDisplay(
     lines.push("\n**Form:**");
     for (const [trait, value] of Object.entries(body)) {
       lines.push(`  ${trait}: ${value}`);
+    }
+  }
+
+  // Outfit
+  const outfit = options?.outfit ?? getCharacterState(characterId, sceneId)?.outfit;
+  if (outfit) {
+    lines.push("\n**Outfit:**");
+    if (outfit.description) {
+      lines.push(`  ${outfit.description}`);
+    }
+    if (outfit.items && outfit.items.length > 0) {
+      for (const item of outfit.items) {
+        const slot = item.slot ? ` [${item.slot}]` : "";
+        lines.push(`  ${item.name}${slot}`);
+      }
     }
   }
 
@@ -508,12 +621,18 @@ export function formatStateForDisplay(
   return lines.join("\n") || "No state data.";
 }
 
-/** Format state for context assembly */
+/**
+ * Format state for context assembly.
+ * Optionally accepts a resolved outfit to avoid re-querying state.
+ */
 export function formatStateForContext(
   characterId: number,
-  sceneId: number | null
+  sceneId: number | null,
+  resolvedOutfit?: OutfitData | null
 ): string {
   const lines: string[] = [];
+
+  const state = getCharacterState(characterId, sceneId);
 
   const attrs = getComputedAttributes(characterId, sceneId);
   if (Object.keys(attrs).length > 0) {
@@ -529,6 +648,13 @@ export function formatStateForContext(
       .map(([k, v]) => `${k}: ${v}`)
       .join(", ");
     lines.push(`Form: ${bodyList}`);
+  }
+
+  // Outfit (from resolved or from state)
+  const outfit = resolvedOutfit !== undefined ? resolvedOutfit : state?.outfit;
+  const outfitText = formatOutfitForContext(outfit ?? null);
+  if (outfitText) {
+    lines.push(outfitText);
   }
 
   const effects = getCharacterEffects(characterId, sceneId);

@@ -137,6 +137,7 @@ export function initSchema(db: Database) {
       scene_id INTEGER REFERENCES scenes(id) ON DELETE CASCADE,
       attributes JSON,
       body JSON,
+      outfit JSON,
       updated_at INTEGER DEFAULT (unixepoch()),
       UNIQUE(character_id, scene_id)
     );
@@ -408,15 +409,25 @@ export function runMigrations(db: Database) {
   const worldsInfo = db.prepare("PRAGMA table_info(worlds)").all() as Array<{
     name: string;
   }>;
-  const columns = new Set(worldsInfo.map((c) => c.name));
+  const worldColumns = new Set(worldsInfo.map((c) => c.name));
 
-  if (!columns.has("config")) {
+  if (!worldColumns.has("config")) {
     db.exec("ALTER TABLE worlds ADD COLUMN config JSON");
   }
-  if (!columns.has("lore")) {
+  if (!worldColumns.has("lore")) {
     db.exec("ALTER TABLE worlds ADD COLUMN lore TEXT");
   }
-  if (!columns.has("rules")) {
+  if (!worldColumns.has("rules")) {
     db.exec("ALTER TABLE worlds ADD COLUMN rules TEXT");
+  }
+
+  // character_state migrations
+  const stateInfo = db.prepare("PRAGMA table_info(character_state)").all() as Array<{
+    name: string;
+  }>;
+  const stateColumns = new Set(stateInfo.map((c) => c.name));
+
+  if (!stateColumns.has("outfit")) {
+    db.exec("ALTER TABLE character_state ADD COLUMN outfit JSON");
   }
 }

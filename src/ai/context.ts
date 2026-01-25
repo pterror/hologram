@@ -5,7 +5,7 @@ import {
 } from "../db/entities";
 import { getRelationshipsFrom, getRelationshipsTo } from "../db/relationships";
 import { getWorldState, formatWorldStateForContext } from "../world/state";
-import { formatInventoryForContext } from "../world/inventory";
+import { formatInventoryForContext, getEquippedItems } from "../world/inventory";
 import { assembleMemoryContext } from "../memory/tiers";
 import { getDb } from "../db";
 import {
@@ -20,7 +20,7 @@ import {
   searchEntries,
   getRecentEntries,
 } from "../chronicle";
-import { formatStateForContext } from "../state";
+import { formatStateForContext, getResolvedOutfit } from "../state";
 import { getLocation, formatLocationForContext } from "../world/locations";
 import {
   getTimePeriod,
@@ -134,7 +134,7 @@ export async function assembleSceneContext(
   for (const charId of activeCharacterIds) {
     const character = getEntity<CharacterData>(charId);
     if (character) {
-      const charSection = formatCharacterForContext(character, scene.id);
+      const charSection = formatCharacterForContext(character, scene.id, worldConfig);
       sections.push({
         name: `character_${charId}`,
         content: charSection,
@@ -190,7 +190,7 @@ export async function assembleSceneContext(
     .filter((c): c is Entity<CharacterData> => c !== null);
 
   if (otherChars.length > 0) {
-    const othersSection = formatOtherCharactersForContext(otherChars, scene.id);
+    const othersSection = formatOtherCharactersForContext(otherChars, scene.id, worldConfig);
     sections.push({
       name: "otherCharacters",
       content: othersSection,
@@ -391,7 +391,8 @@ async function buildChronicleSection(
 
 function formatCharacterForContext(
   character: Entity<CharacterData>,
-  sceneId?: number
+  sceneId?: number,
+  worldConfig?: { inventory: { enabled: boolean; useEquipment: boolean } }
 ): string {
   const lines: string[] = [];
 
@@ -406,9 +407,23 @@ function formatCharacterForContext(
     lines.push(character.data.scenario);
   }
 
-  // Character state (attributes, body, effects)
+  // Character state (attributes, body, outfit, effects)
   if (sceneId !== undefined) {
-    const stateSection = formatStateForContext(character.id, sceneId);
+    // Resolve outfit: equipment-derived if available, else freeform
+    let equippedClothing: Array<{ slot: string; name: string; description?: string }> | undefined;
+    if (worldConfig?.inventory.enabled && worldConfig.inventory.useEquipment) {
+      const equipped = getEquippedItems(character.id, sceneId);
+      if (equipped.length > 0) {
+        equippedClothing = equipped.map((e) => ({
+          slot: e.slot,
+          name: e.item.name,
+          description: e.item.description,
+        }));
+      }
+    }
+    const resolvedOutfit = getResolvedOutfit(character.id, sceneId, equippedClothing);
+
+    const stateSection = formatStateForContext(character.id, sceneId, resolvedOutfit);
     if (stateSection) {
       lines.push("");
       lines.push("## Current State");
@@ -433,7 +448,8 @@ function formatCharacterForContext(
 
 function formatOtherCharactersForContext(
   characters: Entity<CharacterData>[],
-  sceneId?: number
+  sceneId?: number,
+  worldConfig?: { inventory: { enabled: boolean; useEquipment: boolean } }
 ): string {
   const lines: string[] = ["## Other Characters Present"];
 
@@ -445,9 +461,21 @@ function formatOtherCharactersForContext(
       briefPersona + (char.data.persona.length > 200 ? "..." : "")
     );
 
-    // Include visible state for other characters
+    // Include visible state for other characters (with outfit resolution)
     if (sceneId !== undefined) {
-      const stateSection = formatStateForContext(char.id, sceneId);
+      let equippedClothing: Array<{ slot: string; name: string; description?: string }> | undefined;
+      if (worldConfig?.inventory.enabled && worldConfig.inventory.useEquipment) {
+        const equipped = getEquippedItems(char.id, sceneId);
+        if (equipped.length > 0) {
+          equippedClothing = equipped.map((e) => ({
+            slot: e.slot,
+            name: e.item.name,
+            description: e.item.description,
+          }));
+        }
+      }
+      const resolvedOutfit = getResolvedOutfit(char.id, sceneId, equippedClothing);
+      const stateSection = formatStateForContext(char.id, sceneId, resolvedOutfit);
       if (stateSection) {
         lines.push(stateSection);
       }
