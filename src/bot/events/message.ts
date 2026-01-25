@@ -13,6 +13,8 @@ import { getPersona, formatPersonaForContext } from "../../personas";
 import { getWorldConfig } from "../../config";
 import { syncRealtimeIfNeeded, buildTimeSkipNarrationPrompt } from "../../world/time";
 import { checkRandomEvents, applyEventEffects } from "../../events/random";
+import { parseMultiCharResponse, type MultiCharMode } from "../webhooks";
+import { getEntity, type CharacterData } from "../../db/entities";
 
 // In-memory message history per channel
 const channelMessages = new Map<string, Message[]>();
@@ -67,10 +69,19 @@ export function getActiveCharacter(channelId: string): number | undefined {
   return channelActiveCharacter.get(channelId);
 }
 
+/** Per-character segment of a multi-character response */
+export interface CharacterSegment {
+  characterId: number;
+  characterName: string;
+  content: string;
+}
+
 /** Result from message handling, may include time-skip narration */
 export interface MessageResult {
   response: string;
   narration?: string; // Time-skip narration to send as a separate message before the response
+  segments?: CharacterSegment[]; // Parsed per-character segments for webhook delivery
+  multiCharMode?: MultiCharMode; // Delivery mode for multi-char responses
 }
 
 export async function handleMessage(
@@ -123,9 +134,9 @@ export async function handleMessage(
 
   // --- Realtime sync: auto-advance game time based on real-time gap ---
   const narrationParts: string[] = [];
+  const worldConfig = scene ? getWorldConfig(scene.worldId) : undefined;
 
-  if (scene) {
-    const worldConfig = getWorldConfig(scene.worldId);
+  if (scene && worldConfig) {
     const syncResult = syncRealtimeIfNeeded(scene, worldConfig);
 
     if (syncResult.advanced) {
@@ -242,7 +253,41 @@ export async function handleMessage(
       activeCharacterIds[0]
     ).catch((err) => console.error("Error processing message for memory:", err));
 
-    return { response, narration };
+    // Parse multi-character response for webhook delivery
+    let segments: CharacterSegment[] | undefined;
+    const multiCharMode = worldConfig?.multiCharMode;
+
+    if (activeCharacterIds.length > 1) {
+      // Build name→ID map for active characters
+      const nameToId = new Map<string, number>();
+      for (const charId of activeCharacterIds) {
+        const charEntity = getEntity<CharacterData>(charId);
+        if (charEntity) {
+          nameToId.set(charEntity.name, charId);
+        }
+      }
+
+      const parsed = parseMultiCharResponse(response, Array.from(nameToId.keys()));
+      if (parsed) {
+        segments = parsed.map((seg) => ({
+          characterId: nameToId.get(seg.characterName) ?? activeCharacterIds[0],
+          characterName: seg.characterName,
+          content: seg.content,
+        }));
+      }
+    } else if (activeCharacterIds.length === 1) {
+      // Single character - create segment for webhook delivery
+      const charEntity = getEntity<CharacterData>(activeCharacterIds[0]);
+      if (charEntity) {
+        segments = [{
+          characterId: activeCharacterIds[0],
+          characterName: charEntity.name,
+          content: response,
+        }];
+      }
+    }
+
+    return { response, narration, segments, multiCharMode };
   } catch (error) {
     console.error("Error generating response:", error);
     return null;

@@ -227,6 +227,53 @@ export async function canUseWebhooks(
   }
 }
 
+/** Parse a multi-character AI response into per-character segments */
+export function parseMultiCharResponse(
+  text: string,
+  knownNames: string[]
+): Array<{ characterName: string; content: string }> | null {
+  if (knownNames.length <= 1) return null;
+
+  // Build pattern to match **CharName:** at the start of a segment
+  const escaped = knownNames.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const namePattern = escaped.join("|");
+  const regex = new RegExp(`\\*\\*(${namePattern}):\\*\\*\\s*`, "g");
+
+  // Find all matches and their positions
+  const matches: Array<{ name: string; start: number; contentStart: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    matches.push({
+      name: match[1],
+      start: match.index,
+      contentStart: match.index + match[0].length,
+    });
+  }
+
+  // Need at least one tagged segment to parse
+  if (matches.length === 0) return null;
+
+  const results: Array<{ characterName: string; content: string }> = [];
+
+  // If there's content before the first match, it might be narrator text
+  // We skip it for character splitting purposes
+
+  for (let i = 0; i < matches.length; i++) {
+    const contentStart = matches[i].contentStart;
+    const contentEnd = i + 1 < matches.length ? matches[i + 1].start : text.length;
+    const content = text.slice(contentStart, contentEnd).trim();
+
+    if (content) {
+      results.push({
+        characterName: matches[i].name,
+        content,
+      });
+    }
+  }
+
+  return results.length > 0 ? results : null;
+}
+
 /** Clean up old/unused webhooks for a channel */
 export async function cleanupWebhooks(
   bot: AnyBot,

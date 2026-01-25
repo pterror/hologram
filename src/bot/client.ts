@@ -2,6 +2,7 @@ import { createBot, Intents } from "@discordeno/bot";
 import { handleMessage } from "./events/message";
 import { registerCommands, handleInteraction } from "./commands";
 import { startEventScheduler } from "../events/scheduler";
+import { sendMultiCharResponse } from "./webhooks";
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -92,9 +93,21 @@ bot.events.messageCreate = async (message) => {
           content: `*${result.narration}*`,
         });
       }
-      await bot.helpers.sendMessage(message.channelId, {
-        content: result.response,
-      });
+
+      // Route response through multi-char delivery when available
+      const mode = result.multiCharMode ?? "tagged";
+      if (result.segments && result.segments.length > 0 && mode !== "tagged") {
+        await sendMultiCharResponse(
+          bot,
+          message.channelId.toString(),
+          result.segments,
+          mode
+        );
+      } else {
+        await bot.helpers.sendMessage(message.channelId, {
+          content: result.response,
+        });
+      }
     } catch (error) {
       console.error("Error sending message:", error);
     }
