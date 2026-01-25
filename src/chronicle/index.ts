@@ -190,7 +190,8 @@ export interface QueryOptions {
   worldId: number;
   sceneId?: number;
   // Perspective filtering
-  characterIds?: number[];     // Characters whose perspective to include
+  characterIds?: number[];     // Character entity IDs whose perspective to include
+  additionalPerspectives?: string[]; // Extra perspective strings (e.g., Discord user ID)
   includeNarrator?: boolean;   // Include narrator entries
   includeShared?: boolean;     // Include shared entries (default true)
   // Type filtering
@@ -234,6 +235,12 @@ export function queryEntries(options: QueryOptions): ChronicleEntry[] {
 
   // Perspective and visibility filtering
   if (!options.narratorMode) {
+    // Collect all perspective IDs (character entity IDs + additional strings like Discord user IDs)
+    const allPerspectives: string[] = [
+      ...(options.characterIds?.map(String) ?? []),
+      ...(options.additionalPerspectives ?? []),
+    ];
+
     // Build perspective conditions
     const perspectiveConds: string[] = [];
 
@@ -245,10 +252,10 @@ export function queryEntries(options: QueryOptions): ChronicleEntry[] {
       perspectiveConds.push("perspective = 'narrator'");
     }
 
-    if (options.characterIds && options.characterIds.length > 0) {
-      const charPlaceholders = options.characterIds.map(() => "?").join(", ");
-      perspectiveConds.push(`perspective IN (${charPlaceholders})`);
-      params.push(...options.characterIds.map(String));
+    if (allPerspectives.length > 0) {
+      const placeholders = allPerspectives.map(() => "?").join(", ");
+      perspectiveConds.push(`perspective IN (${placeholders})`);
+      params.push(...allPerspectives);
     }
 
     if (perspectiveConds.length > 0) {
@@ -261,10 +268,10 @@ export function queryEntries(options: QueryOptions): ChronicleEntry[] {
     // Secret entries only visible in narrator mode
     query += " AND (visibility = 'public'";
 
-    if (options.characterIds && options.characterIds.length > 0) {
-      const charPlaceholders = options.characterIds.map(() => "?").join(", ");
-      query += ` OR (visibility = 'character' AND perspective IN (${charPlaceholders}))`;
-      params.push(...options.characterIds.map(String));
+    if (allPerspectives.length > 0) {
+      const placeholders = allPerspectives.map(() => "?").join(", ");
+      query += ` OR (visibility = 'character' AND perspective IN (${placeholders}))`;
+      params.push(...allPerspectives);
     }
 
     query += ")";
@@ -360,11 +367,17 @@ export async function searchEntries(
     // Narrator mode sees everything
     if (options.narratorMode) return true;
 
+    // Collect all perspective strings
+    const allPerspectives = [
+      ...(options.characterIds?.map(String) ?? []),
+      ...(options.additionalPerspectives ?? []),
+    ];
+
     // Perspective check
     const validPerspective =
       entry.perspective === "shared" ||
       (options.includeNarrator && entry.perspective === "narrator") ||
-      (options.characterIds?.includes(parseInt(entry.perspective, 10)));
+      allPerspectives.includes(entry.perspective);
 
     if (!validPerspective && entry.perspective !== "shared") {
       return false;
@@ -373,8 +386,7 @@ export async function searchEntries(
     // Visibility check
     if (entry.visibility === "secret") return false;
     if (entry.visibility === "character") {
-      const perspectiveId = parseInt(entry.perspective, 10);
-      if (isNaN(perspectiveId) || !options.characterIds?.includes(perspectiveId)) {
+      if (!allPerspectives.includes(entry.perspective)) {
         return false;
       }
     }

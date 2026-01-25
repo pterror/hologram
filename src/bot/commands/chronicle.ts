@@ -20,9 +20,18 @@ import {
   type Visibility,
   type ChronicleEntry,
 } from "../../chronicle";
-import { getActiveScene } from "../../scene";
+import { getActiveScene, getSceneCharacters } from "../../scene";
 import { getWorldState } from "../../world/state";
 import { getOptionValue, getSubcommand, USER_APP_INTEGRATION } from "./index";
+
+/** Get the character IDs associated with a user in the current scene */
+function getUserCharacterIds(sceneId: number | undefined, userId: string): number[] {
+  if (!sceneId) return [];
+  const sceneChars = getSceneCharacters(sceneId);
+  return sceneChars
+    .filter((sc) => sc.playerId === userId)
+    .map((sc) => sc.characterId);
+}
 
 export const chronicleCommand: CreateApplicationCommand = {
   name: "chronicle",
@@ -200,12 +209,17 @@ export async function handleChronicleCommand(
 
       await respondDeferred(bot, interaction);
 
+      const userId = interaction.user?.id?.toString() ?? "";
+      const userCharIds = getUserCharacterIds(scene?.id, userId);
+
       const entries = await searchEntries({
         query,
         worldId: worldState.id,
         sceneId: scene?.id,
         limit,
-        narratorMode: true, // TODO: Filter by user's characters
+        characterIds: userCharIds.length > 0 ? userCharIds : undefined,
+        additionalPerspectives: userId ? [userId] : undefined,
+        includeShared: true,
       });
 
       if (entries.length === 0) {
@@ -226,12 +240,17 @@ export async function handleChronicleCommand(
       const limit = getOptionValue<number>(interaction, "limit") ?? 10;
       const typeFilter = getOptionValue<string>(interaction, "type") as ChronicleType | undefined;
 
+      const histUserId = interaction.user?.id?.toString() ?? "";
+      const histCharIds = getUserCharacterIds(scene?.id, histUserId);
+
       const entries = queryEntries({
         worldId: worldState.id,
         sceneId: scene?.id,
         types: typeFilter ? [typeFilter] : undefined,
         limit,
-        narratorMode: true,
+        characterIds: histCharIds.length > 0 ? histCharIds : undefined,
+        additionalPerspectives: histUserId ? [histUserId] : undefined,
+        includeShared: true,
       });
 
       if (entries.length === 0) {
