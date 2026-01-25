@@ -16,7 +16,6 @@ import {
   updateWizardSession,
   cancelWizard,
   getCurrentStep,
-  getTotalSteps,
   formatWizardProgress,
   encodeWizardAction,
   decodeWizardAction,
@@ -121,10 +120,9 @@ async function sendWizardStep(
   isUpdate: boolean
 ): Promise<void> {
   const step = getCurrentStep(session);
-  const total = getTotalSteps(session.type);
 
-  if (!step || session.step >= total) {
-    // Wizard complete - show preview
+  if (!step) {
+    // Past all steps - show preview
     await sendWizardPreview(bot, interaction, session, isUpdate);
     return;
   }

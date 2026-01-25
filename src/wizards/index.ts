@@ -1,4 +1,6 @@
 import { getDb } from "../db";
+import type { WorldConfig } from "../config/types";
+import { getWorldConfig } from "../config";
 
 export type WizardType = "character" | "world" | "location" | "item";
 
@@ -242,120 +244,127 @@ export interface WizardStep {
   aiPrompt?: string;       // Prompt for AI suggestions
 }
 
-/** Define wizard flows for each type */
-export const WIZARD_FLOWS: Record<WizardType, WizardStep[]> = {
-  character: [
-    {
-      name: "Name",
-      prompt: "What is the character's name?",
-      field: "name",
-      required: true,
-      inputType: "text",
-      aiAssist: true,
-      aiPrompt: "Suggest 5 fantasy character names",
-    },
-    {
-      name: "Persona",
-      prompt: "Describe the character's personality, background, and key traits.",
-      field: "persona",
-      required: true,
-      inputType: "text",
-      aiAssist: true,
-      aiPrompt: "Given the character name '{name}', suggest a brief character persona (personality, background, traits)",
-    },
-    {
-      name: "Scenario",
-      prompt: "What is the character's current situation or goals? (Optional)",
-      field: "scenario",
-      required: false,
-      inputType: "text",
-      aiAssist: true,
-      aiPrompt: "Given character '{name}' with persona '{persona}', suggest a scenario (current situation/goals)",
-    },
-    {
-      name: "Example Dialogue",
-      prompt: "Provide example dialogue to establish voice/style. (Optional)",
-      field: "exampleDialogue",
-      required: false,
-      inputType: "text",
-      aiAssist: true,
-      aiPrompt: "Given character '{name}' with persona '{persona}', write 2-3 example dialogue lines showing their voice",
-    },
-  ],
-  world: [
-    {
-      name: "Name",
-      prompt: "What is the world's name?",
-      field: "name",
-      required: true,
-      inputType: "text",
-      aiAssist: true,
-      aiPrompt: "Suggest 5 fantasy world/setting names",
-    },
-    {
-      name: "Description",
-      prompt: "Describe the world's setting, genre, and atmosphere.",
-      field: "description",
-      required: true,
-      inputType: "text",
-      aiAssist: true,
-      aiPrompt: "Given world name '{name}', suggest a world description (setting, genre, atmosphere)",
-    },
-    {
-      name: "Lore",
-      prompt: "Any background lore or history? (Optional)",
-      field: "lore",
-      required: false,
-      inputType: "text",
-      aiAssist: true,
-      aiPrompt: "Given world '{name}': {description}, suggest background lore/history",
-    },
-    {
-      name: "Rules",
-      prompt: "Any special rules or tone guidelines for AI? (Optional, always in context)",
-      field: "rules",
-      required: false,
-      inputType: "text",
-    },
-  ],
-  location: [
-    {
-      name: "Name",
-      prompt: "What is the location's name?",
-      field: "name",
-      required: true,
-      inputType: "text",
-      aiAssist: true,
-      aiPrompt: "Suggest 5 fantasy location names",
-    },
-    {
-      name: "Description",
-      prompt: "Describe this location.",
-      field: "description",
-      required: true,
-      inputType: "text",
-      aiAssist: true,
-      aiPrompt: "Given location name '{name}', suggest a vivid description",
-    },
-    {
-      name: "Type",
-      prompt: "What type of location is this?",
-      field: "locationType",
-      required: false,
-      inputType: "select",
-      options: ["location", "region", "zone"],
-    },
-    {
-      name: "Ambience",
-      prompt: "Default ambient description when entering. (Optional)",
-      field: "ambience",
-      required: false,
-      inputType: "text",
-      aiAssist: true,
-      aiPrompt: "Given location '{name}': {description}, write a short ambient description for when someone enters",
-    },
-  ],
-  item: [
+// === Static wizard flows (non-config-dependent) ===
+
+const CHARACTER_FLOW: WizardStep[] = [
+  {
+    name: "Name",
+    prompt: "What is the character's name?",
+    field: "name",
+    required: true,
+    inputType: "text",
+    aiAssist: true,
+    aiPrompt: "Suggest 5 fantasy character names",
+  },
+  {
+    name: "Persona",
+    prompt: "Describe the character's personality, background, and key traits.",
+    field: "persona",
+    required: true,
+    inputType: "text",
+    aiAssist: true,
+    aiPrompt: "Given the character name '{name}', suggest a brief character persona (personality, background, traits)",
+  },
+  {
+    name: "Scenario",
+    prompt: "What is the character's current situation or goals? (Optional)",
+    field: "scenario",
+    required: false,
+    inputType: "text",
+    aiAssist: true,
+    aiPrompt: "Given character '{name}' with persona '{persona}', suggest a scenario (current situation/goals)",
+  },
+  {
+    name: "Example Dialogue",
+    prompt: "Provide example dialogue to establish voice/style. (Optional)",
+    field: "exampleDialogue",
+    required: false,
+    inputType: "text",
+    aiAssist: true,
+    aiPrompt: "Given character '{name}' with persona '{persona}', write 2-3 example dialogue lines showing their voice",
+  },
+];
+
+const WORLD_FLOW: WizardStep[] = [
+  {
+    name: "Name",
+    prompt: "What is the world's name?",
+    field: "name",
+    required: true,
+    inputType: "text",
+    aiAssist: true,
+    aiPrompt: "Suggest 5 fantasy world/setting names",
+  },
+  {
+    name: "Description",
+    prompt: "Describe the world's setting, genre, and atmosphere.",
+    field: "description",
+    required: true,
+    inputType: "text",
+    aiAssist: true,
+    aiPrompt: "Given world name '{name}', suggest a world description (setting, genre, atmosphere)",
+  },
+  {
+    name: "Lore",
+    prompt: "Any background lore or history? (Optional)",
+    field: "lore",
+    required: false,
+    inputType: "text",
+    aiAssist: true,
+    aiPrompt: "Given world '{name}': {description}, suggest background lore/history",
+  },
+  {
+    name: "Rules",
+    prompt: "Any special rules or tone guidelines for AI? (Optional, always in context)",
+    field: "rules",
+    required: false,
+    inputType: "text",
+  },
+];
+
+const LOCATION_FLOW: WizardStep[] = [
+  {
+    name: "Name",
+    prompt: "What is the location's name?",
+    field: "name",
+    required: true,
+    inputType: "text",
+    aiAssist: true,
+    aiPrompt: "Suggest 5 fantasy location names",
+  },
+  {
+    name: "Description",
+    prompt: "Describe this location.",
+    field: "description",
+    required: true,
+    inputType: "text",
+    aiAssist: true,
+    aiPrompt: "Given location name '{name}', suggest a vivid description",
+  },
+  {
+    name: "Type",
+    prompt: "What type of location is this?",
+    field: "locationType",
+    required: false,
+    inputType: "select",
+    options: ["location", "region", "zone"],
+  },
+  {
+    name: "Ambience",
+    prompt: "Default ambient description when entering. (Optional)",
+    field: "ambience",
+    required: false,
+    inputType: "text",
+    aiAssist: true,
+    aiPrompt: "Given location '{name}': {description}, write a short ambient description for when someone enters",
+  },
+];
+
+// === Dynamic item wizard flow (config-dependent) ===
+
+/** Build item wizard steps based on world config. TF features only appear when enabled. */
+function buildItemFlow(config?: WorldConfig): WizardStep[] {
+  const steps: WizardStep[] = [
     {
       name: "Name",
       prompt: "What is the item's name?",
@@ -382,34 +391,141 @@ export const WIZARD_FLOWS: Record<WizardType, WizardStep[]> = {
       inputType: "select",
       options: ["consumable", "equipment", "quest", "currency", "misc"],
     },
-    {
-      name: "Effect",
-      prompt: "What effect does using this item have? (Optional)",
-      field: "effect",
+  ];
+
+  // Equipment slot (only if equipment system is enabled)
+  if (config?.inventory?.useEquipment) {
+    const slots = config.inventory.equipmentSlots;
+    steps.push({
+      name: "Equipment Slot",
+      prompt: "Which equipment slot does this item use? (Optional)",
+      field: "equipSlot",
+      required: false,
+      inputType: "select",
+      options: slots.length > 0 ? slots : ["mainhand", "offhand", "head", "body", "hands", "feet", "accessory"],
+    });
+    steps.push({
+      name: "Stat Bonuses",
+      prompt: "Stat bonuses when equipped (e.g., 'strength +5, defense +3'). (Optional)",
+      field: "stats",
       required: false,
       inputType: "text",
       aiAssist: true,
-      aiPrompt: "Given item '{name}': {description}, suggest an effect when used",
-    },
-  ],
+      aiPrompt: "Given item '{name}': {description}, suggest stat bonuses when equipped",
+    });
+  }
+
+  // Effect on use (always shown - basic item effect, not TF-specific)
+  steps.push({
+    name: "Effect",
+    prompt: "What effect does using this item have? (Optional)",
+    field: "effect",
+    required: false,
+    inputType: "text",
+    aiAssist: true,
+    aiPrompt: "Given item '{name}': {description}, suggest an effect when used",
+  });
+
+  // Effects system (buffs/debuffs - only if effects enabled)
+  if (config?.characterState?.useEffects) {
+    steps.push({
+      name: "Applied Effect",
+      prompt: "Status effect applied on use (e.g., buff/debuff name and duration). (Optional)",
+      field: "appliedEffect",
+      required: false,
+      inputType: "text",
+      aiAssist: true,
+      aiPrompt: "Given item '{name}': {description}, suggest a status effect (buff/debuff) it applies",
+    });
+  }
+
+  // Body requirements and transformation (only if forms enabled - TF opt-in)
+  if (config?.characterState?.useForms) {
+    steps.push({
+      name: "Body Requirements",
+      prompt: "Body/form requirements to use (e.g., species, size, flags). (Optional)",
+      field: "requirements",
+      required: false,
+      inputType: "text",
+      aiAssist: true,
+      aiPrompt: "Given item '{name}': {description}, suggest body requirements (species, form, size) to use it",
+    });
+    steps.push({
+      name: "Transformation",
+      prompt: "Body changes when used (e.g., species change, new traits). (Optional)",
+      field: "transformation",
+      required: false,
+      inputType: "text",
+      aiAssist: true,
+      aiPrompt: "Given item '{name}': {description}, describe a transformation effect when used",
+    });
+  }
+
+  // Durability (only if durability system enabled)
+  if (config?.inventory?.useDurability) {
+    steps.push({
+      name: "Durability",
+      prompt: "Maximum durability (number). (Optional)",
+      field: "maxDurability",
+      required: false,
+      inputType: "number",
+    });
+  }
+
+  return steps;
+}
+
+/** Kept for backward compatibility - static flows without config */
+export const WIZARD_FLOWS: Record<WizardType, WizardStep[]> = {
+  character: CHARACTER_FLOW,
+  world: WORLD_FLOW,
+  location: LOCATION_FLOW,
+  item: buildItemFlow(), // Default: no config = base steps only
 };
 
+/** Get the wizard flow for a type, optionally using world config for dynamic flows */
+export function getWizardFlow(type: WizardType, config?: WorldConfig): WizardStep[] {
+  switch (type) {
+    case "item":
+      return buildItemFlow(config);
+    case "character":
+      return CHARACTER_FLOW;
+    case "world":
+      return WORLD_FLOW;
+    case "location":
+      return LOCATION_FLOW;
+  }
+}
+
+/** Resolve WorldConfig from a session's worldId */
+function resolveConfig(session: WizardSession): WorldConfig | undefined {
+  if (session.worldId) {
+    try {
+      return getWorldConfig(session.worldId);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 /** Get the current step definition for a wizard session */
-export function getCurrentStep(session: WizardSession): WizardStep | null {
-  const flow = WIZARD_FLOWS[session.type];
-  if (!flow || session.step >= flow.length) return null;
+export function getCurrentStep(session: WizardSession, config?: WorldConfig): WizardStep | null {
+  const resolvedConfig = config ?? resolveConfig(session);
+  const flow = getWizardFlow(session.type, resolvedConfig);
+  if (session.step >= flow.length) return null;
   return flow[session.step];
 }
 
 /** Get total steps for a wizard type */
-export function getTotalSteps(type: WizardType): number {
-  return WIZARD_FLOWS[type]?.length ?? 0;
+export function getTotalSteps(type: WizardType, config?: WorldConfig): number {
+  return getWizardFlow(type, config).length;
 }
 
 /** Check if a wizard session is complete (all required steps filled) */
-export function isWizardComplete(session: WizardSession): boolean {
-  const flow = WIZARD_FLOWS[session.type];
-  if (!flow) return true;
+export function isWizardComplete(session: WizardSession, config?: WorldConfig): boolean {
+  const resolvedConfig = config ?? resolveConfig(session);
+  const flow = getWizardFlow(session.type, resolvedConfig);
 
   for (const step of flow) {
     if (step.required && !session.data[step.field]) {
@@ -429,9 +545,10 @@ export function interpolatePrompt(template: string, data: Record<string, unknown
 }
 
 /** Format wizard progress for Discord display */
-export function formatWizardProgress(session: WizardSession): string {
-  const flow = WIZARD_FLOWS[session.type];
-  if (!flow) return "";
+export function formatWizardProgress(session: WizardSession, config?: WorldConfig): string {
+  const resolvedConfig = config ?? resolveConfig(session);
+  const flow = getWizardFlow(session.type, resolvedConfig);
+  if (flow.length === 0) return "";
 
   const lines: string[] = [];
   lines.push(`**${session.type.charAt(0).toUpperCase() + session.type.slice(1)} Builder** - Step ${session.step + 1}/${flow.length}\n`);
