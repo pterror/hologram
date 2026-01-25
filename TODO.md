@@ -23,6 +23,7 @@ Current: 314 tests across 16 files. Pure-logic modules tested:
 - `src/world/time.ts` - time math, calendar, periods, formatting
 
 Remaining modules (DB-dependent, need mocking to test):
+- [ ] `src/events/random.ts` - weighted selection, cooldown tracking
 - [ ] `src/events/behavior.ts` - state machine transitions
 - [ ] `src/combat/index.ts` - initiative ordering, turn management
 - [ ] `src/world/locations.ts` - location graph traversal, hierarchy
