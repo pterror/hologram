@@ -44,6 +44,7 @@ import { relationshipCommand, handleRelationshipCommand } from "./relationship";
 import { factionCommand, handleFactionCommand } from "./faction";
 import { personaCommand, handlePersonaCommand } from "./persona";
 import { proxyCommand, handleProxyCommand } from "./proxy";
+import { buildCommand, handleBuildCommand, handleBuildWizardComponent } from "./build";
 
 // All slash commands
 export const commands: CreateApplicationCommand[] = [
@@ -64,6 +65,7 @@ export const commands: CreateApplicationCommand[] = [
   factionCommand,
   personaCommand,
   proxyCommand,
+  buildCommand,
 ];
 
 // Register commands with Discord
@@ -106,7 +108,18 @@ export async function handleInteraction(
     if (await handleConfigWizardComponent(bot, interaction)) {
       return;
     }
+    if (await handleBuildWizardComponent(bot, interaction)) {
+      return;
+    }
     // Unknown component, ignore
+    return;
+  }
+
+  // Handle modal submissions
+  if (interaction.type === InteractionTypes.ModalSubmit) {
+    if (await handleBuildWizardComponent(bot, interaction)) {
+      return;
+    }
     return;
   }
 
@@ -170,6 +183,9 @@ export async function handleInteraction(
         break;
       case "proxy":
         await handleProxyCommand(bot, interaction);
+        break;
+      case "build":
+        await handleBuildCommand(bot, interaction);
         break;
       default:
         await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
