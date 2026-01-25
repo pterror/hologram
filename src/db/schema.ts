@@ -396,9 +396,13 @@ export function initSchema(db: Database) {
 }
 
 export function initVectorTable(db: Database) {
-  // Vector table for semantic search (384-dim for MiniLM)
+  // Vector tables for semantic search (384-dim for MiniLM)
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS fact_embeddings
+    USING vec0(embedding float[384])
+  `);
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS chronicle_embeddings
     USING vec0(embedding float[384])
   `);
 }
