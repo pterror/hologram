@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -e
+
+# Validate conventional commit format
+# Types: feat, fix, refactor, docs, chore, test
+# Format: type[(scope)]: message
+
+commit_msg=$(head -1 "$1")
+
+# Skip merge commits
+if echo "$commit_msg" | grep -qE '^Merge '; then
+  exit 0
+fi
+
+if ! echo "$commit_msg" | grep -qE '^(feat|fix|refactor|docs|chore|test)(\(.+\))?: .+'; then
+  echo "ERROR: Commit message must follow conventional commits format:"
+  echo "  type[(scope)]: message"
+  echo ""
+  echo "Types: feat, fix, refactor, docs, chore, test"
+  echo "Examples:"
+  echo "  feat: add random events engine"
+  echo "  fix(scheduler): prevent double-tick on startup"
+  echo "  refactor(context): simplify budget allocation"
+  echo ""
+  echo "Got: $commit_msg"
+  exit 1
+fi
