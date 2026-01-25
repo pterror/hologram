@@ -274,6 +274,24 @@ export function initSchema(db: Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_personas_user ON user_personas(user_id);
+
+    -- User proxies (PluralKit-style character proxying)
+    CREATE TABLE IF NOT EXISTS user_proxies (
+      id INTEGER PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      world_id INTEGER REFERENCES worlds(id),
+      name TEXT NOT NULL,
+      prefix TEXT,
+      suffix TEXT,
+      bracket_open TEXT,
+      bracket_close TEXT,
+      avatar TEXT,
+      persona TEXT,
+      data JSON,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_proxies_user ON user_proxies(user_id);
   `);
 }
 
