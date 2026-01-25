@@ -23,7 +23,7 @@ import {
   findEntityByName,
   type LocationData,
 } from "../../db/entities";
-import { getOptionValue, getSubcommand, USER_APP_INTEGRATION } from "./index";
+import { getOptionValue, getSubcommand, respond, USER_APP_INTEGRATION } from "./index";
 
 export const worldCommand: CreateApplicationCommand = {
   name: "world",
@@ -304,13 +304,3 @@ export async function handleWorldCommand(
   }
 }
 
-async function respond(
-  bot: AnyBot,
-  interaction: AnyInteraction,
-  content: string
-): Promise<void> {
-  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
-    type: 4,
-    data: { content },
-  });
-}

@@ -24,7 +24,7 @@ import {
 import { getActiveScene } from "../../scene";
 import { getWorldState } from "../../world/state";
 import { getEntitiesByType, type CharacterData, type Entity } from "../../db/entities";
-import { getOptionValue, getSubcommand, getNestedSubcommand, USER_APP_INTEGRATION } from "./index";
+import { getOptionValue, getSubcommand, getNestedSubcommand, respond, USER_APP_INTEGRATION } from "./index";
 
 export const statusCommand: CreateApplicationCommand = {
   name: "status",
@@ -587,13 +587,3 @@ export async function handleStatusCommand(
   }
 }
 
-async function respond(
-  bot: AnyBot,
-  interaction: AnyInteraction,
-  content: string
-): Promise<void> {
-  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
-    type: 4,
-    data: { content },
-  });
-}

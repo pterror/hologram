@@ -22,7 +22,7 @@ import {
 } from "../../chronicle";
 import { getActiveScene, getSceneCharacters } from "../../scene";
 import { getWorldState } from "../../world/state";
-import { getOptionValue, getSubcommand, USER_APP_INTEGRATION } from "./index";
+import { getOptionValue, getSubcommand, respond, respondDeferred, editResponse, USER_APP_INTEGRATION } from "./index";
 
 /** Get the character IDs associated with a user in the current scene */
 function getUserCharacterIds(sceneId: number | undefined, userId: string): number[] {
@@ -334,32 +334,3 @@ function truncate(str: string, maxLength: number): string {
   return str.slice(0, maxLength - 3) + "...";
 }
 
-async function respond(
-  bot: AnyBot,
-  interaction: AnyInteraction,
-  content: string
-): Promise<void> {
-  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
-    type: 4,
-    data: { content },
-  });
-}
-
-async function respondDeferred(
-  bot: AnyBot,
-  interaction: AnyInteraction
-): Promise<void> {
-  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
-    type: 5, // DeferredChannelMessageWithSource
-  });
-}
-
-async function editResponse(
-  bot: AnyBot,
-  interaction: AnyInteraction,
-  content: string
-): Promise<void> {
-  await bot.helpers.editOriginalInteractionResponse(interaction.token, {
-    content,
-  });
-}

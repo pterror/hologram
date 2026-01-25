@@ -31,7 +31,7 @@ import {
   type LocationData,
   type Entity,
 } from "../../db/entities";
-import { getOptionValue, getSubcommand, USER_APP_INTEGRATION } from "./index";
+import { getOptionValue, getSubcommand, respond, USER_APP_INTEGRATION } from "./index";
 
 export const sceneCommand: CreateApplicationCommand = {
   name: "scene",
@@ -461,13 +461,3 @@ function formatSceneDuration(scene: Scene): string {
   return `${hours}h ${remainingMins}m`;
 }
 
-async function respond(
-  bot: AnyBot,
-  interaction: AnyInteraction,
-  content: string
-): Promise<void> {
-  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
-    type: 4,
-    data: { content },
-  });
-}

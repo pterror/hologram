@@ -254,6 +254,41 @@ export function getSubcommand(interaction: AnyInteraction): string | undefined {
   return undefined;
 }
 
+// Shared interaction response helpers
+export async function respond(
+  bot: AnyBot,
+  interaction: AnyInteraction,
+  content: string,
+  ephemeral = false
+): Promise<void> {
+  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+    type: 4,
+    data: {
+      content,
+      flags: ephemeral ? 64 : 0,
+    },
+  });
+}
+
+export async function respondDeferred(
+  bot: AnyBot,
+  interaction: AnyInteraction
+): Promise<void> {
+  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+    type: 5, // DeferredChannelMessageWithSource
+  });
+}
+
+export async function editResponse(
+  bot: AnyBot,
+  interaction: AnyInteraction,
+  content: string
+): Promise<void> {
+  await bot.helpers.editOriginalInteractionResponse(interaction.token, {
+    content,
+  });
+}
+
 // Get nested subcommand (for subcommand groups)
 export function getNestedSubcommand(
   interaction: AnyInteraction

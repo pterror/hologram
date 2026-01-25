@@ -16,7 +16,7 @@ import {
   type CharacterData,
 } from "../../db/entities";
 import { setActiveCharacter, getActiveCharacter } from "../events/message";
-import { getOptionValue, getSubcommand, USER_APP_INTEGRATION } from "./index";
+import { getOptionValue, getSubcommand, respond, USER_APP_INTEGRATION } from "./index";
 
 export const characterCommand: CreateApplicationCommand = {
   name: "character",
@@ -267,17 +267,3 @@ export async function handleCharacterCommand(
   }
 }
 
-async function respond(
-  bot: AnyBot,
-  interaction: AnyInteraction,
-  content: string,
-  ephemeral = false
-): Promise<void> {
-  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
-    type: 4,
-    data: {
-      content,
-      flags: ephemeral ? 64 : 0,
-    },
-  });
-}

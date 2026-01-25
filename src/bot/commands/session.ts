@@ -23,7 +23,7 @@ import {
 } from "../../memory/tiers";
 import { assembleContext } from "../../ai/context";
 import { debugContext, formatDebugInfo } from "../../ai/debug";
-import { getOptionValue, getSubcommand, USER_APP_INTEGRATION } from "./index";
+import { getOptionValue, getSubcommand, respond, editResponse, USER_APP_INTEGRATION } from "./index";
 
 export const sessionCommand: CreateApplicationCommand = {
   name: "session",
@@ -170,27 +170,3 @@ export async function handleSessionCommand(
   }
 }
 
-async function respond(
-  bot: AnyBot,
-  interaction: AnyInteraction,
-  content: string,
-  ephemeral = false
-): Promise<void> {
-  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
-    type: 4,
-    data: {
-      content,
-      flags: ephemeral ? 64 : 0,
-    },
-  });
-}
-
-async function editResponse(
-  bot: AnyBot,
-  interaction: AnyInteraction,
-  content: string
-): Promise<void> {
-  await bot.helpers.editOriginalInteractionResponse(interaction.token, {
-    content,
-  });
-}

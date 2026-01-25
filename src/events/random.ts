@@ -1,22 +1,14 @@
 import { getDb } from "../db";
-import { type Scene, getSceneCharacters } from "../scene";
-import { getTimePeriod, getSeason, type CalendarConfig } from "../world/time";
+import type { Scene } from "../scene";
 import type { WorldConfig } from "../config/types";
 import { getWorldConfig } from "../config";
+import { evaluateConditions, type EventConditions } from "./conditions";
+
+export type { EventConditions };
 
 // === Types ===
 
 export type EventTrigger = "time_advance" | "message" | "location_enter" | "interval" | "manual";
-
-export interface EventConditions {
-  timeOfDay?: string[];      // ["night", "evening"] - time period names
-  season?: string[];         // ["winter", "spring"]
-  location?: number[];       // Location entity IDs
-  weather?: string[];        // ["rain", "storm"]
-  minCharacters?: number;    // Min characters present in scene
-  hasEffect?: string[];      // At least one character has these effect names
-  notEffect?: string[];      // No character has these effect names
-}
 
 export interface EventEffects {
   weatherChange?: string;
@@ -315,80 +307,6 @@ function selectWeightedEntry(tableId: number): RandomEventEntry | null {
 
   // Fallback (shouldn't reach here)
   return mapEntryRow(entries[entries.length - 1]);
-}
-
-/** Evaluate whether conditions are met for the current scene */
-function evaluateConditions(
-  conditions: EventConditions,
-  scene: Scene,
-  config: WorldConfig,
-  calendar?: CalendarConfig
-): boolean {
-  // Time of day check
-  if (conditions.timeOfDay && conditions.timeOfDay.length > 0) {
-    const period = getTimePeriod(scene.time.hour, config.time.periods);
-    if (!conditions.timeOfDay.includes(period.name)) {
-      return false;
-    }
-  }
-
-  // Season check
-  if (conditions.season && conditions.season.length > 0 && calendar) {
-    const season = getSeason(scene.time.day, calendar);
-    if (!season || !conditions.season.includes(season.toLowerCase())) {
-      return false;
-    }
-  }
-
-  // Location check
-  if (conditions.location && conditions.location.length > 0) {
-    if (!scene.locationId || !conditions.location.includes(scene.locationId)) {
-      return false;
-    }
-  }
-
-  // Weather check
-  if (conditions.weather && conditions.weather.length > 0) {
-    if (!scene.weather || !conditions.weather.includes(scene.weather.toLowerCase())) {
-      return false;
-    }
-  }
-
-  // Min characters check
-  if (conditions.minCharacters && conditions.minCharacters > 0) {
-    const chars = getSceneCharacters(scene.id);
-    if (chars.length < conditions.minCharacters) {
-      return false;
-    }
-  }
-
-  // Effect checks require querying character_effects - do a lightweight check
-  if (conditions.hasEffect && conditions.hasEffect.length > 0) {
-    if (!hasAnyEffect(scene.id, conditions.hasEffect)) {
-      return false;
-    }
-  }
-
-  if (conditions.notEffect && conditions.notEffect.length > 0) {
-    if (hasAnyEffect(scene.id, conditions.notEffect)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-/** Check if any character in the scene has any of the named effects */
-function hasAnyEffect(sceneId: number, effectNames: string[]): boolean {
-  const db = getDb();
-  const placeholders = effectNames.map(() => "?").join(",");
-  const row = db.prepare(`
-    SELECT COUNT(*) as count
-    FROM character_effects
-    WHERE scene_id = ? AND name IN (${placeholders})
-  `).get(sceneId, ...effectNames) as { count: number };
-
-  return row.count > 0;
 }
 
 /** Apply side effects from an event entry to the scene */

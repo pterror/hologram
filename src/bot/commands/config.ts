@@ -21,7 +21,7 @@ import {
   type WorldConfig,
 } from "../../config";
 import { getDb } from "../../db";
-import { getOptionValue, getSubcommand, USER_APP_INTEGRATION } from "./index";
+import { getOptionValue, getSubcommand, respond, USER_APP_INTEGRATION } from "./index";
 
 export const configCommand: CreateApplicationCommand = {
   name: "config",
@@ -573,13 +573,3 @@ function getPresetDescription(name: string): string {
   }
 }
 
-async function respond(
-  bot: AnyBot,
-  interaction: AnyInteraction,
-  content: string
-): Promise<void> {
-  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
-    type: 4,
-    data: { content },
-  });
-}

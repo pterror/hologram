@@ -1,8 +1,8 @@
 import { getDb } from "../db";
 import type { Scene } from "../scene";
-import type { EventConditions, EventEffects } from "./random";
+import type { EventEffects } from "./random";
+import { evaluateConditions, type EventConditions } from "./conditions";
 import { getWorldConfig } from "../config";
-import { getTimePeriod, getSeason, type CalendarConfig } from "../world/time";
 
 // === Types ===
 
@@ -374,30 +374,3 @@ export function tickBehaviors(scene: Scene): BehaviorTransitionResult[] {
   return results;
 }
 
-/** Evaluate conditions against scene state */
-function evaluateConditions(
-  conditions: EventConditions,
-  scene: Scene,
-  config: { time: { periods: Array<{ name: string; startHour: number; lightLevel?: string }> } },
-  calendar?: CalendarConfig
-): boolean {
-  if (conditions.timeOfDay && conditions.timeOfDay.length > 0) {
-    const period = getTimePeriod(scene.time.hour, config.time.periods);
-    if (!conditions.timeOfDay.includes(period.name)) return false;
-  }
-
-  if (conditions.season && conditions.season.length > 0 && calendar) {
-    const season = getSeason(scene.time.day, calendar);
-    if (!season || !conditions.season.includes(season.toLowerCase())) return false;
-  }
-
-  if (conditions.location && conditions.location.length > 0) {
-    if (!scene.locationId || !conditions.location.includes(scene.locationId)) return false;
-  }
-
-  if (conditions.weather && conditions.weather.length > 0) {
-    if (!scene.weather || !conditions.weather.includes(scene.weather.toLowerCase())) return false;
-  }
-
-  return true;
-}

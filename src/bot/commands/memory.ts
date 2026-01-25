@@ -11,7 +11,7 @@ import { storeFact, retrieveRelevantFacts } from "../../memory/rag";
 import { getImportantFacts, deleteFact, getFact } from "../../db/facts";
 import { getMemoryStats } from "../../memory/consolidate";
 import { getActiveCharacter } from "../events/message";
-import { getOptionValue, getSubcommand, USER_APP_INTEGRATION } from "./index";
+import { getOptionValue, getSubcommand, respond, editResponse, USER_APP_INTEGRATION } from "./index";
 
 export const memoryCommand: CreateApplicationCommand = {
   name: "memory",
@@ -235,27 +235,3 @@ export async function handleMemoryCommand(
   }
 }
 
-async function respond(
-  bot: AnyBot,
-  interaction: AnyInteraction,
-  content: string,
-  ephemeral = false
-): Promise<void> {
-  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
-    type: 4,
-    data: {
-      content,
-      flags: ephemeral ? 64 : 0,
-    },
-  });
-}
-
-async function editResponse(
-  bot: AnyBot,
-  interaction: AnyInteraction,
-  content: string
-): Promise<void> {
-  await bot.helpers.editOriginalInteractionResponse(interaction.token, {
-    content,
-  });
-}
