@@ -124,7 +124,7 @@ wears a ring given by their mother
 keeps a hidden dagger in their boot
 ```
 
-## Example: Complete Character
+## Example: Complete Character (Structured)
 
 ```
 is a character
@@ -139,6 +139,17 @@ remembers the war that destroyed her hometown
 is looking for her lost brother
 is currently staying at [entity:12] (The Crossroads Inn)
 ```
+
+## Example: Complete Character (SillyTavern Style)
+
+You can also use a single prose description instead of discrete facts. This works fine, though it's harder to update individual details later:
+
+```
+is a character
+Aria is a traveling merchant in her late twenties with silver hair and violet eyes. She speaks with a slight eastern accent, likely from the provinces beyond the mountains. Cautious around strangers but warms up quickly once trust is established, she has a talent for reading people and situations. She carries a worn leather satchel full of trinkets and oddities collected from her travels, and always seems to know the exact value of anything she sees. The war that destroyed her hometown left her searching for her lost brother, following rumors and leads wherever they take her. Currently staying at the Crossroads Inn while she gathers supplies for the next leg of her journey.
+```
+
+Both approaches work - use whichever fits your style. Discrete facts are easier to modify piece by piece; prose descriptions are faster to write if you already have a character in mind.
 
 ## Example: Location
 
