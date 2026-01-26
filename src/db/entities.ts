@@ -1,4 +1,5 @@
 import { getDb } from "./index";
+import { getActiveEffectFacts } from "./effects";
 
 // =============================================================================
 // Entity Operations
@@ -143,6 +144,16 @@ export function getEntityWithFactsByName(name: string): EntityWithFacts | null {
   if (!entity) return null;
   const facts = getFactsForEntity(entity.id);
   return { ...entity, facts };
+}
+
+/**
+ * Get all fact content strings for an entity, including active effects.
+ * Effects are appended after permanent facts.
+ */
+export function getAllFactContent(entityId: number): string[] {
+  const facts = getFactsForEntity(entityId).map((f) => f.content);
+  const effects = getActiveEffectFacts(entityId);
+  return [...facts, ...effects];
 }
 
 // =============================================================================
