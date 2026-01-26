@@ -21,6 +21,7 @@ export default defineConfig({
           { text: 'Core Concepts', link: '/guide/concepts' },
           { text: 'Setting Up a Channel', link: '/guide/channel-setup' },
           { text: 'Creating a Persona', link: '/guide/personas' },
+          { text: 'Transformations', link: '/guide/transformations' },
         ]
       },
       {
