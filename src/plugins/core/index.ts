@@ -31,6 +31,81 @@ import { getPersona } from "../../personas";
 import { DEFAULT_RESPONSE } from "../../config/defaults";
 
 // =============================================================================
+// Example Dialogue Parsing
+// =============================================================================
+
+/**
+ * Parse example dialogue into user/assistant message pairs.
+ * Supports formats:
+ * - {{user}}: message / {{char}}: message
+ * - <START>\nUser: message\nCharacter: message
+ * - User: message\n\nCharacter: message
+ */
+function parseExampleDialogue(
+  dialogue: string,
+  characterName: string
+): Array<{ role: "user" | "assistant"; content: string }> {
+  const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
+
+  // Normalize line endings
+  const text = dialogue.replace(/\r\n/g, "\n").trim();
+  if (!text) return messages;
+
+  // Split by <START> markers (SillyTavern format) or double newlines
+  const segments = text.split(/<START>|<start>/);
+
+  for (const segment of segments) {
+    const trimmed = segment.trim();
+    if (!trimmed) continue;
+
+    // Try to parse as structured dialogue
+    // Match patterns like: {{user}}: text, {{char}}: text, User: text, CharName: text
+    const lines = trimmed.split("\n");
+    let currentRole: "user" | "assistant" | null = null;
+    let currentContent: string[] = [];
+
+    for (const line of lines) {
+      // Check for role markers
+      const userMatch = line.match(/^(?:\{\{user\}\}|user|you):\s*/i);
+      const charMatch = line.match(/^(?:\{\{char\}\}|char|assistant|bot|ai):\s*/i) ||
+        new RegExp(`^${escapeRegex(characterName)}:\\s*`, "i").exec(line);
+
+      if (userMatch) {
+        // Flush previous content
+        if (currentRole && currentContent.length > 0) {
+          messages.push({ role: currentRole, content: currentContent.join("\n").trim() });
+        }
+        currentRole = "user";
+        currentContent = [line.slice(userMatch[0].length)];
+      } else if (charMatch) {
+        // Flush previous content
+        if (currentRole && currentContent.length > 0) {
+          messages.push({ role: currentRole, content: currentContent.join("\n").trim() });
+        }
+        currentRole = "assistant";
+        currentContent = [line.slice(charMatch[0].length)];
+      } else if (currentRole) {
+        // Continue previous message
+        currentContent.push(line);
+      }
+    }
+
+    // Flush final content
+    if (currentRole && currentContent.length > 0) {
+      messages.push({ role: currentRole, content: currentContent.join("\n").trim() });
+    }
+  }
+
+  // Filter out empty messages
+  return messages.filter((m) => m.content.trim().length > 0);
+}
+
+/** Escape special regex characters */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// =============================================================================
 // In-memory state
 // =============================================================================
 
@@ -373,6 +448,19 @@ const llmMiddleware: Middleware = {
     // Format messages and inject preset notes at specified depths
     const rawMessages = ctx.history.slice(-historyMessages);
     let messages = formatMessagesForAI(rawMessages);
+
+    // Parse and prepend example dialogues from active characters
+    const exampleMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
+    for (const charId of ctx.activeCharacterIds) {
+      const character = getEntity<CharacterData>(charId);
+      if (character?.data.exampleDialogue) {
+        const parsed = parseExampleDialogue(character.data.exampleDialogue, character.name);
+        exampleMessages.push(...parsed);
+      }
+    }
+    if (exampleMessages.length > 0) {
+      messages = [...exampleMessages, ...messages];
+    }
 
     // Inject preset notes at specific depths
     const depthNotes = presetNotes.filter((n) => typeof n.depth === "number" || n.depth === "start");

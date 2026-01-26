@@ -81,11 +81,8 @@ const characterPersonaFormatter: Formatter = {
         }
       }
 
-      if (character.data.exampleDialogue) {
-        lines.push("");
-        lines.push("## Example Dialogue");
-        lines.push(character.data.exampleDialogue);
-      }
+      // Example dialogue is now injected as actual messages, not in system prompt
+      // See the core:llm middleware for example dialogue handling
 
       if (character.data.systemPrompt) {
         lines.push("");
