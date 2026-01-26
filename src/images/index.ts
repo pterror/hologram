@@ -246,6 +246,11 @@ export function isImageGenerationAvailable(config: ImageConfig): boolean {
   switch (config.host) {
     case "runcomfy":
       return !!process.env.RUNCOMFY_API_KEY;
+    case "runcomfy-serverless":
+      return (
+        !!process.env.RUNCOMFY_SERVERLESS_API_KEY &&
+        !!process.env.RUNCOMFY_SERVERLESS_DEPLOYMENT_ID
+      );
     case "saladcloud":
       return !!process.env.SALADCLOUD_API_KEY && !!process.env.SALADCLOUD_ORG_NAME;
     case "runpod":

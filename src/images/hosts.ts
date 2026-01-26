@@ -19,6 +19,12 @@ export interface ComfyUIHost {
 export interface ComfyWorkflow {
   workflow: Record<string, unknown>; // ComfyUI workflow JSON (API format)
   outputNodeId?: string; // Node to get output from (defaults to SaveImage nodes)
+  /**
+   * For RunComfy Serverless: use overrides mode instead of full workflow.
+   * When true, `workflow` is treated as node-keyed overrides for the cloud-saved workflow.
+   * When false/undefined, `workflow` is sent as a complete dynamic workflow.
+   */
+  useOverrides?: boolean;
 }
 
 export interface ExecutionResult {
@@ -38,7 +44,7 @@ export interface JobStatus {
   error?: string;
 }
 
-// === RunComfy Host ===
+// === RunComfy Host (Legacy API) ===
 
 export class RunComfyHost implements ComfyUIHost {
   readonly name = "runcomfy";
@@ -142,6 +148,226 @@ export class RunComfyHost implements ComfyUIHost {
 
     return {
       status: data.status as JobStatus["status"],
+      progress: data.progress,
+      error: data.error,
+    };
+  }
+}
+
+// === RunComfy Serverless Host ===
+
+export class RunComfyServerlessHost implements ComfyUIHost {
+  readonly name = "runcomfy-serverless";
+  private readonly apiKey: string;
+  private readonly deploymentId: string;
+  private readonly baseUrl = "https://api.runcomfy.net/prod/v1";
+  private readonly overrideMapping?: Record<string, string>;
+
+  constructor(
+    apiKey: string,
+    deploymentId: string,
+    overrideMapping?: Record<string, string>
+  ) {
+    this.apiKey = apiKey;
+    this.deploymentId = deploymentId;
+    this.overrideMapping = overrideMapping;
+  }
+
+  /**
+   * Transform flat variables into nested overrides format using the mapping.
+   * e.g. { prompt: "hello" } with mapping { prompt: "2.inputs.text" }
+   * becomes { "2": { "inputs": { "text": "hello" } } }
+   */
+  private buildOverrides(variables: Record<string, unknown>): Record<string, unknown> {
+    if (!this.overrideMapping) {
+      // No mapping - assume variables are already in overrides format
+      return variables;
+    }
+
+    const overrides: Record<string, Record<string, Record<string, unknown>>> = {};
+
+    for (const [varName, value] of Object.entries(variables)) {
+      const path = this.overrideMapping[varName];
+      if (!path) continue;
+
+      // Parse path like "2.inputs.text"
+      const parts = path.split(".");
+      if (parts.length !== 3 || parts[1] !== "inputs") {
+        // Skip invalid paths
+        continue;
+      }
+
+      const [nodeId, , inputName] = parts;
+
+      if (!overrides[nodeId]) {
+        overrides[nodeId] = { inputs: {} };
+      }
+      overrides[nodeId].inputs[inputName] = value;
+    }
+
+    return overrides;
+  }
+
+  async execute(workflow: ComfyWorkflow): Promise<ExecutionResult> {
+    // Build request body based on mode
+    let body: Record<string, unknown>;
+
+    if (workflow.useOverrides) {
+      // Overrides mode: transform variables using mapping
+      const overrides = this.buildOverrides(workflow.workflow as Record<string, unknown>);
+      body = { overrides };
+    } else {
+      // Dynamic workflow mode: send full workflow JSON
+      body = { workflow_api_json: workflow.workflow };
+    }
+
+    const submitRes = await fetch(
+      `${this.baseUrl}/deployments/${this.deploymentId}/inference`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (!submitRes.ok) {
+      const error = await submitRes.text();
+      throw new Error(`RunComfy Serverless submit failed: ${error}`);
+    }
+
+    const result = (await submitRes.json()) as {
+      run_id?: string;
+      id?: string;
+      status?: string;
+      outputs?: Array<{ url: string; filename?: string }>;
+      images?: Array<{ url: string; filename?: string }>;
+      error?: string;
+    };
+
+    // If we got a run_id, poll for completion
+    const runId = result.run_id || result.id;
+    if (runId && result.status !== "completed") {
+      return this.pollForCompletion(runId);
+    }
+
+    // Synchronous response - extract images directly
+    const outputs = result.outputs || result.images;
+    if (!outputs?.length) {
+      throw new Error("RunComfy Serverless returned no images");
+    }
+
+    const images: GeneratedImageData[] = await Promise.all(
+      outputs.map(async (output, i) => {
+        const imgRes = await fetch(output.url);
+        if (!imgRes.ok) {
+          throw new Error(`Failed to fetch image: ${output.url}`);
+        }
+        const data = Buffer.from(await imgRes.arrayBuffer());
+        const contentType = imgRes.headers.get("content-type") || "image/png";
+        return {
+          data,
+          contentType,
+          filename: output.filename || `output_${i}.png`,
+        };
+      })
+    );
+
+    return { images };
+  }
+
+  private async pollForCompletion(
+    runId: string,
+    maxAttempts = 120,
+    intervalMs = 2000
+  ): Promise<ExecutionResult> {
+    for (let i = 0; i < maxAttempts; i++) {
+      const statusRes = await fetch(
+        `${this.baseUrl}/deployments/${this.deploymentId}/runs/${runId}`,
+        {
+          headers: { Authorization: `Bearer ${this.apiKey}` },
+        }
+      );
+
+      if (!statusRes.ok) {
+        throw new Error(`RunComfy Serverless status check failed: ${await statusRes.text()}`);
+      }
+
+      const status = (await statusRes.json()) as {
+        status: string;
+        outputs?: Array<{ url: string; filename?: string }>;
+        images?: Array<{ url: string; filename?: string }>;
+        error?: string;
+      };
+
+      if (status.status === "failed" || status.status === "error") {
+        throw new Error(`RunComfy Serverless execution failed: ${status.error}`);
+      }
+
+      if (status.status === "completed" || status.status === "success") {
+        const outputs = status.outputs || status.images;
+        if (!outputs?.length) {
+          throw new Error("RunComfy Serverless returned no images");
+        }
+
+        const images: GeneratedImageData[] = await Promise.all(
+          outputs.map(async (output, i) => {
+            const imgRes = await fetch(output.url);
+            if (!imgRes.ok) {
+              throw new Error(`Failed to fetch image: ${output.url}`);
+            }
+            const data = Buffer.from(await imgRes.arrayBuffer());
+            const contentType = imgRes.headers.get("content-type") || "image/png";
+            return {
+              data,
+              contentType,
+              filename: output.filename || `output_${i}.png`,
+            };
+          })
+        );
+
+        return { images };
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+
+    throw new Error("RunComfy Serverless execution timed out");
+  }
+
+  async getStatus(jobId: string): Promise<JobStatus> {
+    const res = await fetch(
+      `${this.baseUrl}/deployments/${this.deploymentId}/runs/${jobId}`,
+      {
+        headers: { Authorization: `Bearer ${this.apiKey}` },
+      }
+    );
+
+    if (!res.ok) {
+      throw new Error(`RunComfy Serverless status check failed: ${await res.text()}`);
+    }
+
+    const data = (await res.json()) as {
+      status: string;
+      progress?: number;
+      error?: string;
+    };
+
+    const statusMap: Record<string, JobStatus["status"]> = {
+      pending: "pending",
+      queued: "pending",
+      running: "running",
+      processing: "running",
+      completed: "completed",
+      success: "completed",
+      failed: "failed",
+      error: "failed",
+    };
+
+    return {
+      status: statusMap[data.status] || "pending",
       progress: data.progress,
       error: data.error,
     };
@@ -460,6 +686,26 @@ export function getComfyHost(config: ImageConfig): ComfyUIHost {
         throw new Error("RUNCOMFY_API_KEY environment variable is required");
       }
       return new RunComfyHost(apiKey);
+    }
+
+    case "runcomfy-serverless": {
+      const apiKey = process.env.RUNCOMFY_SERVERLESS_API_KEY;
+      const deploymentId = process.env.RUNCOMFY_SERVERLESS_DEPLOYMENT_ID;
+      if (!apiKey || !deploymentId) {
+        throw new Error(
+          "RUNCOMFY_SERVERLESS_API_KEY and RUNCOMFY_SERVERLESS_DEPLOYMENT_ID environment variables are required"
+        );
+      }
+      // Config mapping takes precedence over env var default
+      let mapping = config.serverlessOverrideMapping;
+      if (!mapping && process.env.RUNCOMFY_SERVERLESS_OVERRIDE_MAPPING) {
+        try {
+          mapping = JSON.parse(process.env.RUNCOMFY_SERVERLESS_OVERRIDE_MAPPING);
+        } catch {
+          throw new Error("RUNCOMFY_SERVERLESS_OVERRIDE_MAPPING is not valid JSON");
+        }
+      }
+      return new RunComfyServerlessHost(apiKey, deploymentId, mapping);
     }
 
     case "saladcloud": {

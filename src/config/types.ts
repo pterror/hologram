@@ -147,7 +147,7 @@ export interface ImageConfig {
   enabled: boolean;
 
   // ComfyUI host settings
-  host: "runcomfy" | "saladcloud" | "runpod" | "selfhosted" | "none";
+  host: "runcomfy" | "runcomfy-serverless" | "saladcloud" | "runpod" | "selfhosted" | "none";
   hostEndpoint?: string; // For selfhosted or custom endpoints
 
   // Default generation settings
@@ -157,6 +157,10 @@ export interface ImageConfig {
   // Workflow settings
   defaultWorkflow: string; // Workflow ID (e.g., "portrait")
   customWorkflowsPath?: string; // Path to custom workflow JSONs
+
+  // RunComfy Serverless: maps variable names to node paths
+  // e.g. { "prompt": "2.inputs.text", "width": "4.inputs.width" }
+  serverlessOverrideMapping?: Record<string, string>;
 
   // Triggers
   allowLLMMarkers: boolean; // Parse [IMAGE: prompt] from responses
