@@ -147,6 +147,30 @@ The LLM's job is to understand and respond, not to parse structured formats or f
 
 **Why?** LLMs are good at language understanding and generation. They're mediocre at following rigid syntactic rules. Play to their strengths.
 
+## LLM Interpretation: Messy but Pragmatic
+
+Some things rely on LLM interpretation rather than deterministic parsing:
+
+```
+# TF item effects - LLM interprets these
+grants fox ears (orange with white tips)
+removes human ears
+```
+
+The LLM reads "grants fox ears", understands it should add a fox ears fact to the character, and calls the appropriate tool. This is **messy** - the LLM might interpret things inconsistently, miss edge cases, or hallucinate details.
+
+**Why accept it?** The alternative is a full scripting system with explicit commands:
+
+```
+# Hypothetical explicit scripting
+$add_fact target: grants fox ears
+$remove_fact target: has human ears
+```
+
+This is more reliable but adds complexity: another syntax to learn, more parsing code, edge cases around targeting and conditions. For now, LLM interpretation is the lesser evil - it works well enough and keeps the system simple.
+
+**Future option:** If interpretation problems accumulate, we can add optional explicit scripting. But only if the pain justifies the complexity. Don't prematurely optimize for precision we don't need yet.
+
 ## Randomness Requires System Support
 
 LLMs can't generate true randomness. For chance-based mechanics (TF item effects, random events), the system must provide randomness via tools.
