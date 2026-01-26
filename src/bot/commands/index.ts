@@ -5,7 +5,7 @@ import {
 } from "@discordeno/bot";
 import type { HologramBot, HologramInteraction } from "../types";
 export { USER_APP_INTEGRATION, GUILD_ONLY_INTEGRATION } from "./integration";
-import { characterCommand, handleCharacterCommand } from "./character";
+import { characterCommand, handleCharacterCommand, handleCharacterAutocomplete } from "./character";
 import { worldCommand, handleWorldCommand } from "./world";
 import { memoryCommand, handleMemoryCommand } from "./memory";
 import { sessionCommand, handleSessionCommand } from "./session";
@@ -131,6 +131,18 @@ export async function handleInteraction(
     }
     if (await handleBuildWizardComponent(bot, interaction)) {
       return;
+    }
+    return;
+  }
+
+  // Handle autocomplete
+  if (interaction.type === InteractionTypes.ApplicationCommandAutocomplete) {
+    const commandName = interaction.data?.name;
+    switch (commandName) {
+      case "character":
+        await handleCharacterAutocomplete(bot, interaction);
+        break;
+      // Add more autocomplete handlers here as needed
     }
     return;
   }

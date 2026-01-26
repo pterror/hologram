@@ -61,6 +61,7 @@ export const characterCommand: CreateApplicationCommand = {
           description: "Character name",
           type: ApplicationCommandOptionTypes.String,
           required: true,
+          autocomplete: true,
         },
       ],
     },
@@ -74,6 +75,7 @@ export const characterCommand: CreateApplicationCommand = {
           description: "Character name",
           type: ApplicationCommandOptionTypes.String,
           required: true,
+          autocomplete: true,
         },
       ],
     },
@@ -87,6 +89,7 @@ export const characterCommand: CreateApplicationCommand = {
           description: "Character name",
           type: ApplicationCommandOptionTypes.String,
           required: true,
+          autocomplete: true,
         },
         {
           name: "field",
@@ -120,6 +123,7 @@ export const characterCommand: CreateApplicationCommand = {
           description: "Character name",
           type: ApplicationCommandOptionTypes.String,
           required: true,
+          autocomplete: true,
         },
       ],
     },
@@ -133,6 +137,7 @@ export const characterCommand: CreateApplicationCommand = {
           description: "Character name",
           type: ApplicationCommandOptionTypes.String,
           required: true,
+          autocomplete: true,
         },
         {
           name: "action",
@@ -164,6 +169,7 @@ export const characterCommand: CreateApplicationCommand = {
           description: "Character name",
           type: ApplicationCommandOptionTypes.String,
           required: true,
+          autocomplete: true,
         },
         {
           name: "response_mode",
@@ -199,6 +205,7 @@ export const characterCommand: CreateApplicationCommand = {
           description: "Character name",
           type: ApplicationCommandOptionTypes.String,
           required: true,
+          autocomplete: true,
         },
         {
           name: "prompt",
@@ -539,5 +546,36 @@ export async function handleCharacterCommand(
     default:
       await respond(bot, interaction, "Unknown subcommand.");
   }
+}
+
+/** Handle autocomplete for character name */
+export async function handleCharacterAutocomplete(
+  bot: HologramBot,
+  interaction: HologramInteraction
+): Promise<void> {
+  // Get the focused option value
+  const focusedOption = interaction.data?.options?.[0]?.options?.find(
+    (opt) => (opt as unknown as { focused?: boolean }).focused
+  );
+  const query = (focusedOption?.value as string)?.toLowerCase() ?? "";
+
+  // Get all characters
+  const characters = getCharacters();
+
+  // Filter by query
+  const matches = characters
+    .filter((c) => c.name.toLowerCase().includes(query))
+    .slice(0, 25) // Discord limit
+    .map((c) => ({
+      name: c.name,
+      value: c.name,
+    }));
+
+  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+    type: 8, // ApplicationCommandAutocompleteResult
+    data: {
+      choices: matches,
+    },
+  });
 }
 
