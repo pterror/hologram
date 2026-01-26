@@ -18,6 +18,7 @@ export default defineConfig({
           { text: 'Introduction', link: '/guide/' },
           { text: 'Installation', link: '/guide/installation' },
           { text: 'Configuration', link: '/guide/configuration' },
+          { text: 'API Keys (BYOK)', link: '/guide/keys' },
         ]
       },
       {
