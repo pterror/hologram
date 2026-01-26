@@ -51,7 +51,9 @@ export interface ExprContext {
 // =============================================================================
 
 // Allowed tokens in expressions
-const ALLOWED_PATTERN = /^[\w\s\d.,()[\]!&|<>=+\-*/%?:"']+$/;
+// Note: brackets [] intentionally excluded to prevent property access bypass
+// e.g. self["con" + "structor"] would bypass the "constructor" blocklist
+const ALLOWED_PATTERN = /^[\w\s\d.,()!&|<>=+\-*/%?:"']+$/;
 
 // Dangerous patterns to reject
 const DANGEROUS_PATTERNS = [
