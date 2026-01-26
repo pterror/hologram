@@ -298,12 +298,15 @@ const gateMiddleware: Middleware = {
     // Get response config (from world config or defaults)
     const responseConfig = ctx.config?.response ?? DEFAULT_RESPONSE;
 
+    // Channel is enabled if explicitly enabled OR if there's an active scene
+    const channelEnabled = isChannelEnabled(ctx.channelId) || ctx.scene !== null;
+
     // Build response context
     const responseCtx: ResponseContext = {
       message: ctx.content,
       authorName: ctx.effectiveName,
       isBotMentioned: ctx.isBotMentioned,
-      channelEnabled: isChannelEnabled(ctx.channelId),
+      channelEnabled,
       config: responseConfig,
       characters,
       hasPersona,
