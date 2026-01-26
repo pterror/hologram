@@ -2,6 +2,15 @@
 
 ## Tech Debt
 
+### Architecture
+
+- [ ] Extract circular dependencies - lazy imports in `src/bot/commands/build.ts` and `src/dice/index.ts` should be extracted to shared modules
+- [ ] Unify mode/preset system - modes in `plugins/index.ts` and presets in `config/defaults.ts` are synchronized manually; make single source of truth
+- [ ] Add extractor timeout - fire-and-forget extractors in `plugins/core/index.ts:177` have no cancellation/timeout mechanism
+- [ ] Type-safe plugin data - `ctx.data` Map uses string keys and casting; consider typed plugin data structure
+- [ ] Add structured logging - replace console.log/error with logger abstraction (pino or similar)
+- [ ] RAG query caching - consider caching similar queries to avoid re-embedding every message
+
 ### Test Coverage
 
 Current: 314 tests across 16 files. Pure-logic modules tested:
