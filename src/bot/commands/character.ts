@@ -121,6 +121,72 @@ export const characterCommand: CreateApplicationCommand = {
         },
       ],
     },
+    {
+      name: "trigger",
+      description: "Manage character trigger phrases",
+      type: ApplicationCommandOptionTypes.SubCommand,
+      options: [
+        {
+          name: "name",
+          description: "Character name",
+          type: ApplicationCommandOptionTypes.String,
+          required: true,
+        },
+        {
+          name: "action",
+          description: "Add, remove, or list triggers",
+          type: ApplicationCommandOptionTypes.String,
+          required: true,
+          choices: [
+            { name: "list", value: "list" },
+            { name: "add", value: "add" },
+            { name: "remove", value: "remove" },
+            { name: "clear", value: "clear" },
+          ],
+        },
+        {
+          name: "phrase",
+          description: "Trigger phrase (for add/remove)",
+          type: ApplicationCommandOptionTypes.String,
+          required: false,
+        },
+      ],
+    },
+    {
+      name: "mode",
+      description: "Set character response mode",
+      type: ApplicationCommandOptionTypes.SubCommand,
+      options: [
+        {
+          name: "name",
+          description: "Character name",
+          type: ApplicationCommandOptionTypes.String,
+          required: true,
+        },
+        {
+          name: "response_mode",
+          description: "When the character responds",
+          type: ApplicationCommandOptionTypes.String,
+          required: true,
+          choices: [
+            { name: "always - respond to all messages", value: "always" },
+            { name: "mention - only when @mentioned", value: "mention" },
+            { name: "trigger - only when trigger phrase used", value: "trigger" },
+            { name: "chance - random probability", value: "chance" },
+            { name: "llm - AI decides", value: "llm" },
+            { name: "combined - triggers + chance/llm", value: "combined" },
+          ],
+        },
+        {
+          name: "chance",
+          description: "Response chance 0-100% (for chance/combined mode)",
+          type: ApplicationCommandOptionTypes.Integer,
+          required: false,
+          minValue: 0,
+          maxValue: 100,
+        },
+      ],
+    },
   ],
 };
 
@@ -219,6 +285,20 @@ export async function handleCharacterCommand(
         info.push("", "**System Prompt:**", character.data.systemPrompt);
       }
 
+      // Response settings
+      const mode = character.data.responseMode ?? "default";
+      const triggers = character.data.triggerPhrases ?? [];
+      const chance = character.data.responseChance;
+
+      info.push("", "**Response Settings:**");
+      info.push(`Mode: ${mode}`);
+      if (triggers.length > 0) {
+        info.push(`Triggers: ${triggers.map((t) => `\`${t}\``).join(", ")}`);
+      }
+      if (chance !== undefined) {
+        info.push(`Chance: ${(chance * 100).toFixed(0)}%`);
+      }
+
       await respond(bot, interaction, info.join("\n"));
       break;
     }
@@ -257,6 +337,104 @@ export async function handleCharacterCommand(
 
       deleteEntity(character.id);
       await respond(bot, interaction, `Deleted character **${name}**.`);
+      break;
+    }
+
+    case "trigger": {
+      const name = getOptionValue<string>(interaction, "name")!;
+      const action = getOptionValue<string>(interaction, "action")!;
+      const phrase = getOptionValue<string>(interaction, "phrase");
+
+      const character = findEntityByName<CharacterData>(name, "character");
+      if (!character) {
+        await respond(bot, interaction, `Character "${name}" not found.`);
+        return;
+      }
+
+      const triggers = character.data.triggerPhrases ?? [];
+
+      switch (action) {
+        case "list": {
+          if (triggers.length === 0) {
+            await respond(bot, interaction, `**${name}** has no trigger phrases.`);
+          } else {
+            await respond(
+              bot,
+              interaction,
+              `**${name}**'s triggers:\n${triggers.map((t) => `- \`${t}\``).join("\n")}`
+            );
+          }
+          break;
+        }
+        case "add": {
+          if (!phrase) {
+            await respond(bot, interaction, "Please provide a phrase to add.");
+            return;
+          }
+          if (triggers.includes(phrase)) {
+            await respond(bot, interaction, `Trigger "${phrase}" already exists.`);
+            return;
+          }
+          const newTriggers = [...triggers, phrase];
+          updateEntity<CharacterData>(character.id, {
+            data: { triggerPhrases: newTriggers },
+          });
+          await respond(bot, interaction, `Added trigger \`${phrase}\` to **${name}**.`);
+          break;
+        }
+        case "remove": {
+          if (!phrase) {
+            await respond(bot, interaction, "Please provide a phrase to remove.");
+            return;
+          }
+          if (!triggers.includes(phrase)) {
+            await respond(bot, interaction, `Trigger "${phrase}" not found.`);
+            return;
+          }
+          const filtered = triggers.filter((t) => t !== phrase);
+          updateEntity<CharacterData>(character.id, {
+            data: { triggerPhrases: filtered },
+          });
+          await respond(bot, interaction, `Removed trigger \`${phrase}\` from **${name}**.`);
+          break;
+        }
+        case "clear": {
+          updateEntity<CharacterData>(character.id, {
+            data: { triggerPhrases: [] },
+          });
+          await respond(bot, interaction, `Cleared all triggers from **${name}**.`);
+          break;
+        }
+      }
+      break;
+    }
+
+    case "mode": {
+      const name = getOptionValue<string>(interaction, "name")!;
+      const mode = getOptionValue<string>(interaction, "response_mode")!;
+      const chance = getOptionValue<number>(interaction, "chance");
+
+      const character = findEntityByName<CharacterData>(name, "character");
+      if (!character) {
+        await respond(bot, interaction, `Character "${name}" not found.`);
+        return;
+      }
+
+      const updates: Partial<CharacterData> = {
+        responseMode: mode as CharacterData["responseMode"],
+      };
+
+      if (chance !== undefined) {
+        updates.responseChance = chance / 100; // Convert from 0-100 to 0-1
+      }
+
+      updateEntity<CharacterData>(character.id, { data: updates });
+
+      let msg = `Set **${name}**'s response mode to **${mode}**`;
+      if (chance !== undefined) {
+        msg += ` with ${chance}% chance`;
+      }
+      await respond(bot, interaction, msg + ".");
       break;
     }
 

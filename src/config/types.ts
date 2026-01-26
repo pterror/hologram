@@ -173,6 +173,34 @@ export interface ImageConfig {
   s3PublicUrl?: string; // Public URL prefix for uploaded images
 }
 
+// === Response Behavior ===
+export type ResponseMode =
+  | "always"    // Respond to every message in enabled channel
+  | "mention"   // Only when @mentioned
+  | "trigger"   // Only when trigger phrase used
+  | "chance"    // Random probability per message
+  | "llm"       // LLM decides if character would speak up
+  | "combined"; // Triggers + mention always work, plus chance/llm check
+
+export interface ResponseConfig {
+  enabled: boolean;
+  defaultMode: ResponseMode;
+
+  // For 'chance' and 'combined' modes
+  defaultChance: number; // 0.0-1.0, probability per message
+
+  // For 'llm' and 'combined' modes
+  llmModel?: string; // Cheap/fast model for eval (default: haiku or gemini-flash)
+
+  // Behavior
+  mentionAlwaysResponds: boolean; // @mention bypasses mode check
+  requirePersona: boolean; // Require character/persona setup before responding
+
+  // Cooldowns
+  minResponseInterval: number; // Seconds between responses per character (0 = no limit)
+  globalCooldown: number; // Seconds between any response in channel (0 = no limit)
+}
+
 // === Context Assembly ===
 export interface ContextConfig {
   maxTokens: number;
@@ -209,6 +237,7 @@ export interface WorldConfig {
   context: ContextConfig;
   images: ImageConfig;
   quota: QuotaConfig;
+  response: ResponseConfig;
 }
 
 // Partial scene config with deep partial boundaries (matches mergeConfig behavior)

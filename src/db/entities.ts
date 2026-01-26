@@ -17,6 +17,13 @@ export interface CharacterData {
   scenario?: string;
   exampleDialogue?: string;
   systemPrompt?: string;
+
+  // Response behavior (overrides world defaults)
+  responseMode?: "always" | "mention" | "trigger" | "chance" | "llm" | "combined";
+  triggerPhrases?: string[]; // ["Hey Aria", "Aria,", "yo aria"]
+  responseChance?: number; // 0.0-1.0 for chance/combined mode
+  llmEvalPrompt?: string; // Custom "would I respond?" prompt
+
   [key: string]: unknown;
 }
 

@@ -18,13 +18,17 @@ import { resolveApiKey, type LLMProvider } from "../../ai/keys";
 import { runFormatters, runExtractors } from "../registry";
 import { formatMessagesForAI, type Message } from "../../ai/context";
 import { allocateBudget } from "../../ai/budget";
-import { error, warn } from "../../logger";
+import { error, warn, debug } from "../../logger";
 import {
   enforceQuota,
   logUsage,
   calculateLLMCost,
   QuotaExceededError,
 } from "../../quota";
+import { evaluateResponse, type ResponseContext } from "../response";
+import { getEntity, type CharacterData } from "../../db/entities";
+import { getPersona } from "../../personas";
+import { DEFAULT_RESPONSE } from "../../config/defaults";
 
 // =============================================================================
 // In-memory state
@@ -104,16 +108,51 @@ const historyMiddleware: Middleware = {
   },
 };
 
-/** Check if we should respond */
+/** Check if we should respond (runs after scene loads) */
 const gateMiddleware: Middleware = {
   name: "core:gate",
-  priority: MiddlewarePriority.SCENE - 40,
+  priority: MiddlewarePriority.SCENE + 10, // After scene loads
   fn: async (ctx, next) => {
-    const shouldRespond = isChannelEnabled(ctx.channelId) || ctx.isBotMentioned;
-    if (!shouldRespond) {
+    // Get characters for response evaluation
+    const characters = ctx.activeCharacterIds
+      .map((id) => getEntity<CharacterData>(id))
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+
+    // Check if user has a persona
+    const userPersona = getPersona(ctx.authorId, ctx.worldId);
+    const hasPersona = userPersona !== null;
+
+    // Get response config (from world config or defaults)
+    const responseConfig = ctx.config?.response ?? DEFAULT_RESPONSE;
+
+    // Build response context
+    const responseCtx: ResponseContext = {
+      message: ctx.content,
+      authorName: ctx.effectiveName,
+      isBotMentioned: ctx.isBotMentioned,
+      channelEnabled: isChannelEnabled(ctx.channelId),
+      config: responseConfig,
+      characters,
+      hasPersona,
+    };
+
+    // Evaluate response
+    const decision = evaluateResponse(responseCtx);
+
+    debug("Response gate decision", {
+      shouldRespond: decision.shouldRespond,
+      reason: decision.reason,
+      characters: decision.respondingCharacters,
+    });
+
+    if (!decision.shouldRespond) {
       // Don't continue the chain - no response needed
       return;
     }
+
+    // Store which characters should respond (for delivery)
+    ctx.data.set("respondingCharacters", decision.respondingCharacters);
+
     await next();
   },
 };
@@ -184,12 +223,25 @@ const llmMiddleware: Middleware = {
       }
     }
 
+    // No system prompt = no character configured, don't respond
+    if (!ctx.systemPrompt) {
+      // Don't set a response - middleware chain will naturally end
+      // The channel should prompt for setup via onboarding
+      return;
+    }
+
     const historyMessages = ctx.config?.context.historyMessages ?? 20;
     const messages = formatMessagesForAI(ctx.history.slice(-historyMessages));
 
+    // Need at least one message to respond to
+    if (messages.length === 0) {
+      warn("No messages in history, cannot generate response");
+      return;
+    }
+
     const result = await generateText({
       model,
-      system: ctx.systemPrompt || "You are a helpful assistant in a roleplay scenario.",
+      system: ctx.systemPrompt,
       messages,
     });
 

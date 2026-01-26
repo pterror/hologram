@@ -12,6 +12,7 @@ import type {
   ContextConfig,
   ImageConfig,
   QuotaConfig,
+  ResponseConfig,
 } from "./types";
 import { getDb } from "../db";
 
@@ -151,6 +152,16 @@ export const DEFAULT_QUOTA: QuotaConfig = {
   limits: {},
 };
 
+export const DEFAULT_RESPONSE: ResponseConfig = {
+  enabled: true,
+  defaultMode: "mention", // Safe default - only respond when @mentioned
+  defaultChance: 0.2,
+  mentionAlwaysResponds: true,
+  requirePersona: true, // Require user persona before interaction
+  minResponseInterval: 0,
+  globalCooldown: 0,
+};
+
 export const DEFAULT_CONFIG: WorldConfig = {
   multiCharMode: "auto",
   chronicle: DEFAULT_CHRONICLE,
@@ -164,6 +175,7 @@ export const DEFAULT_CONFIG: WorldConfig = {
   context: DEFAULT_CONTEXT,
   images: DEFAULT_IMAGES,
   quota: DEFAULT_QUOTA,
+  response: DEFAULT_RESPONSE,
 };
 
 // === Presets (Legacy) ===
@@ -275,6 +287,7 @@ export function mergeConfig(
     context: { ...base.context, ...partial.context },
     images: { ...base.images, ...partial.images },
     quota: { ...base.quota, ...partial.quota },
+    response: { ...base.response, ...partial.response },
   };
 }
 
@@ -372,6 +385,7 @@ export const features = {
   relationships: (config: WorldConfig) => config.relationships.enabled,
   images: (config: WorldConfig) => config.images.enabled,
   quota: (config: WorldConfig) => config.quota.enabled,
+  response: (config: WorldConfig) => config.response.enabled,
 
   // Sub-features
   autoExtract: (config: WorldConfig) =>
@@ -412,6 +426,8 @@ export const features = {
     config.time.enabled && config.time.useRandomEvents,
   imageLLMMarkers: (config: WorldConfig) =>
     config.images.enabled && config.images.allowLLMMarkers,
+  requirePersona: (config: WorldConfig) =>
+    config.response.enabled && config.response.requirePersona,
 };
 
 /** Get the resolved config for a world (DB config merged with defaults) */
