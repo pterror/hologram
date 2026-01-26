@@ -334,12 +334,58 @@ export async function handleComponent(
 // Utility: Plugin-scoped data access
 // =============================================================================
 
-/** Get plugin data from context */
+/** Get plugin data from context (legacy, prefer definePluginData for type safety) */
 export function getPluginData<T>(ctx: PluginContext, key: string): T | undefined {
   return ctx.data.get(key) as T | undefined;
 }
 
-/** Set plugin data in context */
+/** Set plugin data in context (legacy, prefer definePluginData for type safety) */
 export function setPluginData<T>(ctx: PluginContext, key: string, value: T): void {
   ctx.data.set(key, value);
+}
+
+/**
+ * Type-safe accessor for plugin-specific context data.
+ * Use this to define strongly-typed data slots for your plugin.
+ *
+ * @example
+ * ```ts
+ * // Define once in your plugin
+ * const deliveryData = definePluginData<DeliveryResult>("delivery:result");
+ *
+ * // Use with full type safety
+ * deliveryData.set(ctx, { segments: [...] });
+ * const result = deliveryData.get(ctx); // DeliveryResult | undefined
+ * ```
+ */
+export interface PluginDataAccessor<T> {
+  /** Get the data from context (undefined if not set) */
+  get(ctx: PluginContext): T | undefined;
+  /** Set the data in context */
+  set(ctx: PluginContext, value: T): void;
+  /** Check if data exists in context */
+  has(ctx: PluginContext): boolean;
+  /** Remove data from context */
+  clear(ctx: PluginContext): void;
+  /** The key used for storage */
+  readonly key: string;
+}
+
+/** Create a type-safe accessor for plugin-specific context data */
+export function definePluginData<T>(key: string): PluginDataAccessor<T> {
+  return {
+    get(ctx: PluginContext): T | undefined {
+      return ctx.data.get(key) as T | undefined;
+    },
+    set(ctx: PluginContext, value: T): void {
+      ctx.data.set(key, value);
+    },
+    has(ctx: PluginContext): boolean {
+      return ctx.data.has(key);
+    },
+    clear(ctx: PluginContext): void {
+      ctx.data.delete(key);
+    },
+    key,
+  };
 }

@@ -7,11 +7,11 @@
  * - Narration handling
  */
 
-import type { Plugin, Middleware } from "../types";
+import type { Plugin, Middleware, PluginContext } from "../types";
 import { MiddlewarePriority } from "../types";
 import { parseMultiCharResponse, type MultiCharMode } from "../../bot/webhooks";
 import { getEntity, type CharacterData } from "../../db/entities";
-import { setPluginData, getPluginData } from "../registry";
+import { definePluginData } from "../registry";
 
 // =============================================================================
 // Types
@@ -32,11 +32,12 @@ export interface DeliveryResult {
   multiCharMode?: MultiCharMode;
 }
 
-const DELIVERY_KEY = "delivery:result";
+/** Type-safe accessor for delivery result */
+const deliveryData = definePluginData<DeliveryResult>("delivery:result");
 
 /** Get delivery result from context */
-export function getDeliveryResult(ctx: import("../types").PluginContext): DeliveryResult | undefined {
-  return getPluginData<DeliveryResult>(ctx, DELIVERY_KEY);
+export function getDeliveryResult(ctx: PluginContext): DeliveryResult | undefined {
+  return deliveryData.get(ctx);
 }
 
 // =============================================================================
@@ -103,7 +104,7 @@ const deliveryMiddleware: Middleware = {
     }
 
     // Store result for retrieval
-    setPluginData(ctx, DELIVERY_KEY, result);
+    deliveryData.set(ctx, result);
 
     await next();
   },

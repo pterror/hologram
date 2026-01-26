@@ -31,6 +31,8 @@ export {
   handleComponent,
   getPluginData,
   setPluginData,
+  definePluginData,
+  type PluginDataAccessor,
 } from "./registry";
 
 // Built-in plugins
