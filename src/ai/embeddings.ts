@@ -1,4 +1,5 @@
 import { pipeline, type FeatureExtractionPipeline } from "@huggingface/transformers";
+import { debug } from "../logger";
 
 // Singleton pipeline instance
 let extractor: FeatureExtractionPipeline | null = null;
@@ -7,17 +8,102 @@ let initPromise: Promise<FeatureExtractionPipeline> | null = null;
 const MODEL_NAME = "Xenova/all-MiniLM-L6-v2";
 export const EMBEDDING_DIMENSIONS = 384;
 
+// =============================================================================
+// Embedding Cache (TTL-based LRU)
+// =============================================================================
+
+interface CacheEntry {
+  embedding: Float32Array;
+  expiresAt: number;
+}
+
+/** Cache configuration */
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_MAX_SIZE = 500;
+
+/** Simple hash function for cache keys */
+function hashString(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return hash.toString(36);
+}
+
+/** Embedding cache with TTL and size limit */
+const embeddingCache = new Map<string, CacheEntry>();
+
+/** Get cached embedding if valid */
+function getCachedEmbedding(text: string): Float32Array | null {
+  const key = hashString(text);
+  const entry = embeddingCache.get(key);
+
+  if (!entry) return null;
+
+  if (Date.now() > entry.expiresAt) {
+    embeddingCache.delete(key);
+    return null;
+  }
+
+  return entry.embedding;
+}
+
+/** Store embedding in cache */
+function cacheEmbedding(text: string, embedding: Float32Array): void {
+  const key = hashString(text);
+
+  // Evict oldest entries if cache is full
+  if (embeddingCache.size >= CACHE_MAX_SIZE) {
+    const keysToDelete: string[] = [];
+    const now = Date.now();
+
+    // First, remove expired entries
+    for (const [k, v] of embeddingCache) {
+      if (now > v.expiresAt) {
+        keysToDelete.push(k);
+      }
+    }
+
+    for (const k of keysToDelete) {
+      embeddingCache.delete(k);
+    }
+
+    // If still full, remove oldest (first) entry
+    if (embeddingCache.size >= CACHE_MAX_SIZE) {
+      const firstKey = embeddingCache.keys().next().value;
+      if (firstKey) embeddingCache.delete(firstKey);
+    }
+  }
+
+  embeddingCache.set(key, {
+    embedding,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  });
+}
+
+/** Clear the embedding cache */
+export function clearEmbeddingCache(): void {
+  embeddingCache.clear();
+}
+
+/** Get cache statistics */
+export function getEmbeddingCacheStats(): { size: number; maxSize: number; ttlMs: number } {
+  return { size: embeddingCache.size, maxSize: CACHE_MAX_SIZE, ttlMs: CACHE_TTL_MS };
+}
+
 // Initialize the embedding pipeline (lazy, singleton)
 async function getExtractor(): Promise<FeatureExtractionPipeline> {
   if (extractor) return extractor;
 
   if (!initPromise) {
-    console.log(`Loading embedding model: ${MODEL_NAME}...`);
+    debug("Loading embedding model", { model: MODEL_NAME });
     initPromise = pipeline("feature-extraction", MODEL_NAME, {
       dtype: "fp32",
     }).then((ext) => {
       extractor = ext as FeatureExtractionPipeline;
-      console.log("Embedding model loaded.");
+      debug("Embedding model loaded", { model: MODEL_NAME });
       return extractor;
     });
   }
@@ -25,13 +111,24 @@ async function getExtractor(): Promise<FeatureExtractionPipeline> {
   return initPromise;
 }
 
-// Generate embedding for a single text
+// Generate embedding for a single text (with caching)
 export async function embed(text: string): Promise<Float32Array> {
+  // Check cache first
+  const cached = getCachedEmbedding(text);
+  if (cached) {
+    return cached;
+  }
+
+  // Generate new embedding
   const ext = await getExtractor();
   const result = await ext(text, { pooling: "mean", normalize: true });
 
   // Result is a Tensor, convert to Float32Array
   const data = result.data as Float32Array;
+
+  // Cache the result
+  cacheEmbedding(text, data);
+
   return data;
 }
 

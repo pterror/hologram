@@ -9,7 +9,7 @@
 - [x] Add extractor timeout - extractors now wrapped with 30s timeout in `plugins/registry.ts`
 - [x] Type-safe plugin data - added `definePluginData<T>()` factory for type-safe accessors; delivery plugin updated as example
 - [x] Add structured logging - added `src/logger.ts` with levels, timestamps, context; updated core files (index, client, registry, core plugin)
-- [ ] RAG query caching - consider caching similar queries to avoid re-embedding every message
+- [x] RAG query caching - added TTL-based LRU cache for embeddings (5 min TTL, 500 max entries)
 
 ### Test Coverage
 
