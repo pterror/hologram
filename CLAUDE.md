@@ -107,7 +107,8 @@ Discord channels/users map to entities via `discord_entities`:
 | `/delete <entity>` | `/d` | Delete entity |
 | `/bind <target> <entity>` | `/b` | Bind channel/user |
 | `/status` | `/s` | Channel state |
-| `/help [topic]` | `/h` | Help (via entities!) |
+
+Help is an entity: `/v help`, `/v help:commands`, `/v help:triggers`
 
 ## Dev Commands
 

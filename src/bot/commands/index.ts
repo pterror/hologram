@@ -66,7 +66,6 @@ function getAlias(name: string): string | null {
     delete: "d",
     bind: "b",
     status: "s",
-    help: "h",
   };
   return aliases[name] ?? null;
 }

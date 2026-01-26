@@ -17,6 +17,7 @@ import {
 import { resolveDiscordEntity } from "../db/discord";
 import { getEntityWithFacts } from "../db/entities";
 import "./commands/commands"; // Register all commands
+import { ensureHelpEntities } from "./commands/commands";
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -83,6 +84,9 @@ function markProcessed(messageId: bigint): boolean {
 bot.events.ready = async (payload) => {
   info("Bot ready", { username: payload.user.username });
   botUserId = payload.user.id;
+
+  // Seed help entities
+  ensureHelpEntities();
 
   await registerCommands(bot);
 };

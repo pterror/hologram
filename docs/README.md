@@ -34,7 +34,8 @@ No rigid schemas. No predefined categories. Just entities and their facts.
 | `/delete <entity>` | `/d` | Delete entity (owner only) |
 | `/bind <target> <entity>` | `/b` | Bind channel/user to entity |
 | `/status` | `/s` | View current channel state |
-| `/help [topic]` | `/h` | Get help |
+
+**Help is an entity**: `/v help`, `/v help:commands`, `/v help:triggers`, etc.
 
 ### Type Shortcuts
 
