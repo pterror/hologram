@@ -392,11 +392,17 @@ const llmMiddleware: Middleware = {
       });
     }
 
-    // Add response to history
+    // Add response to history with character name if available
     const gameTime = ctx.scene ? { ...ctx.scene.time } : undefined;
+    let assistantName: string | undefined;
+    if (ctx.activeCharacterIds.length > 0) {
+      const charEntity = getEntity<CharacterData>(ctx.activeCharacterIds[0]);
+      assistantName = charEntity?.name;
+    }
     addToHistory(ctx.channelId, {
       role: "assistant",
       content: ctx.response,
+      name: assistantName,
       timestamp: Date.now(),
       gameTime,
     });

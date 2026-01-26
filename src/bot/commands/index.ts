@@ -31,6 +31,7 @@ import { keysCommand, handleKeysCommand, handleKeysModal } from "./keys";
 import { exportCommand, handleExportCommand } from "./export";
 import { channelCommand, handleChannelCommand } from "./channel";
 import { rerollCommand, handleRerollCommand } from "./reroll";
+import { importCommand, handleImportCommand } from "./import";
 import { handleOnboardingComponent } from "../onboarding";
 
 // All slash commands
@@ -62,6 +63,7 @@ export const commands: CreateApplicationCommand[] = [
   exportCommand,
   channelCommand,
   rerollCommand,
+  importCommand,
 ];
 
 // Register commands with Discord
@@ -221,6 +223,9 @@ export async function handleInteraction(
         break;
       case "reroll":
         await handleRerollCommand(bot, interaction);
+        break;
+      case "import":
+        await handleImportCommand(bot, interaction);
         break;
       default:
         await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
