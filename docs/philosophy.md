@@ -191,11 +191,18 @@ The system rolls the 10% chance, not the LLM. The LLM doesn't see "maybe respond
 Facts are data. But sometimes facts are conditional - they only apply when certain conditions are true. Rather than a custom DSL or embedded scripting, we use restricted JavaScript boolean expressions.
 
 ```
+# Character definition
 is a character
 has silver hair
+
+# Conditional traits
 $if random(0.3): has fox ears
-$if random(0.1) && !hasFact("digitigrade legs"): gains digitigrade legs
-$if time.isNight: glows faintly
+$if time.is_night: eyes glow faintly
+
+# Response control
+$if mentioned: $respond
+$if dt_ms >= 30000 && random(0.1): $respond
+$if elapsed_ms < 1000: $respond false
 ```
 
 ### Why JS Expressions?
@@ -219,28 +226,112 @@ We need logic. Options considered:
 
 5. **Restricted JS expressions** - boolean expressions with safe globals. *Chosen.*
 
-### Implementation
+### Context Variables
 
-Expressions are sanitized (whitelist allowed patterns), compiled with `new Function()`, and cached. Context provides safe globals:
+Expressions have access to:
 
 ```typescript
 interface ExprContext {
+  // Randomness
   random: (chance: number) => boolean;
-  hasFact: (pattern: string) => boolean;
   roll: (dice: string) => number;
-  time: { hour: number; isNight: boolean };
-  interactionType?: string;
+
+  // Entity state
+  has_fact: (pattern: string) => boolean;
+
+  // Time
+  time: { hour: number; is_day: boolean; is_night: boolean };
+  dt_ms: number;       // ms since last response in channel
+  elapsed_ms: number;  // ms since triggering message
+
+  // Message context
+  mentioned: boolean;
+  content: string;
+  author: string;
+
+  // Interaction context (for items)
+  interaction_type?: string;
 }
 ```
 
-### What $if Replaces
+### $respond Directive
 
-- Facts without `$if` are prose (LLM interprets)
-- Facts with `$if` are conditional (system evaluates, includes if true)
+The `$respond` directive controls whether to respond. Evaluated top to bottom, last fired value wins:
 
-This separates concerns:
-- **What** (the text after `:`) is content
-- **When** (the expression after `$if`) is logic
+- **No `$respond` in facts** → respond by default
+- **`$respond`** or **`$respond true`** → respond
+- **`$respond false`** → don't respond
+
+```
+# Only respond when mentioned
+$if mentioned: $respond
+
+# Respond to mentions OR randomly, but not too fast
+$if mentioned: $respond
+$if random(0.1): $respond
+$if elapsed_ms < 1000: $respond false
+
+# Respect mute
+$if has_fact("muted"): $respond false
+```
+
+### $retry Directive
+
+The `$retry <ms>` directive schedules a re-evaluation after the specified delay. Useful for delayed responses:
+
+```
+# Wait 5 seconds before responding
+$if elapsed_ms < 5000: $respond false
+$if elapsed_ms < 5000: $retry 5000
+
+# Throttle: don't respond if we responded recently, but retry later
+$if dt_ms < 30000: $respond false
+$if dt_ms < 30000: $retry 30000
+```
+
+When `$retry` fires, evaluation stops immediately and the system schedules a re-evaluation.
+
+This replaces `trigger:`, `delay_ms`, `throttle_ms` with two primitives:
+
+```
+# Old
+trigger: mention -> respond
+trigger: random 0.1 -> respond
+delay_ms: 5000
+throttle_ms: 30000
+
+# New
+$if mentioned: $respond
+$if random(0.1): $respond
+$if elapsed_ms < 5000: $respond false
+$if elapsed_ms < 5000: $retry 5000
+$if dt_ms < 30000: $respond false
+$if dt_ms < 30000: $retry 30000
+```
+
+### Comments
+
+Lines starting with `#` in the first column are comments:
+
+```
+# This is a comment
+is a character
+ # This is NOT a comment (starts with space)
+plays #1 hits  # inline # is fine
+```
+
+### Processing Model
+
+1. Message arrives, add to buffer
+2. Evaluate all `$if` conditions with current context
+3. Collect results:
+   - `$respond` / `$respond true` → flag respond
+   - `$respond false` → flag no-respond (overrides)
+   - text → add to facts
+4. If should respond (and no `$respond false`):
+   - Call LLM with collected facts
+
+Delay is handled via `elapsed_ms` - re-evaluate periodically until condition passes or times out.
 
 ## Progressive Complexity
 
