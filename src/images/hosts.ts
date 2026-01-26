@@ -7,6 +7,7 @@
  */
 
 import type { ImageConfig } from "../config/types";
+import { resolveApiKey, type ImageProvider } from "../ai/keys";
 
 // === Interfaces ===
 
@@ -678,22 +679,42 @@ export class SelfHostedHost implements ComfyUIHost {
 
 // === Factory ===
 
-export function getComfyHost(config: ImageConfig): ComfyUIHost {
+export interface HostContext {
+  userId?: string;
+  guildId?: string;
+}
+
+/**
+ * Get a ComfyUI host for image generation.
+ * Supports BYOK (Bring Your Own Key) - will resolve keys in order:
+ * 1. User's personal key
+ * 2. Guild's server key
+ * 3. Environment variable
+ */
+export function getComfyHost(config: ImageConfig, context?: HostContext): ComfyUIHost {
+  const { userId, guildId } = context || {};
+
   switch (config.host) {
     case "runcomfy": {
-      const apiKey = process.env.RUNCOMFY_API_KEY;
+      const resolved = userId
+        ? resolveApiKey("runcomfy" as ImageProvider, userId, guildId)
+        : null;
+      const apiKey = resolved?.key || process.env.RUNCOMFY_API_KEY;
       if (!apiKey) {
-        throw new Error("RUNCOMFY_API_KEY environment variable is required");
+        throw new Error("RunComfy API key not configured. Use `/keys add` or set RUNCOMFY_API_KEY.");
       }
       return new RunComfyHost(apiKey);
     }
 
     case "runcomfy-serverless": {
-      const apiKey = process.env.RUNCOMFY_SERVERLESS_API_KEY;
+      const resolved = userId
+        ? resolveApiKey("runcomfy-serverless" as ImageProvider, userId, guildId)
+        : null;
+      const apiKey = resolved?.key || process.env.RUNCOMFY_SERVERLESS_API_KEY;
       const deploymentId = process.env.RUNCOMFY_SERVERLESS_DEPLOYMENT_ID;
       if (!apiKey || !deploymentId) {
         throw new Error(
-          "RUNCOMFY_SERVERLESS_API_KEY and RUNCOMFY_SERVERLESS_DEPLOYMENT_ID environment variables are required"
+          "RunComfy Serverless requires API key and RUNCOMFY_SERVERLESS_DEPLOYMENT_ID environment variable."
         );
       }
       // Config mapping takes precedence over env var default
@@ -709,22 +730,28 @@ export function getComfyHost(config: ImageConfig): ComfyUIHost {
     }
 
     case "saladcloud": {
-      const apiKey = process.env.SALADCLOUD_API_KEY;
+      const resolved = userId
+        ? resolveApiKey("saladcloud" as ImageProvider, userId, guildId)
+        : null;
+      const apiKey = resolved?.key || process.env.SALADCLOUD_API_KEY;
       const orgName = process.env.SALADCLOUD_ORG_NAME;
       if (!apiKey || !orgName) {
         throw new Error(
-          "SALADCLOUD_API_KEY and SALADCLOUD_ORG_NAME environment variables are required"
+          "SaladCloud requires API key and SALADCLOUD_ORG_NAME environment variable."
         );
       }
       return new SaladCloudHost(apiKey, orgName, config.hostEndpoint);
     }
 
     case "runpod": {
-      const apiKey = process.env.RUNPOD_API_KEY;
+      const resolved = userId
+        ? resolveApiKey("runpod" as ImageProvider, userId, guildId)
+        : null;
+      const apiKey = resolved?.key || process.env.RUNPOD_API_KEY;
       const endpointId = process.env.RUNPOD_COMFY_ENDPOINT_ID;
       if (!apiKey || !endpointId) {
         throw new Error(
-          "RUNPOD_API_KEY and RUNPOD_COMFY_ENDPOINT_ID environment variables are required"
+          "RunPod requires API key and RUNPOD_COMFY_ENDPOINT_ID environment variable."
         );
       }
       return new RunPodHost(apiKey, endpointId);

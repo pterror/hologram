@@ -46,6 +46,7 @@ import { tipsCommand, handleTipsCommand } from "./tips";
 import { helpCommand, handleHelpCommand, handleHelpComponent } from "./help";
 import { imagineCommand, handleImagineCommand } from "./imagine";
 import { quotaCommand, handleQuotaCommand } from "./quota";
+import { keysCommand, handleKeysCommand, handleKeysModal } from "./keys";
 import { handleOnboardingComponent } from "../onboarding";
 
 // All slash commands
@@ -73,6 +74,7 @@ export const commands: CreateApplicationCommand[] = [
   helpCommand,
   imagineCommand,
   quotaCommand,
+  keysCommand,
 ];
 
 // Register commands with Discord
@@ -133,6 +135,9 @@ export async function handleInteraction(
 
   // Handle modal submissions
   if (interaction.type === InteractionTypes.ModalSubmit) {
+    if (await handleKeysModal(bot, interaction)) {
+      return;
+    }
     if (await handleBuildWizardComponent(bot, interaction)) {
       return;
     }
@@ -217,6 +222,9 @@ export async function handleInteraction(
         break;
       case "quota":
         await handleQuotaCommand(bot, interaction);
+        break;
+      case "keys":
+        await handleKeysCommand(bot, interaction);
         break;
       default:
         await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {

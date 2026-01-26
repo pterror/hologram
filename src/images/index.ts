@@ -6,7 +6,7 @@
  */
 
 import type { ImageConfig } from "../config/types";
-import { getComfyHost, type ComfyUIHost, type GeneratedImageData } from "./hosts";
+import { getComfyHost, type ComfyUIHost, type GeneratedImageData, type HostContext } from "./hosts";
 import {
   loadWorkflow,
   prepareWorkflow,
@@ -270,10 +270,12 @@ export function listWorkflows(config?: ImageConfig): WorkflowTemplate[] {
 }
 
 /**
- * Create image generation context for a request
+ * Create image generation context for a request.
+ * Supports BYOK - pass userId and guildId to resolve user/guild API keys.
  */
 export function createImageContext(
-  config: ImageConfig
+  config: ImageConfig,
+  context?: HostContext
 ): { host: ComfyUIHost; storage: ImageStorage } | null {
   if (!isImageGenerationAvailable(config)) {
     debug("Image generation not available");
@@ -281,7 +283,7 @@ export function createImageContext(
   }
 
   try {
-    const host = getComfyHost(config);
+    const host = getComfyHost(config, context);
     const storage = getImageStorage(config);
     return { host, storage };
   } catch (err) {
@@ -292,6 +294,6 @@ export function createImageContext(
 
 // === Re-exports ===
 
-export { getComfyHost, type ComfyUIHost, type GeneratedImageData } from "./hosts";
+export { getComfyHost, type ComfyUIHost, type GeneratedImageData, type HostContext } from "./hosts";
 export { loadWorkflow, prepareWorkflow, type WorkflowTemplate, type WorkflowVariable } from "./workflows";
 export { getImageStorage, type ImageStorage, S3Storage, DiscordStorage, MemoryStorage } from "./storage";

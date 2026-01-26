@@ -1,12 +1,27 @@
-import { anthropic } from "@ai-sdk/anthropic";
-import { google } from "@ai-sdk/google";
-import { openai } from "@ai-sdk/openai";
+import { anthropic, createAnthropic } from "@ai-sdk/anthropic";
+import { google, createGoogleGenerativeAI } from "@ai-sdk/google";
+import { openai, createOpenAI } from "@ai-sdk/openai";
 
+/** Default providers (use env vars) */
 const providerMap = {
   anthropic,
   google,
   openai,
 };
+
+/** Factory functions for creating providers with custom API keys */
+function createProviderWithKey(providerName: string, apiKey: string) {
+  switch (providerName) {
+    case "google":
+      return createGoogleGenerativeAI({ apiKey });
+    case "anthropic":
+      return createAnthropic({ apiKey });
+    case "openai":
+      return createOpenAI({ apiKey });
+    default:
+      throw new Error(`No factory available for provider: ${providerName}`);
+  }
+}
 
 type ProviderName = keyof typeof providerMap;
 
@@ -16,7 +31,7 @@ function isProviderName(name: string): name is ProviderName {
   return providerNames.has(name as ProviderName);
 }
 
-function parseModelSpec(modelSpec: string): {
+export function parseModelSpec(modelSpec: string): {
   providerName: string;
   modelName: string;
 } {
@@ -39,8 +54,16 @@ function getProvider(providerName: string) {
   return providerMap[providerName];
 }
 
-export function getLanguageModel(modelSpec: string) {
+export function getLanguageModel(modelSpec: string, apiKey?: string) {
   const { providerName, modelName } = parseModelSpec(modelSpec);
+
+  // If custom API key provided, create a new provider instance
+  if (apiKey) {
+    const provider = createProviderWithKey(providerName, apiKey);
+    return provider.languageModel(modelName);
+  }
+
+  // Fall back to default provider (uses env vars)
   const provider = getProvider(providerName);
   if (!("languageModel" in provider)) {
     throw new Error(
@@ -50,8 +73,21 @@ export function getLanguageModel(modelSpec: string) {
   return provider.languageModel(modelName);
 }
 
-export function getTextEmbeddingModel(modelSpec: string) {
+export function getTextEmbeddingModel(modelSpec: string, apiKey?: string) {
   const { providerName, modelName } = parseModelSpec(modelSpec);
+
+  // If custom API key provided, create a new provider instance
+  if (apiKey) {
+    const provider = createProviderWithKey(providerName, apiKey);
+    if (!("textEmbeddingModel" in provider)) {
+      throw new Error(
+        `Provider '${providerName}' does not support embedding models`
+      );
+    }
+    return provider.textEmbeddingModel(modelName);
+  }
+
+  // Fall back to default provider (uses env vars)
   const provider = getProvider(providerName);
   if (!("textEmbeddingModel" in provider)) {
     throw new Error(

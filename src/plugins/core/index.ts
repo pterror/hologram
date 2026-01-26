@@ -13,7 +13,8 @@
 import { generateText } from "ai";
 import type { Plugin, Middleware } from "../types";
 import { MiddlewarePriority } from "../types";
-import { getLanguageModel, DEFAULT_MODEL } from "../../ai/models";
+import { getLanguageModel, parseModelSpec, DEFAULT_MODEL } from "../../ai/models";
+import { resolveApiKey, type LLMProvider } from "../../ai/keys";
 import { runFormatters, runExtractors } from "../registry";
 import { formatMessagesForAI, type Message } from "../../ai/context";
 import { allocateBudget } from "../../ai/budget";
@@ -151,7 +152,22 @@ const llmMiddleware: Middleware = {
   priority: MiddlewarePriority.LLM,
   fn: async (ctx, next) => {
     const modelSpec = process.env.DEFAULT_MODEL || DEFAULT_MODEL;
-    const model = getLanguageModel(modelSpec);
+    const { providerName } = parseModelSpec(modelSpec);
+
+    // Resolve API key (user -> guild -> env)
+    const resolved = resolveApiKey(
+      providerName as LLMProvider,
+      ctx.authorId,
+      ctx.guildId
+    );
+
+    if (!resolved) {
+      ctx.response = `No API key configured for ${providerName}. Use \`/keys add\` to set one up.`;
+      await next();
+      return;
+    }
+
+    const model = getLanguageModel(modelSpec, resolved.key);
 
     // Check quota before LLM call
     if (ctx.config?.quota?.enabled) {
@@ -191,6 +207,8 @@ const llmMiddleware: Middleware = {
         tokens_in: tokensIn,
         tokens_out: tokensOut,
         cost_millicents: calculateLLMCost(modelSpec, tokensIn, tokensOut),
+        key_source: resolved.source,
+        key_id: resolved.keyId,
       });
     }
 

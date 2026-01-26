@@ -115,7 +115,10 @@ const imageMarkerExtractor: Extractor = {
       return;
     }
 
-    const imageCtx = createImageContext(ctx.config.images);
+    const imageCtx = createImageContext(ctx.config.images, {
+      userId: ctx.authorId,
+      guildId: ctx.guildId,
+    });
     if (!imageCtx) {
       warn("Failed to create image context");
       return;

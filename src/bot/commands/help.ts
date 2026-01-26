@@ -57,6 +57,8 @@ export const helpCommand: CreateApplicationCommand = {
             { name: "Factions", value: "factions" },
             { name: "Personas & Proxies", value: "personas" },
             { name: "Configuration", value: "config" },
+            { name: "API Keys (BYOK)", value: "keys" },
+            { name: "Quotas", value: "quotas" },
             { name: "All Commands", value: "commands" },
           ],
         },
@@ -91,6 +93,9 @@ export const helpCommand: CreateApplicationCommand = {
             { name: "/proxy", value: "proxy" },
             { name: "/status", value: "status" },
             { name: "/tips", value: "tips" },
+            { name: "/keys", value: "keys" },
+            { name: "/quota", value: "quota" },
+            { name: "/imagine", value: "imagine" },
             { name: "/help", value: "help" },
           ],
         },
@@ -319,6 +324,8 @@ function buildOverviewComponents(): ActionRow[] {
             { label: "Factions", value: "factions", emoji: { name: "⚔️" } },
             { label: "Personas", value: "personas", emoji: { name: "🎭" } },
             { label: "Configuration", value: "config", emoji: { name: "⚙️" } },
+            { label: "API Keys", value: "keys", emoji: { name: "🔑" } },
+            { label: "Quotas", value: "quotas", emoji: { name: "📊" } },
             { label: "All Commands", value: "commands", emoji: { name: "📜" } },
           ],
         },
@@ -826,6 +833,60 @@ relationships.enabled - Relationships
 characterState.enabled - HP, forms
 \`\`\``,
   },
+  keys: {
+    title: "API Keys (BYOK)",
+    content: `**Bring Your Own Key**
+Use your own API keys for LLM and image generation providers.
+
+**Commands**
+- \`/keys add <provider> <scope>\` - Add an API key
+- \`/keys list [scope]\` - View configured keys
+- \`/keys remove <provider> <scope>\` - Remove a key
+- \`/keys test <provider>\` - Validate a key
+- \`/keys status\` - Show which keys are active
+
+**Scopes**
+- **Personal** - Only you use this key
+- **Server** - Everyone in this server uses it (requires Manage Server)
+
+**Supported Providers**
+- **LLM:** Google (Gemini), Anthropic (Claude), OpenAI (GPT)
+- **Images:** RunComfy, SaladCloud, RunPod
+
+**Key Resolution**
+Keys are checked in order: your personal key → server key → bot default
+
+**Security**
+- Keys are encrypted at rest (AES-256-GCM)
+- Keys are never shown after being saved
+- Use \`/keys test\` to verify a key works`,
+  },
+  quotas: {
+    title: "Usage Quotas",
+    content: `**About Quotas**
+The bot can limit usage per user to control costs.
+
+**Commands**
+- \`/quota\` - Check your current usage
+
+**What's Tracked**
+- LLM tokens (input + output)
+- Image generations
+- Total cost (in millicents)
+
+**Limits**
+Quotas are configured by the bot operator per-world:
+- \`quota.limits.llm_tokens\` - Max tokens per period
+- \`quota.limits.image_count\` - Max images per period
+- \`quota.limits.total_cost\` - Max spend per period
+
+**Periods**
+- **Rolling** - Last N days (sliding window)
+- **Fixed** - Calendar periods (resets at start)
+
+**BYOK & Quotas**
+When using your own API key, usage is still tracked but quotas may be configured differently by the bot operator.`,
+  },
   commands: {
     title: "All Commands",
     content: `**Setup & Config**
@@ -848,6 +909,12 @@ characterState.enabled - HP, forms
 
 **Gameplay**
 \`/roll\` \`/r\` \`/combat\`
+
+**Images**
+\`/imagine\`
+
+**Usage & Keys**
+\`/quota\` \`/keys\`
 
 Use \`/help command <name>\` for detailed command help.`,
   },
@@ -1072,5 +1139,43 @@ Then type: A: Hello!`,
 /help topic characters
 /help command roll`,
     related: "`/tips` `/setup`",
+  },
+  keys: {
+    description: "Manage API keys for LLM and image providers (BYOK).",
+    subcommands: `\`add <provider> <scope>\` - Add/update an API key (opens secure modal)
+\`list [scope]\` - View configured keys (user/guild/all)
+\`remove <provider> <scope>\` - Remove an API key
+\`test <provider>\` - Validate the resolved key
+\`status\` - Show BYOK status and active keys`,
+    examples: `/keys add google user
+/keys add anthropic guild
+/keys list all
+/keys test google
+/keys status`,
+    related: "`/quota` `/config`",
+  },
+  quota: {
+    description: "Check your usage quota status.",
+    subcommands: `(no subcommands - shows your current usage)
+
+Displays:
+• LLM tokens used vs limit
+• Images generated vs limit
+• Total cost vs limit
+• Period information`,
+    examples: `/quota`,
+    related: "`/keys` `/config`",
+  },
+  imagine: {
+    description: "Generate images using AI (ComfyUI workflows).",
+    subcommands: `\`prompt <text>\` - Generate from text prompt
+\`portrait <character>\` - Generate character portrait
+\`expression <character> <emotion>\` - Character expression
+\`workflows\` - List available workflows`,
+    examples: `/imagine prompt "a sunset over mountains"
+/imagine portrait Alice
+/imagine expression Alice happy
+/imagine workflows`,
+    related: "`/keys` `/character`",
   },
 };

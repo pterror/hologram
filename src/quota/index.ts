@@ -13,6 +13,8 @@ export interface UsageEntry {
   tokens_in?: number;
   tokens_out?: number;
   cost_millicents: number;
+  key_source?: "user" | "guild" | "env";
+  key_id?: number;
 }
 
 export interface QuotaStatus {
@@ -85,8 +87,8 @@ export function getWindowStart(period: QuotaPeriod, anchor = 0): number {
 export function logUsage(entry: UsageEntry): void {
   const db = getDb();
   db.prepare(`
-    INSERT INTO usage (user_id, guild_id, type, model, tokens_in, tokens_out, cost_millicents)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO usage (user_id, guild_id, type, model, tokens_in, tokens_out, cost_millicents, key_source, key_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     entry.user_id,
     entry.guild_id ?? null,
@@ -94,7 +96,9 @@ export function logUsage(entry: UsageEntry): void {
     entry.model,
     entry.tokens_in ?? null,
     entry.tokens_out ?? null,
-    entry.cost_millicents
+    entry.cost_millicents,
+    entry.key_source ?? null,
+    entry.key_id ?? null
   );
 }
 

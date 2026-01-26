@@ -38,6 +38,7 @@ export const bot = createBot({
     member: {
       id: true,
       nick: true,
+      permissions: true,
     },
     channel: {
       type: true,

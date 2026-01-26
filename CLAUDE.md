@@ -218,7 +218,18 @@ DEFAULT_MODEL=       # Default LLM (google:gemini-3-flash-preview)
 GOOGLE_API_KEY=      # For Gemini
 ANTHROPIC_API_KEY=   # For Claude (optional)
 OPENAI_API_KEY=      # For OpenAI (optional)
+BYOK_MASTER_KEY=     # 32-byte hex key for BYOK encryption (optional, generate with: openssl rand -hex 32)
 ```
+
+## BYOK (Bring Your Own Key)
+
+Users and guilds can provide their own API keys for LLM and image providers. Keys are encrypted at rest with AES-256-GCM.
+
+**Resolution order:** user key → guild key → environment variable
+
+**Commands:** `/keys add|list|remove|test|status`
+
+**Supported providers:** Google, Anthropic, OpenAI (LLM) + RunComfy, SaladCloud, RunPod (images)
 
 ## Testing
 

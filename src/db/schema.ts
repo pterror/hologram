@@ -443,6 +443,29 @@ export function initSchema(db: Database) {
 
     CREATE INDEX IF NOT EXISTS idx_usage_user_window ON usage(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_usage_guild ON usage(guild_id, created_at);
+
+    -- BYOK: API keys for users and guilds
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id INTEGER PRIMARY KEY,
+      guild_id TEXT,                    -- NULL for user keys
+      user_id TEXT,                     -- NULL for guild keys
+      provider TEXT NOT NULL,           -- 'google', 'anthropic', 'openai', 'runcomfy', etc.
+      key_name TEXT,                    -- Optional label ('primary', 'backup', etc.)
+      encrypted_key TEXT NOT NULL,      -- Base64-encoded AES-256-GCM encrypted payload
+      salt TEXT NOT NULL,               -- Per-key salt (16 bytes, base64)
+      nonce TEXT NOT NULL,              -- Per-key nonce/IV (12 bytes, base64)
+      last_used_at INTEGER,
+      last_validated_at INTEGER,
+      validation_status TEXT DEFAULT 'pending',  -- 'valid', 'invalid', 'pending', 'expired'
+      created_at INTEGER DEFAULT (unixepoch()),
+      updated_at INTEGER DEFAULT (unixepoch()),
+      UNIQUE(guild_id, provider, key_name),
+      UNIQUE(user_id, provider, key_name),
+      CHECK((guild_id IS NULL) != (user_id IS NULL))  -- XOR: exactly one scope
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_api_keys_guild ON api_keys(guild_id, provider);
+    CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id, provider);
   `);
 }
 
@@ -484,5 +507,48 @@ export function runMigrations(db: Database) {
 
   if (!stateColumns.has("outfit")) {
     db.exec("ALTER TABLE character_state ADD COLUMN outfit JSON");
+  }
+
+  // BYOK: api_keys table for existing databases
+  const tables = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='api_keys'")
+    .all() as Array<{ name: string }>;
+
+  if (tables.length === 0) {
+    db.exec(`
+      CREATE TABLE api_keys (
+        id INTEGER PRIMARY KEY,
+        guild_id TEXT,
+        user_id TEXT,
+        provider TEXT NOT NULL,
+        key_name TEXT,
+        encrypted_key TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        nonce TEXT NOT NULL,
+        last_used_at INTEGER,
+        last_validated_at INTEGER,
+        validation_status TEXT DEFAULT 'pending',
+        created_at INTEGER DEFAULT (unixepoch()),
+        updated_at INTEGER DEFAULT (unixepoch()),
+        UNIQUE(guild_id, provider, key_name),
+        UNIQUE(user_id, provider, key_name),
+        CHECK((guild_id IS NULL) != (user_id IS NULL))
+      );
+      CREATE INDEX idx_api_keys_guild ON api_keys(guild_id, provider);
+      CREATE INDEX idx_api_keys_user ON api_keys(user_id, provider);
+    `);
+  }
+
+  // BYOK: usage table key_source column
+  const usageInfo = db.prepare("PRAGMA table_info(usage)").all() as Array<{
+    name: string;
+  }>;
+  const usageColumns = new Set(usageInfo.map((c) => c.name));
+
+  if (!usageColumns.has("key_source")) {
+    db.exec("ALTER TABLE usage ADD COLUMN key_source TEXT");
+  }
+  if (!usageColumns.has("key_id")) {
+    db.exec("ALTER TABLE usage ADD COLUMN key_id INTEGER");
   }
 }

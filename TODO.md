@@ -163,6 +163,22 @@ Per-user quota system for LLM and image generation. See `docs/design/quotas.md`.
 - [x] Integrate quota check in images plugin
 - [x] Add `/quota status` command
 
+### BYOK (Bring Your Own Key) ✓
+
+Allow users and guilds to provide their own API keys for LLM and image providers.
+
+- [x] Add `api_keys` table with encrypted storage (AES-256-GCM)
+- [x] Create `src/ai/keys.ts` (encrypt, decrypt, store, resolve)
+- [x] Key resolution: user key → guild key → env var fallback
+- [x] Update `src/ai/models.ts` for custom key injection
+- [x] Integrate key resolution in LLM middleware
+- [x] Update image hosts to use resolved keys
+- [x] Add `/keys` command (add, list, remove, test, status)
+- [x] Track key_source in usage table
+- [x] Permission check (MANAGE_GUILD for server keys)
+
+**Environment:** Set `BYOK_MASTER_KEY` (32-byte hex) to enable.
+
 ### Plugin Ideas
 
 - [ ] D&D support as plugin

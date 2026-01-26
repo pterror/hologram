@@ -160,8 +160,11 @@ async function handlePromptSubcommand(
   // Defer the response since image generation takes time
   await respondDeferred(bot, interaction);
 
+  const userId = interaction.user?.id?.toString() ?? interaction.member?.id?.toString() ?? "";
+  const guildId = interaction.guildId?.toString();
+
   try {
-    const ctx = createImageContext(config.images);
+    const ctx = createImageContext(config.images, { userId, guildId });
     if (!ctx) {
       await editResponse(bot, interaction, "Failed to initialize image generation.");
       return;
@@ -270,8 +273,11 @@ async function handlePortraitSubcommand(
   // Defer the response
   await respondDeferred(bot, interaction);
 
+  const userId = interaction.user?.id?.toString() ?? interaction.member?.id?.toString() ?? "";
+  const guildId = interaction.guildId?.toString();
+
   try {
-    const ctx = createImageContext(config.images);
+    const ctx = createImageContext(config.images, { userId, guildId });
     if (!ctx) {
       await editResponse(bot, interaction, "Failed to initialize image generation.");
       return;
@@ -382,8 +388,11 @@ async function handleExpressionSubcommand(
   // Defer the response
   await respondDeferred(bot, interaction);
 
+  const userId = interaction.user?.id?.toString() ?? interaction.member?.id?.toString() ?? "";
+  const guildId = interaction.guildId?.toString();
+
   try {
-    const ctx = createImageContext(config.images);
+    const ctx = createImageContext(config.images, { userId, guildId });
     if (!ctx) {
       await editResponse(bot, interaction, "Failed to initialize image generation.");
       return;
