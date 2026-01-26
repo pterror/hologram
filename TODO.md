@@ -152,6 +152,17 @@ All integration and feature work from Phases 1-7 is done:
 - [ ] Auto-portrait on character creation
 - [ ] Scene illustration triggers on location change
 
+### Usage Quotas
+
+Per-user quota system for LLM and image generation. See `docs/design/quotas.md`.
+
+- [ ] Add `usage` table to schema with migration
+- [ ] Create `src/quota/index.ts` (logUsage, checkQuota, enforceQuota)
+- [ ] Add QuotaConfig to WorldConfig + defaults
+- [ ] Integrate quota check in core plugin (LLM calls)
+- [ ] Integrate quota check in images plugin
+- [ ] Add `/quota status` command
+
 ### Plugin Ideas
 
 - [ ] D&D support as plugin
