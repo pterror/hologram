@@ -148,9 +148,6 @@ bot.events.messageCreate = async (message) => {
   // Ignore messages without content
   if (!message.content) return;
 
-  // Ignore slash commands (they're handled via interactionCreate)
-  if (message.content.startsWith("/")) return;
-
   // Deduplicate messages to prevent double processing
   if (!markMessageProcessed(message.id)) {
     debug("Skipping duplicate message", { messageId: message.id.toString() });
