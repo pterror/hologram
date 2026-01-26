@@ -11,6 +11,7 @@ export function initSchema(db: Database) {
       rules TEXT,
       config JSON,
       data JSON,
+      creator_id TEXT,              -- Discord user who created this world
       created_at INTEGER DEFAULT (unixepoch())
     );
 
@@ -26,15 +27,50 @@ export function initSchema(db: Database) {
     -- Entities: characters, locations, items, concepts
     CREATE TABLE IF NOT EXISTS entities (
       id INTEGER PRIMARY KEY,
-      world_id INTEGER REFERENCES worlds(id),
+      world_id INTEGER REFERENCES worlds(id),  -- Legacy: primary world, will be nullable
       type TEXT NOT NULL,
       name TEXT NOT NULL,
       data JSON NOT NULL,
+      creator_id TEXT,              -- Discord user who created this entity
       created_at INTEGER DEFAULT (unixepoch())
     );
 
     CREATE INDEX IF NOT EXISTS idx_entities_world ON entities(world_id);
     CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
+    CREATE INDEX IF NOT EXISTS idx_entities_creator ON entities(creator_id);
+
+    -- Entity-world membership (many-to-many, allows entity in multiple worlds)
+    CREATE TABLE IF NOT EXISTS entity_worlds (
+      entity_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+      world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+      is_primary BOOLEAN DEFAULT FALSE,
+      PRIMARY KEY (entity_id, world_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_entity_worlds_world ON entity_worlds(world_id);
+
+    -- Direct access grants (overrides inheritance)
+    CREATE TABLE IF NOT EXISTS entity_access (
+      entity_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+      accessor_type TEXT NOT NULL,  -- 'user' | 'guild'
+      accessor_id TEXT NOT NULL,
+      role TEXT NOT NULL,           -- 'owner' | 'admin' | 'editor' | 'member' | 'viewer'
+      created_at INTEGER DEFAULT (unixepoch()),
+      PRIMARY KEY (entity_id, accessor_type, accessor_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_entity_access_accessor ON entity_access(accessor_type, accessor_id);
+
+    -- User-level world access (for DM/personal worlds)
+    CREATE TABLE IF NOT EXISTS user_worlds (
+      user_id TEXT NOT NULL,
+      world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+      role TEXT DEFAULT 'owner',    -- 'owner' | 'admin' | 'editor' | 'member' | 'viewer'
+      created_at INTEGER DEFAULT (unixepoch()),
+      PRIMARY KEY (user_id, world_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_user_worlds_world ON user_worlds(world_id);
 
     -- Relationships between entities
     CREATE TABLE IF NOT EXISTS relationships (
@@ -551,4 +587,73 @@ export function runMigrations(db: Database) {
   if (!usageColumns.has("key_id")) {
     db.exec("ALTER TABLE usage ADD COLUMN key_id INTEGER");
   }
+
+  // Ownership refactor: creator_id columns
+  if (!worldColumns.has("creator_id")) {
+    db.exec("ALTER TABLE worlds ADD COLUMN creator_id TEXT");
+  }
+
+  const entitiesInfo = db.prepare("PRAGMA table_info(entities)").all() as Array<{
+    name: string;
+  }>;
+  const entityColumns = new Set(entitiesInfo.map((c) => c.name));
+
+  if (!entityColumns.has("creator_id")) {
+    db.exec("ALTER TABLE entities ADD COLUMN creator_id TEXT");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_entities_creator ON entities(creator_id)");
+  }
+
+  // Ownership refactor: new tables
+  const existingTables = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+    .all() as Array<{ name: string }>;
+  const tableNames = new Set(existingTables.map((t) => t.name));
+
+  if (!tableNames.has("entity_worlds")) {
+    db.exec(`
+      CREATE TABLE entity_worlds (
+        entity_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+        is_primary BOOLEAN DEFAULT FALSE,
+        PRIMARY KEY (entity_id, world_id)
+      );
+      CREATE INDEX idx_entity_worlds_world ON entity_worlds(world_id);
+    `);
+
+    // Migrate existing entities: create entity_worlds rows from world_id
+    db.exec(`
+      INSERT INTO entity_worlds (entity_id, world_id, is_primary)
+      SELECT id, world_id, TRUE FROM entities WHERE world_id IS NOT NULL
+    `);
+  }
+
+  if (!tableNames.has("entity_access")) {
+    db.exec(`
+      CREATE TABLE entity_access (
+        entity_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        accessor_type TEXT NOT NULL,
+        accessor_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        created_at INTEGER DEFAULT (unixepoch()),
+        PRIMARY KEY (entity_id, accessor_type, accessor_id)
+      );
+      CREATE INDEX idx_entity_access_accessor ON entity_access(accessor_type, accessor_id);
+    `);
+  }
+
+  if (!tableNames.has("user_worlds")) {
+    db.exec(`
+      CREATE TABLE user_worlds (
+        user_id TEXT NOT NULL,
+        world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+        role TEXT DEFAULT 'owner',
+        created_at INTEGER DEFAULT (unixepoch()),
+        PRIMARY KEY (user_id, world_id)
+      );
+      CREATE INDEX idx_user_worlds_world ON user_worlds(world_id);
+    `);
+  }
+
+  // Set existing guild_worlds.role to 'owner' where NULL (backwards compat)
+  db.exec("UPDATE guild_worlds SET role = 'owner' WHERE role IS NULL");
 }

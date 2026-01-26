@@ -4,10 +4,11 @@ export type EntityType = "character" | "location" | "item" | "concept" | "factio
 
 export interface Entity<T = Record<string, unknown>> {
   id: number;
-  worldId: number | null;
+  worldId: number | null;  // Legacy: primary world (use entity_worlds for multi-world)
   type: EntityType;
   name: string;
   data: T;
+  creatorId: string | null;
   createdAt: number;
 }
 
@@ -112,27 +113,67 @@ export interface FactionData {
   [key: string]: unknown;
 }
 
+/** Options for creating an entity */
+export interface CreateEntityOptions {
+  worldId?: number;
+  creatorId?: string;
+  /** Additional worlds this entity should be visible in (primary is worldId) */
+  additionalWorlds?: number[];
+}
+
 // Create
 export function createEntity<T extends Record<string, unknown>>(
   type: EntityType,
   name: string,
   data: T,
-  worldId?: number
+  worldIdOrOptions?: number | CreateEntityOptions
 ): Entity<T> {
   const db = getDb();
+
+  // Handle both old signature (worldId) and new signature (options)
+  const options: CreateEntityOptions =
+    typeof worldIdOrOptions === "number"
+      ? { worldId: worldIdOrOptions }
+      : worldIdOrOptions ?? {};
+
+  const { worldId, creatorId, additionalWorlds = [] } = options;
+
+  // Insert entity
   const stmt = db.prepare(`
-    INSERT INTO entities (world_id, type, name, data)
-    VALUES (?, ?, ?, ?)
-    RETURNING id, world_id as worldId, type, name, data, created_at as createdAt
+    INSERT INTO entities (world_id, type, name, data, creator_id)
+    VALUES (?, ?, ?, ?, ?)
+    RETURNING id, world_id as worldId, type, name, data, creator_id as creatorId, created_at as createdAt
   `);
-  const row = stmt.get(worldId ?? null, type, name, JSON.stringify(data)) as {
+  const row = stmt.get(
+    worldId ?? null,
+    type,
+    name,
+    JSON.stringify(data),
+    creatorId ?? null
+  ) as {
     id: number;
     worldId: number | null;
     type: EntityType;
     name: string;
     data: string;
+    creatorId: string | null;
     createdAt: number;
   };
+
+  // Create entity_worlds link for primary world
+  if (worldId !== undefined) {
+    db.prepare(
+      `INSERT INTO entity_worlds (entity_id, world_id, is_primary) VALUES (?, ?, 1)`
+    ).run(row.id, worldId);
+  }
+
+  // Create entity_worlds links for additional worlds
+  for (const additionalWorldId of additionalWorlds) {
+    db.prepare(
+      `INSERT OR IGNORE INTO entity_worlds (entity_id, world_id, is_primary) VALUES (?, ?, 0)`
+    ).run(row.id, additionalWorldId);
+  }
+
   return {
     ...row,
     data: JSON.parse(row.data) as T,
@@ -145,7 +186,7 @@ export function getEntity<T = Record<string, unknown>>(
 ): Entity<T> | null {
   const db = getDb();
   const stmt = db.prepare(`
-    SELECT id, world_id as worldId, type, name, data, created_at as createdAt
+    SELECT id, world_id as worldId, type, name, data, creator_id as creatorId, created_at as createdAt
     FROM entities WHERE id = ?
   `);
   const row = stmt.get(id) as {
@@ -154,6 +195,7 @@ export function getEntity<T = Record<string, unknown>>(
     type: EntityType;
     name: string;
     data: string;
+    creatorId: string | null;
     createdAt: number;
   } | null;
   if (!row) return null;
@@ -171,15 +213,20 @@ export function getEntitiesByType<T = Record<string, unknown>>(
   let stmt;
   let rows;
   if (worldId !== undefined) {
+    // Use entity_worlds for multi-world support, falling back to world_id for legacy
     stmt = db.prepare(`
-      SELECT id, world_id as worldId, type, name, data, created_at as createdAt
-      FROM entities WHERE type = ? AND world_id = ?
-      ORDER BY name
+      SELECT DISTINCT e.id, e.world_id as worldId, e.type, e.name, e.data,
+             e.creator_id as creatorId, e.created_at as createdAt
+      FROM entities e
+      LEFT JOIN entity_worlds ew ON e.id = ew.entity_id
+      WHERE e.type = ? AND (ew.world_id = ? OR e.world_id = ?)
+      ORDER BY e.name
     `);
-    rows = stmt.all(type, worldId);
+    rows = stmt.all(type, worldId, worldId);
   } else {
     stmt = db.prepare(`
-      SELECT id, world_id as worldId, type, name, data, created_at as createdAt
+      SELECT id, world_id as worldId, type, name, data,
+             creator_id as creatorId, created_at as createdAt
       FROM entities WHERE type = ?
       ORDER BY name
     `);
@@ -197,8 +244,44 @@ export function findEntityByName<T = Record<string, unknown>>(
   worldId?: number
 ): Entity<T> | null {
   const db = getDb();
+
+  // If worldId provided, use entity_worlds for multi-world support
+  if (worldId !== undefined) {
+    let query = `
+      SELECT DISTINCT e.id, e.world_id as worldId, e.type, e.name, e.data,
+             e.creator_id as creatorId, e.created_at as createdAt
+      FROM entities e
+      LEFT JOIN entity_worlds ew ON e.id = ew.entity_id
+      WHERE e.name = ? AND (ew.world_id = ? OR e.world_id = ?)
+    `;
+    const params: (string | number)[] = [name, worldId, worldId];
+
+    if (type) {
+      query += " AND e.type = ?";
+      params.push(type);
+    }
+
+    const stmt = db.prepare(query);
+    const row = stmt.get(...params) as {
+      id: number;
+      worldId: number | null;
+      type: EntityType;
+      name: string;
+      data: string;
+      creatorId: string | null;
+      createdAt: number;
+    } | null;
+    if (!row) return null;
+    return {
+      ...row,
+      data: JSON.parse(row.data) as T,
+    };
+  }
+
+  // No worldId, search globally
   let query = `
-    SELECT id, world_id as worldId, type, name, data, created_at as createdAt
+    SELECT id, world_id as worldId, type, name, data,
+           creator_id as creatorId, created_at as createdAt
     FROM entities WHERE name = ?
   `;
   const params: (string | number)[] = [name];
@@ -206,10 +289,6 @@ export function findEntityByName<T = Record<string, unknown>>(
   if (type) {
     query += " AND type = ?";
     params.push(type);
-  }
-  if (worldId !== undefined) {
-    query += " AND world_id = ?";
-    params.push(worldId);
   }
 
   const stmt = db.prepare(query);
@@ -219,6 +298,7 @@ export function findEntityByName<T = Record<string, unknown>>(
     type: EntityType;
     name: string;
     data: string;
+    creatorId: string | null;
     createdAt: number;
   } | null;
   if (!row) return null;
@@ -244,7 +324,7 @@ export function updateEntity<T extends Record<string, unknown>>(
 
   const stmt = db.prepare(`
     UPDATE entities SET name = ?, data = ? WHERE id = ?
-    RETURNING id, world_id as worldId, type, name, data, created_at as createdAt
+    RETURNING id, world_id as worldId, type, name, data, creator_id as creatorId, created_at as createdAt
   `);
   const row = stmt.get(newName, JSON.stringify(newData), id) as {
     id: number;
@@ -252,6 +332,7 @@ export function updateEntity<T extends Record<string, unknown>>(
     type: EntityType;
     name: string;
     data: string;
+    creatorId: string | null;
     createdAt: number;
   };
   return {

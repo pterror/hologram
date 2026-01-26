@@ -7,7 +7,7 @@ Discord RP bot with smart state/worldstate/memory/context management. SillyTaver
 - **Runtime**: Bun (native SQLite, TypeScript-first)
 - **Discord**: Discordeno (Bun-native, zero-cache default)
 - **LLM**: AI SDK with provider-agnostic `provider:model` spec (default: `google:gemini-3-flash-preview`)
-- **Database**: bun:sqlite + sqlite-vec for vectors (28 tables: 26 regular + 2 virtual)
+- **Database**: bun:sqlite + sqlite-vec for vectors (31 tables: 29 regular + 2 virtual)
 - **Embeddings**: Local via @huggingface/transformers (MiniLM, 384-dim)
 - **Linting**: oxlint
 - **Testing**: bun:test (292 tests across 15 files)
@@ -36,7 +36,7 @@ src/
 │   ├── webhooks.ts             # Per-character webhook impersonation
 │   ├── onboarding.ts           # Guild welcome, quick setup, mode selection
 │   ├── tips.ts                 # Progressive disclosure system
-│   └── commands/               # 21 slash commands
+│   └── commands/               # 22 slash commands
 │       ├── index.ts            # Command registry + interaction router
 │       ├── build.ts            # /build - LLM-assisted wizard (character/world/location/item)
 │       ├── character.ts        # /character create|edit|list|delete|view
@@ -57,7 +57,21 @@ src/
 │       ├── status.ts           # /status (character state, effects, form)
 │       ├── time.ts             # /time show|advance|set|dawn|noon|dusk|night
 │       ├── tips.ts             # /tips enable|disable|status|reset
-│       └── world.ts            # /world create|edit|info|link
+│       ├── world.ts            # /world create|edit|info|link
+│       └── export.ts           # /export character|world|chronicle
+├── access/
+│   ├── index.ts                # Access resolution (getEntityRole, getWorldRole, canExport)
+│   ├── types.ts                # Role hierarchy, AccessGrant interfaces
+│   └── queries.ts              # DB queries for entity_access, user_worlds
+├── export/
+│   ├── index.ts                # Export orchestration (exportCharacter, exportWorld)
+│   ├── types.ts                # CCv2, Hologram, JSONL export types
+│   ├── storage.ts              # S3 upload for exports
+│   └── formats/                # Format converters
+│       ├── ccv2.ts             # Character Card V2 spec
+│       ├── hologram.ts         # Native Hologram JSON
+│       ├── world.ts            # World export
+│       └── chronicle.ts        # Chronicle JSONL
 ├── ai/
 │   ├── models.ts               # Provider abstraction (provider:model spec)
 │   ├── embeddings.ts           # Local embeddings via @huggingface/transformers
@@ -154,9 +168,10 @@ Modes define which plugins are active and their config:
 | `parser` | Classic text adventure (strict commands) |
 | `full` | Everything enabled |
 
-### Database (26 tables + 2 virtual)
+### Database (29 tables + 2 virtual)
 
 **Core**: worlds, guild_worlds, entities, relationships, facts
+**Access**: entity_worlds, entity_access, user_worlds
 **Scenes**: scenes, scene_characters
 **Memory**: chronicle, fact_embeddings (vec0), chronicle_embeddings (vec0)
 **Characters**: character_state, character_effects, character_equipment, character_webhooks
@@ -219,6 +234,14 @@ GOOGLE_API_KEY=      # For Gemini
 ANTHROPIC_API_KEY=   # For Claude (optional)
 OPENAI_API_KEY=      # For OpenAI (optional)
 BYOK_MASTER_KEY=     # 32-byte hex key for BYOK encryption (optional, generate with: openssl rand -hex 32)
+
+# Export S3 (optional, for /export command)
+EXPORT_S3_BUCKET=    # S3-compatible bucket for exports
+EXPORT_S3_ENDPOINT=  # S3 endpoint (for R2/MinIO)
+EXPORT_S3_REGION=    # S3 region (default: auto)
+EXPORT_S3_ACCESS_KEY_ID=
+EXPORT_S3_SECRET_ACCESS_KEY=
+EXPORT_S3_PUBLIC_URL=  # Custom domain for export URLs
 ```
 
 ## BYOK (Bring Your Own Key)
@@ -230,6 +253,22 @@ Users and guilds can provide their own API keys for LLM and image providers. Key
 **Commands:** `/keys add|list|remove|test|status`
 
 **Supported providers:** Google, Anthropic, OpenAI (LLM) + RunComfy, SaladCloud, RunPod (images)
+
+## Export System
+
+Export characters, worlds, and memories in various formats.
+
+**Command:** `/export character|world|chronicle`
+
+**Formats:**
+- **CCv2**: Character Card V2 spec (SillyTavern compatible)
+- **CCv2-Extended**: CCv2 with Hologram data in extensions
+- **Hologram JSON**: Native format with full data fidelity
+- **JSONL**: Line-delimited JSON for chronicle/memories
+
+**Access control:** Users can export their own creations or content they have owner/admin access to. See `docs/architecture/ownership.md` for details.
+
+**Storage:** Without S3 config, exports are embedded in Discord messages (truncated if large). With S3 config, full exports are uploaded and a download URL is provided.
 
 ## Testing
 
