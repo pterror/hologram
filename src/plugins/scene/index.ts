@@ -17,7 +17,7 @@ import {
   type SceneCharacter,
 } from "../../scene";
 import { getWorldConfig } from "../../config";
-import { getEntity, type CharacterData, type ItemData, type Entity } from "../../db/entities";
+import { getEntity, type CharacterData, type Entity } from "../../db/entities";
 import { getLocation, getConnectedLocations, getChildLocations } from "../../world/locations";
 import { getTimePeriod } from "../../world/time";
 import { getInventory } from "../../world/inventory";
