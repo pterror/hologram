@@ -45,6 +45,7 @@ export { timePlugin } from "./time";
 export { inventoryPlugin } from "./inventory";
 export { worldPlugin } from "./world";
 export { deliveryPlugin, getDeliveryResult, type CharacterSegment, type DeliveryResult } from "./delivery";
+export { imagePlugin, stripImageMarkers } from "./images";
 
 // =============================================================================
 // Load all built-in plugins
@@ -61,6 +62,7 @@ import { timePlugin } from "./time";
 import { inventoryPlugin } from "./inventory";
 import { worldPlugin } from "./world";
 import { deliveryPlugin } from "./delivery";
+import { imagePlugin } from "./images";
 
 /** Register all built-in plugins */
 export function loadBuiltinPlugins(): void {
@@ -78,6 +80,7 @@ export function loadBuiltinPlugins(): void {
   registerPlugin(chroniclePlugin);
   registerPlugin(timePlugin);
   registerPlugin(inventoryPlugin);
+  registerPlugin(imagePlugin);
 }
 
 // =============================================================================

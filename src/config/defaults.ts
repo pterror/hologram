@@ -10,6 +10,7 @@ import type {
   DiceConfig,
   RelationshipConfig,
   ContextConfig,
+  ImageConfig,
 } from "./types";
 import { getDb } from "../db";
 
@@ -133,6 +134,16 @@ export const DEFAULT_CONTEXT: ContextConfig = {
   timestampThreshold: 300, // 5 minutes
 };
 
+export const DEFAULT_IMAGES: ImageConfig = {
+  enabled: false,
+  host: "none",
+  defaultWidth: 1024,
+  defaultHeight: 1024,
+  defaultWorkflow: "portrait",
+  allowLLMMarkers: false,
+  storage: "discord",
+};
+
 export const DEFAULT_CONFIG: WorldConfig = {
   multiCharMode: "auto",
   chronicle: DEFAULT_CHRONICLE,
@@ -144,6 +155,7 @@ export const DEFAULT_CONFIG: WorldConfig = {
   dice: DEFAULT_DICE,
   relationships: DEFAULT_RELATIONSHIPS,
   context: DEFAULT_CONTEXT,
+  images: DEFAULT_IMAGES,
 };
 
 // === Presets (Legacy) ===
@@ -162,6 +174,7 @@ export const PRESET_MINIMAL: PartialWorldConfig = {
   characterState: { enabled: false },
   dice: { enabled: false },
   relationships: { enabled: false },
+  images: { enabled: false },
 };
 
 /** Simple RP - basic features, no complex mechanics */
@@ -188,6 +201,7 @@ export const PRESET_FULL: PartialWorldConfig = {
   characterState: { enabled: true, useAttributes: true, useForms: true, useEffects: true },
   dice: { enabled: true, syntax: "advanced", useCombat: true, useHP: true, useAC: true },
   relationships: { enabled: true, useAffinity: true, useFactions: true },
+  images: { enabled: true, allowLLMMarkers: true },
 };
 
 /** TF (Transformation) focused - forms and effects enabled */
@@ -251,6 +265,7 @@ export function mergeConfig(
     dice: { ...base.dice, ...partial.dice },
     relationships: { ...base.relationships, ...partial.relationships },
     context: { ...base.context, ...partial.context },
+    images: { ...base.images, ...partial.images },
   };
 }
 
@@ -346,6 +361,7 @@ export const features = {
   characterState: (config: WorldConfig) => config.characterState.enabled,
   dice: (config: WorldConfig) => config.dice.enabled,
   relationships: (config: WorldConfig) => config.relationships.enabled,
+  images: (config: WorldConfig) => config.images.enabled,
 
   // Sub-features
   autoExtract: (config: WorldConfig) =>
@@ -384,6 +400,8 @@ export const features = {
     config.time.enabled && config.time.narrateTimeSkips,
   randomEvents: (config: WorldConfig) =>
     config.time.enabled && config.time.useRandomEvents,
+  imageLLMMarkers: (config: WorldConfig) =>
+    config.images.enabled && config.images.allowLLMMarkers,
 };
 
 /** Get the resolved config for a world (DB config merged with defaults) */

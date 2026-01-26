@@ -392,6 +392,41 @@ export function initSchema(db: Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_wizard_user ON wizard_sessions(user_id, channel_id);
+
+    -- Generated images (image generation results)
+    CREATE TABLE IF NOT EXISTS generated_images (
+      id INTEGER PRIMARY KEY,
+      world_id INTEGER NOT NULL REFERENCES worlds(id),
+      entity_id INTEGER REFERENCES entities(id),
+      entity_type TEXT,                -- "character" | "location" | "scene"
+      image_type TEXT NOT NULL,        -- "portrait" | "expression" | "scene" | "custom"
+      workflow_id TEXT NOT NULL,       -- Workflow used to generate
+      variables TEXT NOT NULL,         -- JSON of workflow variables
+      url TEXT NOT NULL,
+      width INTEGER,
+      height INTEGER,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_gen_images_world ON generated_images(world_id);
+    CREATE INDEX IF NOT EXISTS idx_gen_images_entity ON generated_images(entity_id, entity_type);
+    CREATE INDEX IF NOT EXISTS idx_gen_images_type ON generated_images(image_type);
+
+    -- Custom image workflows (per-world)
+    CREATE TABLE IF NOT EXISTS image_workflows (
+      id INTEGER PRIMARY KEY,
+      world_id INTEGER NOT NULL REFERENCES worlds(id),
+      workflow_id TEXT NOT NULL,       -- User-defined ID (e.g., "my-custom-portrait")
+      name TEXT NOT NULL,
+      description TEXT,
+      workflow TEXT NOT NULL,          -- ComfyUI workflow JSON
+      variables TEXT NOT NULL,         -- JSON array of WorkflowVariable
+      output_node_id TEXT NOT NULL,
+      created_at INTEGER DEFAULT (unixepoch()),
+      UNIQUE(world_id, workflow_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_img_workflows_world ON image_workflows(world_id);
   `);
 }
 

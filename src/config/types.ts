@@ -124,6 +124,33 @@ export interface RelationshipConfig {
   relationshipTypes: string[];
 }
 
+// === Images ===
+export interface ImageConfig {
+  enabled: boolean;
+
+  // ComfyUI host settings
+  host: "runcomfy" | "saladcloud" | "runpod" | "selfhosted" | "none";
+  hostEndpoint?: string; // For selfhosted or custom endpoints
+
+  // Default generation settings
+  defaultWidth: number;
+  defaultHeight: number;
+
+  // Workflow settings
+  defaultWorkflow: string; // Workflow ID (e.g., "portrait")
+  customWorkflowsPath?: string; // Path to custom workflow JSONs
+
+  // Triggers
+  allowLLMMarkers: boolean; // Parse [IMAGE: prompt] from responses
+
+  // Storage
+  storage: "s3" | "discord";
+  s3Bucket?: string;
+  s3Endpoint?: string; // For R2/MinIO
+  s3Region?: string;
+  s3PublicUrl?: string; // Public URL prefix for uploaded images
+}
+
 // === Context Assembly ===
 export interface ContextConfig {
   maxTokens: number;
@@ -158,6 +185,7 @@ export interface WorldConfig {
   dice: DiceConfig;
   relationships: RelationshipConfig;
   context: ContextConfig;
+  images: ImageConfig;
 }
 
 // Partial scene config with deep partial boundaries (matches mergeConfig behavior)
