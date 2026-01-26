@@ -344,6 +344,12 @@ const ALLOWED_GLOBALS = new Set([
   "dt_ms", "elapsed_ms", "mentioned", "content", "author", "interaction_type"
 ]);
 
+// Blocked property names (prevent prototype chain escapes)
+const BLOCKED_PROPERTIES = new Set([
+  "constructor", "__proto__", "prototype",
+  "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__",
+]);
+
 /**
  * Generate JS code from AST. Since we control the AST structure,
  * the generated code is safe to execute.
@@ -363,7 +369,10 @@ function generateCode(node: ExprNode): string {
       return `ctx.${node.name}`;
 
     case "member":
-      // Safe: self/time are Object.create(null), no prototype chain
+      // Block dangerous property names that could escape the sandbox
+      if (BLOCKED_PROPERTIES.has(node.property)) {
+        throw new ExprError(`Blocked property access: ${node.property}`);
+      }
       return `(${generateCode(node.object)}?.${node.property})`;
 
     case "call":
