@@ -34,7 +34,7 @@ import { rerollCommand, handleRerollCommand } from "./reroll";
 import { importCommand, handleImportCommand } from "./import";
 import { notesCommand, handleNotesCommand } from "./notes";
 import { debugCommand, handleDebugCommand } from "./debug";
-import { handleOnboardingComponent } from "../onboarding";
+import { handleOnboardingComponent, handleOnboardingModal } from "../onboarding";
 
 // All slash commands
 export const commands: CreateApplicationCommand[] = [
@@ -132,6 +132,9 @@ export async function handleInteraction(
       return;
     }
     if (await handleBuildWizardComponent(bot, interaction)) {
+      return;
+    }
+    if (await handleOnboardingModal(bot, interaction)) {
       return;
     }
     return;

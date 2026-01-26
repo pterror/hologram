@@ -16,6 +16,8 @@ import { getModes } from "../plugins";
 import { setWorldConfig } from "../config/defaults";
 import { getDb } from "../db";
 import { info } from "../logger";
+import { createScene, getActiveScene, addCharacterToScene } from "../scene";
+import { createCharacter, findEntityByName, type CharacterData } from "../db/entities";
 
 // =============================================================================
 // Welcome Embed
@@ -223,6 +225,15 @@ export async function performQuickSetup(
   // Enable session
   enableChannel(channelId);
 
+  // Create a scene if scenes are enabled (or if not specified, create one anyway)
+  const existingScene = getActiveScene(channelId);
+  if (!existingScene) {
+    createScene(worldId, channelId, {
+      time: { day: 1, hour: 9, minute: 0 },  // Pleasant morning start
+    });
+    info("Quick setup: created scene", { channelId, worldId });
+  }
+
   info("Quick setup: completed", { channelId, worldId });
 
   // Respond with success and next steps
@@ -330,6 +341,12 @@ export async function performJustChat(
   // Initialize and enable
   initWorldState(channelId, worldId);
   enableChannel(channelId);
+
+  // Create a scene for consistency
+  const existingScene = getActiveScene(channelId);
+  if (!existingScene) {
+    createScene(worldId, channelId);
+  }
 
   info("Just chat: setup complete", { channelId, worldId });
 
@@ -509,12 +526,92 @@ export async function handleOnboardingComponent(
     }
 
     case "create_character": {
-      // Redirect to build character wizard
+      // Show character creation options
       await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
         type: 4,
         data: {
-          content: "Use `/build character` to create your character!",
+          embeds: [
+            {
+              title: "Create Your Character",
+              description: "Choose how you'd like to create your character:",
+              color: 0x5865f2,
+              fields: [
+                {
+                  name: "🤖 AI-Assisted (Recommended)",
+                  value: "Use `/build character` - Describe what you want and I'll help create it.",
+                  inline: false,
+                },
+                {
+                  name: "📝 Manual",
+                  value: "Use `/character create` - Full control over name, persona, and scenario.",
+                  inline: false,
+                },
+                {
+                  name: "📥 Import",
+                  value: "Use `/import` - Import a character card (PNG, JSON, CharX) from SillyTavern or other tools.",
+                  inline: false,
+                },
+              ],
+            },
+          ],
+          components: [
+            {
+              type: MessageComponentTypes.ActionRow,
+              components: [
+                {
+                  type: MessageComponentTypes.Button,
+                  style: ButtonStyles.Primary,
+                  label: "Quick Character",
+                  customId: "onboarding:quick_character",
+                  emoji: { name: "⚡" },
+                },
+              ],
+            },
+          ],
           flags: 64,
+        },
+      });
+      return true;
+    }
+
+    case "quick_character": {
+      // Open modal for quick character creation
+      await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+        type: 9, // Modal
+        data: {
+          customId: "onboarding:character_modal",
+          title: "Quick Character Creation",
+          components: [
+            {
+              type: MessageComponentTypes.ActionRow,
+              components: [
+                {
+                  type: MessageComponentTypes.InputText,
+                  customId: "name",
+                  label: "Character Name",
+                  style: 1, // Short
+                  placeholder: "e.g., Luna, Kai, Marcus",
+                  required: true,
+                  maxLength: 50,
+                },
+              ],
+            },
+            {
+              type: MessageComponentTypes.ActionRow,
+              components: [
+                {
+                  type: MessageComponentTypes.InputText,
+                  customId: "persona",
+                  label: "Persona (Who is this character?)",
+                  style: 2, // Paragraph
+                  placeholder: "A friendly tavern keeper with a mysterious past...",
+                  required: true,
+                  minLength: 20,
+                  maxLength: 1000,
+                },
+              ],
+            },
+          ],
         },
       });
       return true;
@@ -536,4 +633,100 @@ export async function handleOnboardingComponent(
     default:
       return false;
   }
+}
+
+/** Handle onboarding modal submissions */
+export async function handleOnboardingModal(
+  bot: HologramBot,
+  interaction: HologramInteraction
+): Promise<boolean> {
+  const customId = interaction.data?.customId ?? "";
+
+  if (customId !== "onboarding:character_modal") {
+    return false;
+  }
+
+  // Extract fields from modal
+  const components = interaction.data?.components ?? [];
+  let name = "";
+  let persona = "";
+
+  for (const row of components) {
+    const comp = row.components?.[0];
+    if (comp) {
+      if (comp.customId === "name") {
+        name = comp.value ?? "";
+      } else if (comp.customId === "persona") {
+        persona = comp.value ?? "";
+      }
+    }
+  }
+
+  if (!name || !persona) {
+    await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+      type: 4,
+      data: {
+        content: "Please provide both a name and persona for your character.",
+        flags: 64,
+      },
+    });
+    return true;
+  }
+
+  // Check for existing character with same name
+  const existing = findEntityByName(name, "character");
+  if (existing) {
+    await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+      type: 4,
+      data: {
+        content: `A character named "${name}" already exists. Please choose a different name.`,
+        flags: 64,
+      },
+    });
+    return true;
+  }
+
+  const channelId = interaction.channelId?.toString() ?? "";
+  const worldState = getWorldState(channelId);
+
+  // Create the character
+  const character = createCharacter(name, { persona }, worldState?.id);
+  info("Quick character created", { characterId: character.id, name, channelId });
+
+  // Add to active scene if exists
+  const scene = getActiveScene(channelId);
+  if (scene) {
+    addCharacterToScene(scene.id, character.id, { isAI: true, isActive: true });
+    info("Character added to scene", { sceneId: scene.id, characterId: character.id });
+  }
+
+  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+    type: 4,
+    data: {
+      embeds: [
+        {
+          title: `${name} is ready!`,
+          description: `Your character has been created and is now active in this channel.`,
+          color: 0x57f287, // Green
+          fields: [
+            {
+              name: "Persona",
+              value: persona.length > 200 ? persona.slice(0, 200) + "..." : persona,
+              inline: false,
+            },
+            {
+              name: "Next Steps",
+              value:
+                "• Just chat to interact with your character\n" +
+                "• Use `/character edit` to customize further\n" +
+                "• Use `/character image` to set visual prompts",
+              inline: false,
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  return true;
 }
