@@ -54,11 +54,12 @@ export function rollChance(chance: number): boolean {
 
 /**
  * Evaluate if a character should respond based on their mode
+ * Note: For 'llm' mode, this returns a pending result. Use evaluateCharacterResponseAsync for full eval.
  */
 export function evaluateCharacterResponse(
   ctx: ResponseContext,
   character: Entity<CharacterData>
-): { shouldRespond: boolean; reason: string } {
+): { shouldRespond: boolean; reason: string; needsLLMEval?: boolean } {
   const mode: ResponseMode = character.data.responseMode ?? ctx.config.defaultMode;
   const chance = character.data.responseChance ?? ctx.config.defaultChance;
 
@@ -100,9 +101,8 @@ export function evaluateCharacterResponse(
     }
 
     case "llm":
-      // LLM eval is handled separately (async, needs model call)
-      // For now, return false - the LLM eval middleware will override
-      return { shouldRespond: false, reason: "pending llm eval" };
+      // LLM eval needs async handling
+      return { shouldRespond: false, reason: "pending llm eval", needsLLMEval: true };
 
     case "combined": {
       // Trigger always works
@@ -187,15 +187,121 @@ export function evaluateResponse(ctx: ResponseContext): ResponseDecision {
 }
 
 /**
+ * Async version of evaluateResponse that handles LLM mode
+ */
+export async function evaluateResponseAsync(
+  ctx: ResponseContext,
+  recentMessages: string[] = []
+): Promise<ResponseDecision> {
+  // First do sync evaluation
+  const syncResult = evaluateResponse(ctx);
+
+  // If we got a response or no characters, return sync result
+  if (syncResult.shouldRespond || ctx.characters.length === 0) {
+    return syncResult;
+  }
+
+  // Check if any characters need LLM eval
+  const llmCandidates: Array<{ character: Entity<CharacterData>; reason: string }> = [];
+
+  for (const character of ctx.characters) {
+    const result = evaluateCharacterResponse(ctx, character);
+    if (result.needsLLMEval) {
+      llmCandidates.push({ character, reason: result.reason });
+    }
+  }
+
+  if (llmCandidates.length === 0) {
+    return syncResult;
+  }
+
+  // Run LLM eval for candidates (in parallel)
+  const llmResults = await Promise.all(
+    llmCandidates.map(async ({ character }) => {
+      const shouldRespond = await evaluateLLMResponse(
+        ctx.message,
+        character,
+        recentMessages,
+        { model: ctx.config.llmModel, customPrompt: character.data.llmEvalPrompt }
+      );
+      return { character, shouldRespond };
+    })
+  );
+
+  // Collect responding characters
+  const responding = llmResults
+    .filter((r) => r.shouldRespond)
+    .map((r) => r.character.id);
+
+  if (responding.length === 0) {
+    return {
+      shouldRespond: false,
+      respondingCharacters: [],
+      reason: "llm eval: no characters chose to respond",
+    };
+  }
+
+  const names = llmResults
+    .filter((r) => r.shouldRespond)
+    .map((r) => r.character.name);
+
+  return {
+    shouldRespond: true,
+    respondingCharacters: responding,
+    reason: `llm eval: ${names.join(", ")} chose to respond`,
+  };
+}
+
+/**
  * LLM-based response evaluation
  * Returns true if the LLM thinks the character would speak up
  */
 export async function evaluateLLMResponse(
-  _message: string,
-  _character: Entity<CharacterData>,
-  _recentContext: string[]
+  message: string,
+  character: Entity<CharacterData>,
+  recentContext: string[],
+  config?: { model?: string; customPrompt?: string }
 ): Promise<boolean> {
-  // TODO: Implement LLM eval
-  // For now, return false (will be implemented later)
-  return false;
+  const { generateText } = await import("ai");
+  const { getLanguageModel } = await import("../../ai/models");
+
+  // Use a fast/cheap model for this evaluation
+  const modelSpec = config?.model ?? "anthropic:claude-3-5-haiku-20241022";
+  const model = getLanguageModel(modelSpec);
+
+  const customPrompt = config?.customPrompt ?? character.data.llmEvalPrompt;
+
+  const systemPrompt = customPrompt ??
+    `You are evaluating whether a character would naturally interject in a conversation.
+Character: ${character.name}
+Personality: ${character.data.persona?.slice(0, 500) ?? "No description"}
+
+Consider:
+- Would this character have something to say about this topic?
+- Is the message directed at or about them?
+- Would they naturally speak up given their personality?
+
+Respond with ONLY "yes" or "no".`;
+
+  const contextStr = recentContext.length > 0
+    ? `Recent conversation:\n${recentContext.slice(-5).join("\n")}\n\n`
+    : "";
+
+  try {
+    const result = await generateText({
+      model,
+      system: systemPrompt,
+      messages: [{
+        role: "user",
+        content: `${contextStr}New message: "${message}"\n\nWould ${character.name} respond to this?`,
+      }],
+      maxOutputTokens: 10,
+    });
+
+    const answer = result.text.toLowerCase().trim();
+    return answer.startsWith("yes") || answer === "y";
+  } catch {
+    // On error, default to not responding
+    return false;
+  }
 }

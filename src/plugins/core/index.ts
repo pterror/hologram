@@ -25,7 +25,7 @@ import {
   calculateLLMCost,
   QuotaExceededError,
 } from "../../quota";
-import { evaluateResponse, type ResponseContext } from "../response";
+import { evaluateResponse, evaluateResponseAsync, type ResponseContext } from "../response";
 import { getEntity, type CharacterData } from "../../db/entities";
 import { getPersona } from "../../personas";
 import { DEFAULT_RESPONSE } from "../../config/defaults";
@@ -234,8 +234,19 @@ const gateMiddleware: Middleware = {
       hasPersona,
     };
 
-    // Evaluate response
-    const decision = evaluateResponse(responseCtx);
+    // Check if any characters use LLM mode
+    const hasLLMMode = characters.some(
+      (c) => (c.data.responseMode ?? responseConfig.defaultMode) === "llm"
+    );
+
+    // Evaluate response (use async if LLM mode is needed)
+    const recentMessages = ctx.history
+      .slice(-5)
+      .map((m) => `${m.name ?? m.role}: ${m.content}`);
+
+    const decision = hasLLMMode
+      ? await evaluateResponseAsync(responseCtx, recentMessages)
+      : evaluateResponse(responseCtx);
 
     debug("Response gate decision", {
       shouldRespond: decision.shouldRespond,
