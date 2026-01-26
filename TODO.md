@@ -6,7 +6,7 @@
 
 - [x] Extract circular dependencies - removed phantom workarounds in `build.ts` and `dice/index.ts` (no actual cycles existed)
 - [x] Unify mode/preset system - `/config preset` now uses modes from `plugins/index.ts` as source of truth; legacy PRESETS in defaults.ts kept for backwards compat
-- [ ] Add extractor timeout - fire-and-forget extractors in `plugins/core/index.ts:177` have no cancellation/timeout mechanism
+- [x] Add extractor timeout - extractors now wrapped with 30s timeout in `plugins/registry.ts`
 - [ ] Type-safe plugin data - `ctx.data` Map uses string keys and casting; consider typed plugin data structure
 - [ ] Add structured logging - replace console.log/error with logger abstraction (pino or similar)
 - [ ] RAG query caching - consider caching similar queries to avoid re-embedding every message

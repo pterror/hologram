@@ -227,15 +227,31 @@ export async function runMiddleware(ctx: PluginContext): Promise<void> {
 // Extractor Execution
 // =============================================================================
 
-/** Run all applicable extractors */
-export async function runExtractors(ctx: PluginContext): Promise<void> {
+/** Default timeout for extractors (30 seconds) */
+const EXTRACTOR_TIMEOUT_MS = 30_000;
+
+/** Create a timeout promise that rejects after the given duration */
+function createTimeout(ms: number, name: string): Promise<never> {
+  return new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`Extractor ${name} timed out after ${ms}ms`)), ms)
+  );
+}
+
+/** Run all applicable extractors with timeout protection */
+export async function runExtractors(
+  ctx: PluginContext,
+  timeoutMs: number = EXTRACTOR_TIMEOUT_MS
+): Promise<void> {
   const applicable = extractors.filter((e) => e.shouldRun(ctx));
 
   // Run extractors in parallel (they should be independent)
   await Promise.all(
     applicable.map(async (extractor) => {
       try {
-        await extractor.fn(ctx);
+        await Promise.race([
+          extractor.fn(ctx),
+          createTimeout(timeoutMs, extractor.name),
+        ]);
       } catch (err) {
         console.error(`Extractor ${extractor.name} failed:`, err);
       }
