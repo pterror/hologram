@@ -2,32 +2,33 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'Hologram',
-  description: 'Discord RP bot with smart context/memory/world management',
+  description: 'Discord bot for collaborative worldbuilding and roleplay',
   base: '/hologram/',
+  srcExclude: ['archive/**'],
 
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Guide', link: '/guide/' },
+      { text: 'Reference', link: '/reference/commands' },
     ],
 
     sidebar: [
       {
-        text: 'Getting Started',
+        text: 'Guide',
         items: [
-          { text: 'Introduction', link: '/guide/' },
-          { text: 'Installation', link: '/guide/installation' },
-          { text: 'Configuration', link: '/guide/configuration' },
-          { text: 'API Keys (BYOK)', link: '/guide/keys' },
+          { text: 'Getting Started', link: '/guide/' },
+          { text: 'Core Concepts', link: '/guide/concepts' },
+          { text: 'Setting Up a Channel', link: '/guide/channel-setup' },
+          { text: 'Creating a Persona', link: '/guide/personas' },
         ]
       },
       {
-        text: 'Features',
+        text: 'Reference',
         items: [
-          { text: 'Characters', link: '/guide/characters' },
-          { text: 'Scenes', link: '/guide/scenes' },
-          { text: 'Chronicle', link: '/guide/chronicle' },
-          { text: 'World Building', link: '/guide/world' },
+          { text: 'Commands', link: '/reference/commands' },
+          { text: 'Triggers', link: '/reference/triggers' },
+          { text: 'Fact Patterns', link: '/reference/facts' },
         ]
       }
     ],
