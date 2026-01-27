@@ -257,22 +257,68 @@ registerCommand({
 
     const currentFacts = entity.facts.map(f => f.content).join("\n");
 
-    await respondWithModal(ctx.bot, ctx.interaction, `edit:${entity.id}`, `Edit: ${entity.name}`, [
-      {
-        customId: "facts",
+    // Discord modal: max 5 text inputs, 4000 chars each = 20,000 total
+    const MAX_FIELD_LENGTH = 4000;
+    const MAX_FIELDS = 5;
+
+    if (currentFacts.length > MAX_FIELD_LENGTH * MAX_FIELDS) {
+      await respond(ctx.bot, ctx.interaction,
+        `Entity "${entity.name}" has too many facts to edit via modal (${currentFacts.length}/${MAX_FIELD_LENGTH * MAX_FIELDS} chars).`,
+        true
+      );
+      return;
+    }
+
+    // Split facts into chunks that fit in 4000 chars, breaking at newlines
+    const chunks: string[] = [];
+    let remaining = currentFacts;
+    while (remaining.length > 0) {
+      if (remaining.length <= MAX_FIELD_LENGTH) {
+        chunks.push(remaining);
+        break;
+      }
+      // Find last newline within limit
+      let splitAt = remaining.lastIndexOf("\n", MAX_FIELD_LENGTH);
+      if (splitAt === -1) splitAt = MAX_FIELD_LENGTH; // No newline, hard split
+      chunks.push(remaining.slice(0, splitAt));
+      remaining = remaining.slice(splitAt + 1); // Skip the newline
+    }
+
+    // Build modal fields
+    const fields = chunks.map((chunk, i) => ({
+      customId: `facts${i}`,
+      label: chunks.length === 1 ? "Facts (one per line)" : `Facts (part ${i + 1}/${chunks.length})`,
+      style: TextStyles.Paragraph,
+      value: chunk,
+      required: false,
+    }));
+
+    // If empty, still show one field
+    if (fields.length === 0) {
+      fields.push({
+        customId: "facts0",
         label: "Facts (one per line)",
         style: TextStyles.Paragraph,
-        value: currentFacts,
+        value: "",
         required: false,
-      },
-    ]);
+      });
+    }
+
+    await respondWithModal(ctx.bot, ctx.interaction, `edit:${entity.id}`, `Edit: ${entity.name}`, fields);
   },
 });
 
 registerModalHandler("edit", async (bot, interaction, values) => {
   const customId = interaction.data?.customId ?? "";
   const entityId = parseInt(customId.split(":")[1]);
-  const factsText = values.facts ?? "";
+
+  // Combine all fact fields (facts0, facts1, etc.)
+  const factParts: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const part = values[`facts${i}`];
+    if (part !== undefined) factParts.push(part);
+  }
+  const factsText = factParts.join("\n");
 
   const entity = getEntityWithFacts(entityId);
   if (!entity) {
