@@ -92,6 +92,7 @@ $if mentioned: $respond            # Respond when @mentioned
 $if random() < 0.1: $respond       # 10% chance to respond
 $if dt_ms > 30000: $respond        # Rate limit: 30s between responses
 $if content.includes("hello"): $respond  # String matching (note quotes)
+$if messages(10).includes("help"): $respond  # Check last 10 messages
 ```
 
 **Context variables:** `mentioned`, `replied`, `is_forward`, `is_self`, `content`, `author`, `dt_ms`, `elapsed_ms`, `time.is_night`, `self.*`
@@ -99,7 +100,10 @@ $if content.includes("hello"): $respond  # String matching (note quotes)
 ### Stickers
 
 Stickers are serialized as `*sent a sticker: name*` and appended to message content. A sticker-only message becomes just the sticker text, e.g. `*sent a sticker: catwave*`.
-**Functions:** `random(n)`, `has_fact(pattern)`, `roll(dice)`, `mentioned_in_dialogue(name)`
+
+**Functions:** `random(n)`, `has_fact(pattern)`, `roll(dice)`, `mentioned_in_dialogue(name)`, `messages(n, format)`
+
+The `messages(n, format)` function returns the last N messages (default 1). Format string uses `%a` for author and `%m` for message (default `"%a: %m"`). The `content` and `author` variables are aliases for `messages(1, "%m")` and `messages(1, "%a")`.
 
 ### Bindings
 

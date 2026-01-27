@@ -240,12 +240,16 @@ export function clearMessages(channelId: string): number {
 // Context Building
 // =============================================================================
 
-export function formatMessagesForContext(messages: Message[]): string {
+/**
+ * Format messages for context.
+ * Format string: %a = author, %m = message (default: "%a: %m")
+ */
+export function formatMessagesForContext(messages: Message[], format = "%a: %m"): string {
   // Messages come in DESC order, reverse for chronological
   return messages
     .slice()
     .reverse()
-    .map(m => `${m.author_name}: ${m.content}`)
+    .map(m => format.replace(/%[am]/g, c => c === "%a" ? m.author_name : m.content))
     .join("\n");
 }
 

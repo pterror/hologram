@@ -46,9 +46,9 @@ export interface ExprContext {
   is_self: boolean;
   /** Check if a name is mentioned in dialogue (excludes XML tags like <Name>) */
   mentioned_in_dialogue: (name: string) => boolean;
-  /** Message content */
+  /** Message content (alias for messages(1, "%m")) */
   content: string;
-  /** Message author name */
+  /** Message author (alias for messages(1, "%a")) */
   author: string;
   /** Interaction type if applicable (drink, eat, throw, etc.) */
   interaction_type?: string;
@@ -56,6 +56,8 @@ export interface ExprContext {
   name: string;
   /** Names of all characters bound to channel */
   chars: string[];
+  /** Get the last N messages from the channel. Format: %a=author, %m=message (default "%a: %m") */
+  messages: (n?: number, format?: string) => string;
   /** Additional context-specific variables */
   [key: string]: unknown;
 }
@@ -370,6 +372,7 @@ const EXPR_CONTEXT_REFERENCE: ExprContext = {
   author: "",
   name: "",
   chars: [],
+  messages: () => "",
   interaction_type: "",
 };
 const ALLOWED_GLOBALS = new Set(Object.keys(EXPR_CONTEXT_REFERENCE));
@@ -864,6 +867,8 @@ export interface BaseContextOptions {
   facts?: string[];
   /** Function to check if entity has a fact matching pattern */
   has_fact: (pattern: string) => boolean;
+  /** Function to get the last N messages from the channel. Format: %a=author, %m=message */
+  messages?: (n?: number, format?: string) => string;
   dt_ms?: number;
   elapsed_ms?: number;
   mentioned?: boolean;
@@ -873,8 +878,6 @@ export interface BaseContextOptions {
   is_forward?: boolean;
   /** Whether the message is from this entity's own webhook */
   is_self?: boolean;
-  content?: string;
-  author?: string;
   interaction_type?: string;
   /** This entity's name */
   name?: string;
@@ -925,7 +928,7 @@ function checkMentionedInDialogue(content: string, name: string): boolean {
 export function createBaseContext(options: BaseContextOptions): ExprContext {
   const now = new Date();
   const hour = now.getHours();
-  const content = options.content ?? "";
+  const messages = options.messages ?? (() => "");
 
   return {
     self: parseSelfContext(options.facts ?? []),
@@ -948,12 +951,13 @@ export function createBaseContext(options: BaseContextOptions): ExprContext {
     replied_to: options.replied_to ?? "",
     is_forward: options.is_forward ?? false,
     is_self: options.is_self ?? false,
-    mentioned_in_dialogue: (name: string) => checkMentionedInDialogue(content, name),
-    content,
-    author: options.author ?? "",
+    mentioned_in_dialogue: (name: string) => checkMentionedInDialogue(messages(1, "%m"), name),
+    content: messages(1, "%m"),
+    author: messages(1, "%a"),
     interaction_type: options.interaction_type,
     name: options.name ?? "",
     chars: options.chars ?? [],
+    messages,
   };
 }
 

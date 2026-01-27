@@ -2,7 +2,7 @@ import { createBot, Intents } from "@discordeno/bot";
 import { info, debug, warn, error } from "../logger";
 import { registerCommands, handleInteraction } from "./commands";
 import { handleMessage, type EvaluatedEntity } from "../ai/handler";
-import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, trackWebhookMessage, getWebhookMessageEntity } from "../db/discord";
+import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, trackWebhookMessage, getWebhookMessageEntity, getMessages, formatMessagesForContext } from "../db/discord";
 import { getEntity, getEntityWithFacts, getSystemEntity, getFactsForEntity, type EntityWithFacts } from "../db/entities";
 import { evaluateFacts, createBaseContext } from "../logic/expr";
 import { executeWebhook, setBot } from "./webhooks";
@@ -263,6 +263,7 @@ bot.events.messageCreate = async (message) => {
         const regex = new RegExp(pattern, "i");
         return facts.some(f => regex.test(f));
       },
+      messages: (n = 1, format?: string) => formatMessagesForContext(getMessages(channelId, n), format),
       dt_ms: lastResponse > 0 ? messageTime - lastResponse : 0,
       elapsed_ms: 0,
       mentioned: isMentioned ?? false,
@@ -270,8 +271,6 @@ bot.events.messageCreate = async (message) => {
       replied_to: repliedToWebhookEntity?.entityName ?? "",
       is_forward: isForward,
       is_self: isSelf,
-      content,
-      author: authorName,
       name: entity.name,
       chars: channelEntities.map(e => e.name),
     });
@@ -370,6 +369,7 @@ async function processEntityRetry(
       const regex = new RegExp(pattern, "i");
       return facts.some(f => regex.test(f));
     },
+    messages: (n = 1, format?: string) => formatMessagesForContext(getMessages(channelId, n), format),
     dt_ms: lastResponse > 0 ? now - lastResponse : 0,
     elapsed_ms: now - messageTime,
     mentioned: false, // Retry is never from a mention
@@ -377,8 +377,6 @@ async function processEntityRetry(
     replied_to: "",
     is_forward: false,
     is_self: false, // Retry is never self-triggered
-    content,
-    author: username,
     name: entity.name,
     chars: allChannelEntities.map(e => e.name),
   });

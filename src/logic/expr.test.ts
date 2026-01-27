@@ -45,7 +45,14 @@ function checkMentionedInDialogue(content: string, name: string): boolean {
 }
 
 function makeContext(overrides: Partial<ExprContext> = {}): ExprContext {
-  const content = overrides.content ?? "";
+  // Support legacy content/author overrides by wrapping in messages function
+  const contentOverride = overrides.content;
+  const authorOverride = overrides.author;
+  const messages = overrides.messages ?? ((n?: number, fmt?: string) => {
+    if (fmt === "%m") return contentOverride ?? "";
+    if (fmt === "%a") return authorOverride ?? "";
+    return authorOverride && contentOverride ? `${authorOverride}: ${contentOverride}` : contentOverride ?? "";
+  });
   return {
     self: Object.create(null),
     random: () => 0,
@@ -63,11 +70,12 @@ function makeContext(overrides: Partial<ExprContext> = {}): ExprContext {
     replied_to: "",
     is_forward: false,
     is_self: false,
-    mentioned_in_dialogue: (name: string) => checkMentionedInDialogue(content, name),
-    content,
-    author: "",
+    mentioned_in_dialogue: (name: string) => checkMentionedInDialogue(messages(1, "%m"), name),
+    content: messages(1, "%m"),
+    author: messages(1, "%a"),
     name: "",
     chars: [],
+    messages,
     ...overrides,
   };
 }
@@ -525,13 +533,14 @@ describe("integration", () => {
       facts: ["name: Alice", "level: 5"],
       has_fact: (p) => p === "poisoned",
       mentioned: true,
-      content: "hello",
+      messages: (n, fmt) => fmt === "%m" ? "hello" : fmt === "%a" ? "Bob" : "Bob: hello",
     });
 
     expect(ctx.self.name).toBe("Alice");
     expect(ctx.self.level).toBe(5);
     expect(ctx.mentioned).toBe(true);
     expect(ctx.content).toBe("hello");
+    expect(ctx.author).toBe("Bob");
     expect(typeof ctx.random).toBe("function");
     expect(typeof ctx.time.hour).toBe("number");
   });
@@ -685,7 +694,7 @@ describe("integration", () => {
     const ctx = createBaseContext({
       facts: [],
       has_fact: () => false,
-      content: '<Alice> "Hello" <Bob> "Hey Alice!"',
+      messages: (n, fmt) => fmt === "%m" ? '<Alice> "Hello" <Bob> "Hey Alice!"' : "",
     });
     // Alice is mentioned in second quote
     expect(ctx.mentioned_in_dialogue("Alice")).toBe(true);
@@ -699,7 +708,7 @@ describe("integration", () => {
     const ctx = createBaseContext({
       facts: [],
       has_fact: () => false,
-      content: "<Alice> 'Hey Bob!'",
+      messages: (n, fmt) => fmt === "%m" ? "<Alice> 'Hey Bob!'" : "",
     });
     expect(ctx.mentioned_in_dialogue("Bob")).toBe(true);
     expect(ctx.mentioned_in_dialogue("Alice")).toBe(false);
@@ -710,7 +719,7 @@ describe("integration", () => {
     const ctx = createBaseContext({
       facts: [],
       has_fact: () => false,
-      content: "Alice walked into the room.\nShe looked around.",
+      messages: (n, fmt) => fmt === "%m" ? "Alice walked into the room.\nShe looked around." : "",
     });
     expect(ctx.mentioned_in_dialogue("Alice")).toBe(false);
     expect(ctx.mentioned_in_dialogue("She")).toBe(false);
@@ -719,7 +728,7 @@ describe("integration", () => {
     const ctx2 = createBaseContext({
       facts: [],
       has_fact: () => false,
-      content: 'Alice walked in.\n"Hey Bob!" she said.',
+      messages: (n, fmt) => fmt === "%m" ? 'Alice walked in.\n"Hey Bob!" she said.' : "",
     });
     expect(ctx2.mentioned_in_dialogue("Bob")).toBe(true);
     expect(ctx2.mentioned_in_dialogue("Alice")).toBe(false); // Outside quotes
@@ -729,7 +738,7 @@ describe("integration", () => {
     const ctx = createBaseContext({
       facts: [],
       has_fact: () => false,
-      content: "Hey Alice!",
+      messages: (n, fmt) => fmt === "%m" ? "Hey Alice!" : "",
       is_self: false,
       name: "Alice",
     });
@@ -739,7 +748,7 @@ describe("integration", () => {
     const selfCtx = createBaseContext({
       facts: [],
       has_fact: () => false,
-      content: "Hey Alice!",
+      messages: (n, fmt) => fmt === "%m" ? "Hey Alice!" : "",
       is_self: true,
       name: "Alice",
     });
