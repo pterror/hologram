@@ -92,13 +92,68 @@ function checkFactLocked(entityId: number, factContent: string): { locked: false
     }
     // Check if this is the locked version of the fact we're trying to modify
     if (trimmed.startsWith(LOCKED_SIGIL + " ")) {
-      const lockedContent = trimmed.slice(LOCKED_SIGIL.length + 1).trim();
+      let lockedContent = trimmed.slice(LOCKED_SIGIL.length + 1).trim();
+      // Handle $locked $if condition: content - extract the actual content
+      if (lockedContent.startsWith("$if ")) {
+        const colonIdx = findConditionColon(lockedContent);
+        if (colonIdx !== -1) {
+          lockedContent = lockedContent.slice(colonIdx + 1).trim();
+        }
+      }
       if (lockedContent === factContent) {
         return { locked: true, reason: "Fact is locked" };
       }
     }
   }
   return { locked: false };
+}
+
+/**
+ * Find the colon that separates $if condition from content.
+ * Handles colons inside strings and ternary operators.
+ */
+function findConditionColon(str: string): number {
+  let depth = 0;
+  let inString: string | null = null;
+  let ternaryDepth = 0;
+
+  for (let i = 4; i < str.length; i++) { // Start after "$if "
+    const ch = str[i];
+
+    // Handle string literals
+    if (inString) {
+      if (ch === "\\") {
+        i++; // Skip escaped char
+        continue;
+      }
+      if (ch === inString) {
+        inString = null;
+      }
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = ch;
+      continue;
+    }
+
+    // Track parentheses depth
+    if (ch === "(") depth++;
+    if (ch === ")") depth--;
+
+    // Track ternary depth
+    if (ch === "?") ternaryDepth++;
+
+    // Colon at depth 0 and not part of ternary is our separator
+    if (ch === ":" && depth === 0) {
+      if (ternaryDepth > 0) {
+        ternaryDepth--;
+        continue;
+      }
+      return i;
+    }
+  }
+  return -1;
 }
 
 // =============================================================================
