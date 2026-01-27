@@ -98,7 +98,7 @@ $if content.includes("hello"): $respond  # String matching (note quotes)
 
 ### Stickers
 
-Stickers are serialized as `[Sticker :name:]` and appended to message content. A sticker-only message becomes just the sticker text, e.g. `[Sticker :catwave:]`.
+Stickers are serialized as `*sent a sticker: name*` and appended to message content. A sticker-only message becomes just the sticker text, e.g. `*sent a sticker: catwave*`.
 **Functions:** `random(n)`, `has_fact(pattern)`, `roll(dice)`, `mentioned_in_dialogue(name)`
 
 ### Bindings

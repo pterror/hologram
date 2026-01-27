@@ -141,11 +141,11 @@ bot.events.messageCreate = async (message) => {
   if (!message.content && !message.stickerItems?.length) return;
   if (!markProcessed(message.id)) return;
 
-  // Serialize stickers as [Sticker :name:] appended to content
+  // Serialize stickers as action text appended to content
   let content = message.content ?? "";
   if (message.stickerItems?.length) {
     const stickerText = message.stickerItems
-      .map(s => `[Sticker :${s.name}:]`)
+      .map(s => `*sent a sticker: ${s.name}*`)
       .join(" ");
     content = content ? `${content} ${stickerText}` : stickerText;
   }
