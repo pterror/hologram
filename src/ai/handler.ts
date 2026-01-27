@@ -133,24 +133,12 @@ function buildSystemPrompt(
   }
   const context = contextParts.join("\n\n");
 
-  // Identify character entities for multi-char guidance
-  const characters = respondingEntities.filter(e =>
-    e.facts.some(f => f.includes("is a character"))
-  );
-
-  debug("Multi-char check", {
-    respondingCount: respondingEntities.length,
-    characterCount: characters.length,
-    characterNames: characters.map(c => c.name),
-    allFacts: respondingEntities.map(e => ({ name: e.name, facts: e.facts })),
-  });
-
   let multiCharGuidance = "";
-  if (characters.length > 1) {
-    const names = characters.map(c => c.name).join(", ");
+  if (respondingEntities.length > 1) {
+    const names = respondingEntities.map(c => c.name).join(", ");
     multiCharGuidance = `\n\nMultiple characters are present: ${names}. Format your response with XML tags:
-<${characters[0]?.name ?? "Name"}>*waves* Hello there!</${characters[0]?.name ?? "Name"}>
-<${characters[1]?.name ?? "Other"}>Nice to meet you.</${characters[1]?.name ?? "Other"}>
+<${respondingEntities[0]?.name ?? "Name"}>*waves* Hello there!</${respondingEntities[0]?.name ?? "Name"}>
+<${respondingEntities[1]?.name ?? "Other"}>Nice to meet you.</${respondingEntities[1]?.name ?? "Other"}>
 
 Wrap each character's dialogue in their name tag. Characters may interact naturally.`;
   }
