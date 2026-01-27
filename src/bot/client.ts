@@ -1,5 +1,5 @@
 import { createBot, Intents } from "@discordeno/bot";
-import { info, debug, error } from "../logger";
+import { info, debug, warn, error } from "../logger";
 import { registerCommands, handleInteraction } from "./commands";
 import { handleMessage, type EvaluatedEntity } from "../ai/handler";
 import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage } from "../db/discord";
@@ -264,7 +264,16 @@ bot.events.messageCreate = async (message) => {
       chars: channelEntities.map(e => e.name),
     });
 
-    const result = evaluateFacts(facts, ctx);
+    let result;
+    try {
+      result = evaluateFacts(facts, ctx);
+    } catch (err) {
+      warn("Fact evaluation failed", {
+        entity: entity.name,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      continue;
+    }
 
     debug("Fact evaluation", {
       entity: entity.name,

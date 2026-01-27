@@ -82,7 +82,7 @@ interface Token {
 }
 
 const OPERATORS = [
-  "&&", "||", "==", "!=", "<=", ">=", "<", ">",
+  "&&", "||", "===", "!==", "==", "!=", "<=", ">=", "<", ">",
   "+", "-", "*", "/", "%", "!", "?", ":"
 ];
 
@@ -258,7 +258,7 @@ class Parser {
 
   private parseEquality(): ExprNode {
     let node = this.parseComparison();
-    while (this.peek().type === "operator" && (this.peek().value === "==" || this.peek().value === "!=")) {
+    while (this.peek().type === "operator" && ["==", "!=", "===", "!=="].includes(this.peek().value as string)) {
       const op = this.consume().value as string;
       node = { type: "binary", operator: op, left: node, right: this.parseComparison() };
     }
@@ -351,13 +351,28 @@ class Parser {
   }
 }
 
-// Allowed top-level identifiers (whitelist)
-const ALLOWED_GLOBALS = new Set([
-  "self", "random", "has_fact", "roll", "time",
-  "dt_ms", "elapsed_ms", "mentioned", "replied", "replied_to", "is_forward",
-  "is_self", "mentioned_in_dialogue",
-  "content", "author", "interaction_type"
-]);
+// Derive allowed globals from ExprContext - TypeScript ensures this stays in sync
+const EXPR_CONTEXT_REFERENCE: ExprContext = {
+  self: {},
+  random: () => 0,
+  has_fact: () => false,
+  roll: () => 0,
+  time: { hour: 0, is_day: false, is_night: false },
+  dt_ms: 0,
+  elapsed_ms: 0,
+  mentioned: false,
+  replied: false,
+  replied_to: "",
+  is_forward: false,
+  is_self: false,
+  mentioned_in_dialogue: () => false,
+  content: "",
+  author: "",
+  name: "",
+  chars: [],
+  interaction_type: "",
+};
+const ALLOWED_GLOBALS = new Set(Object.keys(EXPR_CONTEXT_REFERENCE));
 
 // Blocked property names (prevent prototype chain escapes)
 const BLOCKED_PROPERTIES = new Set([
