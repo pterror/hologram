@@ -34,6 +34,21 @@ speaks with a warm, welcoming tone
 
 Done! The Bartender now responds when @mentioned in this channel.
 
+## Server-Wide Setup
+
+To have an entity respond across all channels in a server:
+
+```
+/b server Narrator
+```
+
+This is useful for:
+- Server-wide narrators
+- Assistants that should be available everywhere
+- Default characters that respond unless a channel has its own binding
+
+Channel bindings take priority over server bindings, so you can override the default in specific channels.
+
 ## Configuring Response Behavior
 
 By default, characters only respond when @mentioned. You can change this with `$respond` directives.

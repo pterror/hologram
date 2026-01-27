@@ -65,6 +65,17 @@ When a channel is bound to an entity (usually a character), that entity:
 - Responds based on its facts and triggers
 - Can learn and update its facts through conversation
 
+### Server Binding
+
+```
+/b server Narrator
+```
+
+When a server is bound to an entity:
+- That entity responds in all channels of the server
+- Channel-specific bindings take priority (override server binding)
+- Useful for server-wide narrators or assistants
+
 ### User Binding (Persona)
 
 ```
@@ -88,6 +99,7 @@ Bindings can have different scopes:
 
 ```
 /b channel Aria              # This channel only
+/b server Narrator           # All channels in this server
 /b me Traveler scope:guild   # This server
 /b me Narrator scope:global  # Everywhere
 ```

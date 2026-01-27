@@ -107,9 +107,10 @@ The `messages(n, format)` function returns the last N messages (default 1). Form
 
 ### Bindings
 
-Discord channels/users map to entities via `discord_entities`:
+Discord channels/users/servers map to entities via `discord_entities`:
 - **Scope resolution**: channel-scoped > guild-scoped > global
 - **Channel binding**: Entity responds in that channel
+- **Server binding**: Entity responds in all channels of that server
 - **User binding**: User speaks as that entity (persona)
 
 ## Commands
