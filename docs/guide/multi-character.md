@@ -82,6 +82,12 @@ When multiple characters respond, the AI uses XML tags to separate their dialogu
 <Marcus>*grunts* Another traveler. State your business.</Marcus>
 ```
 
+### Selective Response
+
+Even when multiple characters pass their `$respond` conditions, the AI decides who should actually speak based on context. If someone says "Hey Aria, what do you think?" the AI will likely only respond as Aria, not Marcus.
+
+If no character would naturally respond to a message, the AI returns `<none/>` and no response is sent. This prevents awkward replies to messages that weren't directed at any character.
+
 ### Webhook Display
 
 Each character's response is sent as a separate Discord message using webhooks. The message shows:

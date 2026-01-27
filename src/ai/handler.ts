@@ -208,7 +208,9 @@ function buildSystemPrompt(
 <${respondingEntities[0]?.name ?? "Name"}>*waves* Hello there!</${respondingEntities[0]?.name ?? "Name"}>
 <${respondingEntities[1]?.name ?? "Other"}>Nice to meet you.</${respondingEntities[1]?.name ?? "Other"}>
 
-Wrap each character's dialogue in their name tag. Characters may interact naturally.`;
+Wrap each character's dialogue in their name tag. Characters may interact naturally.
+
+Not every character needs to respond to every message. Only respond as characters who would naturally engage with what was said. If no character would respond, reply with only <none/>.`;
   }
 
   return `${context}
@@ -364,6 +366,12 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
       factsUpdated,
       factsRemoved,
     });
+
+    // Check for <none/> sentinel (LLM decided no character should respond)
+    if (result.text.trim() === "<none/>") {
+      debug("LLM returned <none/> - no response");
+      return null;
+    }
 
     // Parse multi-character response if multiple entities
     const characterResponses = parseMultiCharacterResponse(result.text, evaluated);
