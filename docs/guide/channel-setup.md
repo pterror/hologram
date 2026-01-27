@@ -34,70 +34,69 @@ speaks with a warm, welcoming tone
 
 Done! The Bartender now responds when @mentioned in this channel.
 
-## Configuring Triggers
+## Configuring Response Behavior
 
-By default, characters only respond when @mentioned. You can change this by adding trigger facts.
+By default, characters only respond when @mentioned. You can change this with `$respond` directives.
 
-### Respond to Mentions (Default)
+### Respond to Everything
 
 ```
-trigger: mention -> respond
+$respond
+```
+
+### Respond to Mentions Only (Default)
+
+```
+$if mentioned: $respond
 ```
 
 ### Respond to Specific Words
 
 ```
-trigger: pattern "hello|hi|hey" -> respond
-trigger: pattern "bartender" -> respond
+$if content.match(/hello|hi|hey/i): $respond
+$if content.match(/bartender/i): $respond
 ```
 
 ### Random Chance
 
 ```
-trigger: random 0.1 -> respond
+$if random(0.1): $respond
 ```
 
 The character has a 10% chance to respond to any message.
 
-### LLM Decides
+### Multiple Conditions
+
+You can combine conditions - they're evaluated in order, last match wins:
 
 ```
-trigger: llm -> respond
-```
-
-A fast, cheap LLM decides if the character would naturally respond to the conversation.
-
-### Multiple Triggers
-
-You can combine triggers - they're evaluated in order:
-
-```
-trigger: mention -> respond
-trigger: pattern "bartender" -> respond
-trigger: random 0.05 -> respond
+$if mentioned: $respond
+$if content.match(/bartender/i): $respond
+$if random(0.05): $respond
 ```
 
 ## Rate Limiting
 
-### Throttling
+### Minimum Time Between Responses
 
-Prevent spam with a minimum time between responses:
+Prevent spam by checking time since last response:
 
 ```
-throttle_ms: 30000
+$if dt_ms > 30000: $respond
 ```
 
 The character won't respond more than once per 30 seconds.
 
-### Delay
+### Delay Before Responding
 
-Wait before evaluating triggers (useful for batching messages):
+Use `$retry` to wait before evaluating (useful for batching messages):
 
 ```
-delay_ms: 5000
+$retry 5000
+$if elapsed_ms > 4000: $respond
 ```
 
-Wait 5 seconds after a message before deciding to respond. If more messages arrive, the timer resets.
+Wait ~5 seconds after a message before responding. If a new message arrives, the timer resets.
 
 ## Example: Active NPC
 
@@ -114,10 +113,9 @@ is a character
 owns the general store
 is grumpy but fair
 responds to questions about items and prices
-trigger: mention -> respond
-trigger: pattern "shop|buy|sell|price" -> respond
-trigger: random 0.05 -> respond
-throttle_ms: 60000
+$if mentioned: $respond
+$if content.match(/shop|buy|sell|price/i): $respond
+$if random(0.05) && dt_ms > 60000: $respond
 ```
 
 ## Example: Narrator
@@ -135,9 +133,7 @@ is a narrator
 describes the scene and atmosphere
 speaks in third person
 only interjects when something interesting happens
-trigger: llm -> respond
-delay_ms: 10000
-throttle_ms: 120000
+$if random(0.05) && dt_ms > 120000: $respond
 ```
 
 ## Checking Status

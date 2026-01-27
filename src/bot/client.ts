@@ -2,20 +2,9 @@ import { createBot, Intents } from "@discordeno/bot";
 import { info, debug, error } from "../logger";
 import { registerCommands, handleInteraction } from "./commands";
 import { handleMessage } from "../ai/handler";
-import {
-  parseTriggerConfig,
-  evaluateTriggers,
-  addToBuffer,
-  getBufferedMessages,
-  setBufferTimer,
-  hasActiveTimer,
-  canRespondThrottle,
-  markResponseTime,
-  getThrottleRemainingMs,
-  type TriggerAction,
-} from "../ai/response-decision";
 import { resolveDiscordEntity, isNewUser, markUserWelcomed } from "../db/discord";
 import { getEntityWithFacts, getSystemEntity, getFactsForEntity } from "../db/entities";
+import { evaluateFacts, createBaseContext } from "../logic/expr";
 import "./commands/commands"; // Register all commands
 import { ensureHelpEntities } from "./commands/commands";
 
@@ -63,6 +52,12 @@ export const bot = createBot({
 
 let botUserId: bigint | null = null;
 
+// Track last response time per channel (for dt_ms in expressions)
+const lastResponseTime = new Map<string, number>();
+
+// Pending retry timers per channel
+const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 // Message deduplication
 const processedMessages = new Set<string>();
 const MAX_PROCESSED = 1000;
@@ -100,6 +95,7 @@ bot.events.messageCreate = async (message) => {
   const isMentioned = botUserId !== null && message.mentionedUserIds?.includes(botUserId);
   const channelId = message.channelId.toString();
   const guildId = message.guildId?.toString();
+  const messageTime = Date.now();
 
   debug("Message", {
     channel: channelId,
@@ -108,10 +104,10 @@ bot.events.messageCreate = async (message) => {
     mentioned: isMentioned,
   });
 
-  // Get channel entity and config
+  // Get channel entity
   const channelEntityId = resolveDiscordEntity(channelId, "channel", guildId, channelId);
 
-  // No binding = no response (unless mentioned and we want to offer setup, but skip for now)
+  // No binding = no response
   if (!channelEntityId) {
     if (isMentioned) {
       debug("Mentioned but no channel binding - ignoring");
@@ -131,117 +127,109 @@ bot.events.messageCreate = async (message) => {
     });
   }
 
-  // Parse trigger config from channel facts
-  const config = parseTriggerConfig(channelEntity.facts);
-
-  // Always add to buffer for context
-  addToBuffer(channelId, message.author.username, message.content);
-
-  // Check throttle
-  if (!canRespondThrottle(channelId, config.throttleMs)) {
-    const remaining = getThrottleRemainingMs(channelId, config.throttleMs);
-    debug("Throttled", { channelId, remainingMs: remaining });
-    return;
+  // Cancel any pending retry for this channel
+  const existingTimer = retryTimers.get(channelId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    retryTimers.delete(channelId);
   }
 
-  // Build trigger context
-  const triggerCtx = {
-    isMentioned: isMentioned ?? false,
+  // Build expression context
+  const facts = channelEntity.facts.map(f => f.content);
+  const lastResponse = lastResponseTime.get(channelId) ?? 0;
+  const ctx = createBaseContext({
+    facts,
+    has_fact: (pattern: string) => {
+      const regex = new RegExp(pattern, "i");
+      return facts.some(f => regex.test(f));
+    },
+    dt_ms: lastResponse > 0 ? messageTime - lastResponse : 0,
+    elapsed_ms: 0,
+    mentioned: isMentioned ?? false,
     content: message.content,
-    characterName: channelEntity.name,
-    recentMessages: getBufferedMessages(channelId).slice(-10),
-  };
+    author: message.author.username,
+  });
 
-  // If delay is configured, use buffering for non-immediate triggers
-  if (config.delayMs > 0) {
-    // Mentions bypass delay
-    if (isMentioned) {
-      const action = await evaluateTriggers(config, triggerCtx);
-      if (action) {
-        await executeAction(action, channelId, guildId, message.author.username, message.content, true);
-      }
-      return;
-    }
+  // Evaluate facts to determine if we should respond
+  const result = evaluateFacts(facts, ctx);
 
-    // Buffer other messages
-    if (hasActiveTimer(channelId)) {
-      debug("Delay timer already active, buffering message");
-      return;
-    }
+  debug("Fact evaluation", {
+    shouldRespond: result.shouldRespond,
+    retryMs: result.retryMs,
+    factsCount: result.facts.length,
+  });
 
-    debug("Starting delay timer", { delayMs: config.delayMs });
-    setBufferTimer(channelId, async () => {
-      await processDelayedTriggers(channelId, guildId, channelEntity.name, config);
-    }, config.delayMs);
+  // Handle $retry - schedule re-evaluation
+  if (result.retryMs !== null && result.retryMs > 0) {
+    debug("Scheduling retry", { retryMs: result.retryMs });
+    const timer = setTimeout(() => {
+      retryTimers.delete(channelId);
+      processRetry(channelId, guildId, message.author.username, message.content, messageTime);
+    }, result.retryMs);
+    retryTimers.set(channelId, timer);
     return;
   }
 
-  // No delay - evaluate triggers immediately
-  const action = await evaluateTriggers(config, triggerCtx);
-  if (!action) {
-    debug("No trigger matched");
+  // Default: respond if mentioned, unless explicitly suppressed
+  const shouldRespond = result.shouldRespond ?? isMentioned;
+
+  if (!shouldRespond) {
+    debug("Not responding");
     return;
   }
 
-  await executeAction(action, channelId, guildId, message.author.username, message.content, isMentioned ?? false);
+  await sendResponse(channelId, guildId, message.author.username, message.content, isMentioned ?? false);
 };
 
-async function processDelayedTriggers(
-  channelId: string,
-  guildId: string | undefined,
-  characterName: string,
-  config: ReturnType<typeof parseTriggerConfig>
-) {
-  // Check throttle again
-  if (!canRespondThrottle(channelId, config.throttleMs)) {
-    debug("Throttled after delay");
-    return;
-  }
-
-  const bufferedMessages = getBufferedMessages(channelId);
-  if (bufferedMessages.length === 0) {
-    debug("No messages in buffer after delay");
-    return;
-  }
-
-  // Get the last message for context
-  const lastMsg = bufferedMessages[bufferedMessages.length - 1];
-
-  // Evaluate triggers with buffered context
-  const triggerCtx = {
-    isMentioned: false, // Mentions bypassed delay
-    content: lastMsg.content,
-    characterName,
-    recentMessages: bufferedMessages.slice(-10),
-  };
-
-  const action = await evaluateTriggers(config, triggerCtx);
-  if (!action) {
-    debug("No trigger matched after delay");
-    return;
-  }
-
-  await executeAction(action, channelId, guildId, lastMsg.authorName, lastMsg.content, false);
-}
-
-async function executeAction(
-  action: TriggerAction,
+async function processRetry(
   channelId: string,
   guildId: string | undefined,
   username: string,
   content: string,
-  isMentioned: boolean
+  messageTime: number
 ) {
-  switch (action.type) {
-    case "respond":
-      await sendResponse(channelId, guildId, username, content, isMentioned);
-      break;
+  const channelEntityId = resolveDiscordEntity(channelId, "channel", guildId, channelId);
+  if (!channelEntityId) return;
 
-    case "narrate":
-      // TODO: Implement narration (system message injection)
-      debug("Narrate action not yet implemented", { template: action.template });
-      break;
+  const channelEntity = getEntityWithFacts(channelEntityId);
+  if (!channelEntity) return;
+
+  const facts = channelEntity.facts.map(f => f.content);
+  const lastResponse = lastResponseTime.get(channelId) ?? 0;
+  const now = Date.now();
+
+  const ctx = createBaseContext({
+    facts,
+    has_fact: (pattern: string) => {
+      const regex = new RegExp(pattern, "i");
+      return facts.some(f => regex.test(f));
+    },
+    dt_ms: lastResponse > 0 ? now - lastResponse : 0,
+    elapsed_ms: now - messageTime,
+    mentioned: false, // Retry is never from a mention
+    content,
+    author: username,
+  });
+
+  const result = evaluateFacts(facts, ctx);
+
+  // Handle chained $retry
+  if (result.retryMs !== null && result.retryMs > 0) {
+    debug("Scheduling chained retry", { retryMs: result.retryMs });
+    const timer = setTimeout(() => {
+      retryTimers.delete(channelId);
+      processRetry(channelId, guildId, username, content, messageTime);
+    }, result.retryMs);
+    retryTimers.set(channelId, timer);
+    return;
   }
+
+  if (result.shouldRespond !== true) {
+    debug("Not responding after retry");
+    return;
+  }
+
+  await sendResponse(channelId, guildId, username, content, false);
 }
 
 async function sendResponse(
@@ -270,7 +258,7 @@ async function sendResponse(
   const result = await handleMessage({
     channelId,
     guildId,
-    userId: "", // We don't have this in delayed context, but handler will resolve from buffer
+    userId: "",
     username,
     content,
     isMentioned,
@@ -281,8 +269,8 @@ async function sendResponse(
     clearInterval(typingInterval);
   }
 
-  // Mark response time for throttling
-  markResponseTime(channelId);
+  // Mark response time
+  lastResponseTime.set(channelId, Date.now());
 
   if (result) {
     try {

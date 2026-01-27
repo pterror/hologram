@@ -26,24 +26,26 @@ is in [entity:12] (The Tavern)
 
 The `[entity:N]` syntax references another entity by ID. The parenthetical note is optional but helpful for readability.
 
-## Triggers
+## Response Control
 
-Control when the entity responds (see [Triggers](/reference/triggers)):
-
-```
-trigger: mention -> respond
-trigger: pattern "hello" -> respond
-trigger: random 0.1 -> respond
-trigger: llm -> respond
-trigger: always -> respond
-```
-
-## Trigger Configuration
+Control when the entity responds (see [Response Control](/reference/triggers)):
 
 ```
-delay_ms: 5000
-throttle_ms: 30000
-llm_decide_model: google:gemini-2.5-flash-lite-preview-06-2025
+$respond
+$respond false
+$if mentioned: $respond
+$if random(0.1): $respond
+$if content.match(/hello/i): $respond
+```
+
+## Conditional Facts
+
+Facts can be conditional using `$if`:
+
+```
+$if time.is_night: glows faintly
+$if random(0.3): is in a good mood
+$if self.energy > 0.5: seems energetic
 ```
 
 ## Writing Good Facts

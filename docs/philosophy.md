@@ -68,19 +68,18 @@ This isn't about engineering complexity - the nested approach isn't "overenginee
 
 ## Composable Primitives Over Enums
 
-Configuration uses composable boolean/numeric facts rather than enum modes.
+Configuration uses composable boolean/numeric conditions rather than enum modes.
 
 ```
-# Good - composable triggers
-trigger: mention -> respond
-trigger: random 0.1 -> respond
-trigger: llm -> respond
+# Good - composable conditions
+$if mentioned: $respond
+$if random(0.1): $respond
 
 # Bad - enum modes
-response_mode: mention_or_random_or_llm
+response_mode: mention_or_random
 ```
 
-**Why?** Enums force predefined combinations. "What if you want mention + llm decided?" With composable primitives, you just add both triggers. New combinations emerge without code changes.
+**Why?** Enums force predefined combinations. "What if you want mention + random?" With composable primitives, you just add both conditions. New combinations emerge without code changes.
 
 ## Dogfooding
 
@@ -90,12 +89,12 @@ Use the system to build the system. Help is an entity with facts, not special-ca
 Entity: help
 Facts:
   - is the help system
-  - topics: start, commands, triggers...
+  - topics: start, commands, response control...
 
 Entity: help:triggers
 Facts:
-  - is help for triggers
-  - trigger: <condition> -> <action>
+  - is help for response control
+  - $if <condition>: $respond
   ...
 ```
 
@@ -188,7 +187,7 @@ roll_effects({ effects: [
 
 Randomness appears in two places with different timing:
 
-1. **Triggers** (before LLM): `trigger: random 0.1 -> respond`
+1. **Response control** (before LLM): `$if random(0.1): $respond`
    - System evaluates before deciding to invoke LLM
    - LLM never sees this - it either gets called or doesn't
 
@@ -196,14 +195,14 @@ Randomness appears in two places with different timing:
    - LLM is generating a response and needs a random outcome
    - Must call a tool to get true randomness
 
-Same random mechanic, different entry points. Triggers gate LLM invocation; tools provide randomness during generation.
+Same random mechanic, different entry points. Response control gates LLM invocation; tools provide randomness during generation.
 
-## Triggers are Evaluated, Not Interpreted
+## Conditions are Evaluated, Not Interpreted
 
-Trigger conditions are evaluated by the system, not left to LLM interpretation.
+Response conditions are evaluated by the system, not left to LLM interpretation.
 
 ```
-trigger: random 0.1 -> respond
+$if random(0.1): $respond
 ```
 
 The system rolls the 10% chance, not the LLM. The LLM doesn't see "maybe respond 10% of the time" - it either gets asked to respond or it doesn't.
@@ -377,17 +376,15 @@ Simple things should be simple. Complex things should be possible.
 /c character Aria
 /b channel Aria
 
-# Complex - detailed TF-capable character with custom triggers
+# Complex - detailed TF-capable character with custom response control
 /c character Aria
 /e Aria
   is a character
   has human ears
   has no tail
-  trigger: mention -> respond
-  trigger: pattern "aria|merchant" -> respond
-  trigger: llm -> respond
-  delay_ms: 5000
-  throttle_ms: 30000
+  $if mentioned: $respond
+  $if content.match(/aria|merchant/i): $respond
+  $if random(0.1) && dt_ms > 30000: $respond
 ```
 
 **Why?** New users shouldn't face a wall of configuration. Start simple, add complexity as needed. The same system handles both cases.

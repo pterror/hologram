@@ -24,8 +24,9 @@ src/
 ├── ai/
 │   ├── models.ts         # Provider abstraction (provider:model spec)
 │   ├── embeddings.ts     # Local embeddings (planned)
-│   ├── handler.ts        # LLM message handler with tool calls
-│   └── response-decision.ts  # Trigger system (when to respond)
+│   └── handler.ts        # LLM message handler with tool calls
+├── logic/
+│   └── expr.ts           # $if expression evaluator + $respond control
 └── bot/
     ├── client.ts         # Discordeno setup + message handling
     └── commands/
@@ -49,7 +50,7 @@ Facts:
   - is a character
   - has silver hair
   - is in [entity:12]
-  - trigger: mention -> respond
+  - $if mentioned: $respond
 ```
 
 ### Database (6 tables)
@@ -70,7 +71,7 @@ Discord Message
     ↓
 Channel Entity Lookup (via discord_entities)
     ↓
-Trigger Evaluation (mention? pattern? random? llm?)
+Fact Evaluation ($if conditions, $respond directives)
     ↓
 LLM Call (system: entity facts, user: recent messages)
     ↓
@@ -79,17 +80,20 @@ Tool Calls (add_fact, update_fact, remove_fact)
 Response
 ```
 
-### Trigger System
+### Response Control
 
-Triggers are facts on channel entities that control response behavior:
+Response behavior is controlled via `$respond` directives and `$if` conditionals:
 
 ```
-trigger: <condition> -> <action>
+$respond                           # Always respond
+$respond false                     # Never respond
+$if mentioned: $respond            # Respond when @mentioned
+$if random(0.1): $respond          # 10% chance to respond
+$if dt_ms > 30000: $respond        # Rate limit: 30s between responses
 ```
 
-**Conditions:** `mention`, `pattern "regex"`, `random 0.1`, `llm`, `always`
-**Actions:** `respond`, `narrate` (planned)
-**Config:** `delay_ms: N`, `throttle_ms: N`, `llm_decide_model: spec`
+**Context variables:** `mentioned`, `content`, `author`, `dt_ms`, `elapsed_ms`, `time.is_night`, `self.*`
+**Functions:** `random(n)`, `has_fact(pattern)`, `roll(dice)`
 
 ### Bindings
 
@@ -109,7 +113,7 @@ Discord channels/users map to entities via `discord_entities`:
 | `/bind <target> <entity>` | `/b` | Bind channel/user |
 | `/status` | `/s` | Channel state |
 
-Help is an entity: `/v help`, `/v help:commands`, `/v help:triggers`
+Help is an entity: `/v help`, `/v help:commands`, `/v help:respond`
 
 ## Dev Commands
 
@@ -137,7 +141,7 @@ OPENAI_API_KEY=      # For OpenAI (optional)
 
 **Facts are freeform.** No rigid schema. Patterns emerge from conventions.
 
-**Triggers are composable.** Multiple conditions, all boolean, evaluated in order.
+**Conditions are composable.** Multiple `$if` conditions, all boolean, evaluated in order.
 
 **Dogfooding.** Help system is implemented via entities with facts.
 

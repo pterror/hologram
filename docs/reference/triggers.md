@@ -1,194 +1,172 @@
-# Triggers Reference
+# Response Control Reference
 
-Triggers control when the bot responds. Add them as facts on channel-bound entities.
+Control when the bot responds using `$respond` directives and `$if` conditionals.
 
-## Trigger Format
+## Basic Syntax
+
+### Always respond
 
 ```
-trigger: <condition> -> <action>
+$respond
+```
+
+### Never respond (suppress)
+
+```
+$respond false
+```
+
+### Conditional response
+
+```
+$if <condition>: $respond
 ```
 
 ## Conditions
 
-### `mention`
+Conditions are JavaScript-like expressions with access to context variables.
 
-Fires when the bot is @mentioned.
+### Context Variables
 
+| Variable | Type | Description |
+|----------|------|-------------|
+| `mentioned` | boolean | Bot was @mentioned |
+| `content` | string | Message content |
+| `author` | string | Message author name |
+| `dt_ms` | number | Milliseconds since last response |
+| `elapsed_ms` | number | Milliseconds since message (for retries) |
+| `random(n)` | function | Returns true with probability n (0.0-1.0) |
+| `has_fact(pattern)` | function | Check if entity has matching fact |
+| `time.hour` | number | Current hour (0-23) |
+| `time.is_day` | boolean | 6am-6pm |
+| `time.is_night` | boolean | 6pm-6am |
+| `self.*` | varies | Entity's own `key: value` facts |
+
+### Examples
+
+Respond when mentioned:
 ```
-trigger: mention -> respond
-```
-
-This is the default if no triggers are defined.
-
----
-
-### `pattern "<regex>"`
-
-Fires when the message matches a regular expression.
-
-```
-trigger: pattern "hello|hi|hey" -> respond
-trigger: pattern "^!" -> respond
-trigger: pattern "help" -> respond
-```
-
-The pattern is case-insensitive.
-
----
-
-### `random <chance>`
-
-Fires with a random probability (0.0 to 1.0).
-
-```
-trigger: random 0.1 -> respond    # 10% chance
-trigger: random 0.05 -> respond   # 5% chance
-trigger: random 0.5 -> respond    # 50% chance
+$if mentioned: $respond
 ```
 
----
-
-### `llm`
-
-An LLM decides if the character would naturally respond.
-
+Respond 10% of the time:
 ```
-trigger: llm -> respond
+$if random(0.1): $respond
 ```
 
-Uses a fast, cheap model to evaluate whether the character should join the conversation based on recent messages and the character's personality.
-
-You can specify a model:
-
+Respond to keywords:
 ```
-trigger: llm google:gemini-2.5-flash-lite -> respond
+$if content.includes("hello"): $respond
 ```
 
----
-
-### `always`
-
-Always fires (use with throttling).
-
+Respond only at night:
 ```
-trigger: always -> respond
-throttle_ms: 60000
+$if time.is_night: $respond
 ```
 
----
-
-## Actions
-
-### `respond`
-
-Generate and send a response.
-
+Minimum 30 seconds between responses:
 ```
-trigger: mention -> respond
+$if dt_ms > 30000: $respond
 ```
 
----
+## Default Behavior
 
-### `narrate` (planned)
+If no `$respond` directive is present, the bot responds when @mentioned.
 
-Inject system narration.
-
+To respond to all messages, add:
 ```
-trigger: pattern "enters" -> narrate
-```
-
----
-
-## Configuration Facts
-
-### `delay_ms`
-
-Wait before evaluating triggers. Useful for batching messages.
-
-```
-delay_ms: 5000
+$respond
 ```
 
-If more messages arrive during the delay, the timer resets. After the delay, triggers are evaluated against all buffered messages.
-
-**Note:** Mentions bypass the delay and respond immediately.
-
----
-
-### `throttle_ms`
-
-Minimum time between responses.
-
+To never respond (disable the entity), add:
 ```
-throttle_ms: 30000
+$respond false
 ```
 
-Even if triggers fire, the bot won't respond if less than 30 seconds have passed since the last response.
+## Multiple Conditions
 
----
-
-### `llm_decide_model`
-
-Model to use for `llm` trigger decisions.
+Multiple `$if` lines are evaluated in order. The last matching `$respond` wins.
 
 ```
-llm_decide_model: google:gemini-2.5-flash-lite-preview-06-2025
+$respond false
+$if mentioned: $respond
+$if random(0.1): $respond
 ```
 
-Default: `google:gemini-2.5-flash-lite-preview-06-2025`
+This suppresses responses by default, but responds if mentioned OR 10% randomly.
 
----
+## Delayed Response with $retry
+
+Schedule a re-evaluation after a delay:
+
+```
+$retry 5000
+```
+
+This is useful for batching messages or creating "thinking" delays.
+
+Example - wait 3 seconds then respond if no new messages:
+```
+$retry 3000
+$if elapsed_ms > 2000: $respond
+```
 
 ## Examples
 
+### Respond to mentions only (default)
+
+No special facts needed, or explicitly:
+```
+$if mentioned: $respond
+```
+
 ### Responsive NPC
 
-Responds to mentions and name, with some random interjections:
-
+Responds to mentions, name patterns, and occasionally randomly:
 ```
-trigger: mention -> respond
-trigger: pattern "bartender|barkeep" -> respond
-trigger: random 0.05 -> respond
-throttle_ms: 30000
+$if mentioned: $respond
+$if content.match(/bartender|barkeep/i): $respond
+$if random(0.05): $respond
 ```
 
-### Quiet Observer
+### Rate-limited responses
 
-Only responds when the LLM thinks it's appropriate:
-
+Respond to everything, but only once per minute:
 ```
-trigger: llm -> respond
-delay_ms: 10000
-throttle_ms: 120000
+$if dt_ms > 60000: $respond
 ```
 
-### Always Active
+### Quiet observer
 
-Responds to everything (with rate limiting):
-
+Small chance to respond, with minimum spacing:
 ```
-trigger: always -> respond
-throttle_ms: 5000
+$if random(0.05) && dt_ms > 120000: $respond
 ```
 
-### Keyword Bot
+### Night owl
 
-Only responds to specific commands:
-
+Only active at night:
 ```
-trigger: pattern "^!help" -> respond
-trigger: pattern "^!status" -> respond
-trigger: pattern "^!roll" -> respond
+$if time.is_night && mentioned: $respond
 ```
 
-## Trigger Evaluation
+### Keyword bot
 
-Triggers are evaluated in order. The first one that fires determines the action. If no triggers fire, no response is sent.
+Only responds to specific patterns:
+```
+$respond false
+$if content.startsWith("!help"): $respond
+$if content.startsWith("!roll"): $respond
+```
+
+## Self Context
+
+Facts in `key: value` format are accessible via `self.*`:
 
 ```
-trigger: mention -> respond      # Checked first
-trigger: pattern "help" -> respond  # Checked second
-trigger: random 0.1 -> respond   # Checked third
+mood: happy
+energy: 0.8
+$if self.energy > 0.5: $respond
 ```
 
-If the bot is @mentioned, it responds immediately without checking the other triggers.
+This lets entities have dynamic behavior based on their state.
