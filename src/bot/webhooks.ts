@@ -85,8 +85,14 @@ export async function getOrCreateWebhook(channelId: string): Promise<CachedWebho
 
     debug("Created webhook", { channelId, webhookId: webhook.webhookId });
     return webhook;
-  } catch (err) {
-    error("Failed to create webhook", err);
+  } catch (err: unknown) {
+    const allProps: Record<string, unknown> = {};
+    if (err && typeof err === "object") {
+      for (const key of Object.getOwnPropertyNames(err)) {
+        allProps[key] = (err as Record<string, unknown>)[key];
+      }
+    }
+    error("Failed to create webhook", err, { errorProps: allProps, channelId });
     return null;
   }
 }
