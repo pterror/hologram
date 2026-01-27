@@ -83,14 +83,15 @@ Response
 
 ### Response Control
 
-Response behavior is controlled via `$respond` directives and `$if` conditionals:
+Response behavior is controlled via `$respond` directives and `$if` conditionals. Expressions are JavaScript (strings need quotes):
 
 ```
 $respond                           # Always respond
 $respond false                     # Never respond
 $if mentioned: $respond            # Respond when @mentioned
-$if random() < 0.1: $respond          # 10% chance to respond
+$if random() < 0.1: $respond       # 10% chance to respond
 $if dt_ms > 30000: $respond        # Rate limit: 30s between responses
+$if content.includes("hello"): $respond  # String matching (note quotes)
 ```
 
 **Context variables:** `mentioned`, `replied`, `is_forward`, `is_self`, `content`, `author`, `dt_ms`, `elapsed_ms`, `time.is_night`, `self.*`

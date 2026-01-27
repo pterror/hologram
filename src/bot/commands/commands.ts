@@ -752,6 +752,7 @@ const HELP_ENTITY_FACTS: Record<string, string[]> = {
     "is help for $if expressions and response control",
     "---",
     "**Syntax:** `$if <expr>: <fact or directive>`",
+    "Expressions are JavaScript. Strings need quotes: `\"hello\"` not `hello`",
     "---",
     "**Directives:**",
     "• `$respond` - respond to this message",

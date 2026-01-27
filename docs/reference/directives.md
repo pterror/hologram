@@ -20,10 +20,13 @@ This separation is intentional. Each category handles a different concern, and d
 
 Conditionally include a fact or trigger a directive. The expression is evaluated at message time.
 
+**Expressions are JavaScript**, so strings must be quoted:
+
 ```
 $if time.is_night: glows faintly
 $if mentioned: $respond
 $if random() < 0.1 && dt_ms > 30000: $respond
+$if content.includes("hello"): $respond
 ```
 
 See [Response Control](/reference/triggers) for expression syntax and available variables.

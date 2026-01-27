@@ -24,7 +24,19 @@ $if <condition>: $respond
 
 ## Conditions
 
-Conditions are JavaScript-like expressions with access to context variables.
+Conditions are **JavaScript expressions** with access to context variables.
+
+::: tip String Quoting
+Since expressions are JavaScript, strings must be quoted: `"hello"` not `hello`.
+
+```
+# Correct
+$if content.includes("hello"): $respond
+
+# Wrong - hello is treated as an undefined variable
+$if content.includes(hello): $respond
+```
+:::
 
 ### Context Variables
 
