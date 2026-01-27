@@ -454,6 +454,7 @@ const IF_SIGIL = "$if ";
 const RESPOND_SIGIL = "$respond";
 const RETRY_SIGIL = "$retry ";
 const AVATAR_SIGIL = "$avatar ";
+const LOCKED_SIGIL = "$locked";
 
 export interface ProcessedFact {
   content: string;
@@ -471,13 +472,45 @@ export interface ProcessedFact {
   isAvatar: boolean;
   /** For $avatar directives, the URL */
   avatarUrl?: string;
+  /** True if this is a pure $locked directive (locks entire entity) */
+  isLockedDirective: boolean;
+  /** True if this fact has $locked prefix (fact is locked but still visible) */
+  isLockedFact: boolean;
 }
 
 /**
- * Parse a fact, detecting $if prefix, $respond, and $retry directives.
+ * Parse a fact, detecting $if prefix, $respond, $retry, $locked directives.
  */
 export function parseFact(fact: string): ProcessedFact {
   const trimmed = fact.trim();
+
+  // Check for $locked directive or prefix
+  const lockedResult = parseLockedDirective(trimmed);
+  if (lockedResult !== null) {
+    if (lockedResult.isDirective) {
+      // Pure $locked directive - locks entire entity
+      return {
+        content: trimmed,
+        conditional: false,
+        isRespond: false,
+        isRetry: false,
+        isAvatar: false,
+        isLockedDirective: true,
+        isLockedFact: false,
+      };
+    } else {
+      // $locked prefix - fact content is locked but visible
+      return {
+        content: lockedResult.content,
+        conditional: false,
+        isRespond: false,
+        isRetry: false,
+        isAvatar: false,
+        isLockedDirective: false,
+        isLockedFact: true,
+      };
+    }
+  }
 
   if (trimmed.startsWith(IF_SIGIL)) {
     const rest = trimmed.slice(IF_SIGIL.length);
@@ -499,6 +532,8 @@ export function parseFact(fact: string): ProcessedFact {
         respondValue: respondResult,
         isRetry: false,
         isAvatar: false,
+        isLockedDirective: false,
+        isLockedFact: false,
       };
     }
 
@@ -513,10 +548,12 @@ export function parseFact(fact: string): ProcessedFact {
         isRetry: true,
         retryMs: retryResult,
         isAvatar: false,
+        isLockedDirective: false,
+        isLockedFact: false,
       };
     }
 
-    return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false };
+    return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false };
   }
 
   // Check for unconditional $respond
@@ -529,6 +566,8 @@ export function parseFact(fact: string): ProcessedFact {
       respondValue: respondResult,
       isRetry: false,
       isAvatar: false,
+      isLockedDirective: false,
+      isLockedFact: false,
     };
   }
 
@@ -542,6 +581,8 @@ export function parseFact(fact: string): ProcessedFact {
       isRetry: true,
       retryMs: retryResult,
       isAvatar: false,
+      isLockedDirective: false,
+      isLockedFact: false,
     };
   }
 
@@ -555,10 +596,12 @@ export function parseFact(fact: string): ProcessedFact {
       isRetry: false,
       isAvatar: true,
       avatarUrl: avatarResult,
+      isLockedDirective: false,
+      isLockedFact: false,
     };
   }
 
-  return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false };
+  return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false };
 }
 
 /**
@@ -611,6 +654,29 @@ function parseAvatarDirective(content: string): string | null {
   return url;
 }
 
+/**
+ * Parse a $locked directive or prefix.
+ * Returns null if not a locked directive.
+ * Returns { isDirective: true } for pure "$locked" (locks entity).
+ * Returns { isDirective: false, content: "..." } for "$locked <fact>" (locks that fact).
+ */
+function parseLockedDirective(content: string): { isDirective: true } | { isDirective: false; content: string } | null {
+  if (!content.startsWith(LOCKED_SIGIL)) {
+    return null;
+  }
+  const rest = content.slice(LOCKED_SIGIL.length);
+  // Pure $locked directive (nothing after, or just whitespace)
+  if (rest.trim() === "") {
+    return { isDirective: true };
+  }
+  // $locked prefix - must have space after sigil
+  if (rest.startsWith(" ")) {
+    return { isDirective: false, content: rest.trim() };
+  }
+  // Not a valid $locked (e.g., $lockedOut would not match)
+  return null;
+}
+
 export interface EvaluatedFacts {
   /** Facts that apply (excluding directives) */
   facts: string[];
@@ -622,6 +688,10 @@ export interface EvaluatedFacts {
   retryMs: number | null;
   /** Avatar URL if $avatar directive was present */
   avatarUrl: string | null;
+  /** True if $locked directive present (entity is locked from LLM modification) */
+  isLocked: boolean;
+  /** Set of fact content strings that are locked (from $locked prefix) */
+  lockedFacts: Set<string>;
 }
 
 /**
@@ -632,6 +702,8 @@ export interface EvaluatedFacts {
  * Directives (evaluated top to bottom):
  * - $respond / $respond false → control response behavior (last one wins)
  * - $retry <ms> → schedule re-evaluation (early exit)
+ * - $locked → lock entity from LLM modification
+ * - $locked <fact> → lock specific fact from LLM modification
  */
 export function evaluateFacts(
   facts: string[],
@@ -642,6 +714,8 @@ export function evaluateFacts(
   let respondSource: string | null = null;
   let retryMs: number | null = null;
   let avatarUrl: string | null = null;
+  let isLocked = false;
+  const lockedFacts = new Set<string>();
 
   // Strip comments first
   const uncommented = stripComments(facts);
@@ -656,6 +730,19 @@ export function evaluateFacts(
     }
 
     if (!applies) continue;
+
+    // Handle $locked directive - locks entire entity
+    if (parsed.isLockedDirective) {
+      isLocked = true;
+      continue;
+    }
+
+    // Handle $locked prefix - fact is locked but visible
+    if (parsed.isLockedFact) {
+      lockedFacts.add(parsed.content);
+      results.push(parsed.content);
+      continue;
+    }
 
     // Handle $respond directives - last one wins
     if (parsed.isRespond) {
@@ -679,7 +766,7 @@ export function evaluateFacts(
     results.push(parsed.content);
   }
 
-  return { facts: results, shouldRespond, respondSource, retryMs, avatarUrl };
+  return { facts: results, shouldRespond, respondSource, retryMs, avatarUrl, isLocked, lockedFacts };
 }
 
 // =============================================================================
