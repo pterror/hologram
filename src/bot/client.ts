@@ -460,6 +460,71 @@ async function processEntityRetry(
   }]);
 }
 
+/** Helper to send a message (webhook or regular) and optionally track it */
+async function sendStreamMessage(
+  channelId: string,
+  content: string,
+  entity?: EvaluatedEntity
+): Promise<string | null> {
+  if (entity) {
+    // Try webhook first
+    const ids = await executeWebhook(channelId, content, entity.name, entity.avatarUrl ?? undefined);
+    if (ids && ids[0]) {
+      return ids[0];
+    }
+    // Fall back to regular message with name prefix
+    try {
+      const sent = await bot.helpers.sendMessage(BigInt(channelId), {
+        content: `**${entity.name}:** ${content}`,
+      });
+      return sent.id.toString();
+    } catch (err) {
+      error("Failed to send stream message", err);
+      return null;
+    }
+  } else {
+    // No entity - regular message
+    try {
+      const sent = await bot.helpers.sendMessage(BigInt(channelId), { content });
+      return sent.id.toString();
+    } catch (err) {
+      error("Failed to send stream message", err);
+      return null;
+    }
+  }
+}
+
+/** Helper to edit a message (webhook or regular) */
+async function editStreamMessage(
+  channelId: string,
+  messageId: string,
+  content: string,
+  entity?: EvaluatedEntity
+): Promise<boolean> {
+  if (entity) {
+    // Try webhook edit first
+    const success = await editWebhookMessage(channelId, messageId, content);
+    if (success) return true;
+    // Fall back to regular edit with name prefix
+    try {
+      await bot.helpers.editMessage(BigInt(channelId), BigInt(messageId), {
+        content: `**${entity.name}:** ${content}`,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  } else {
+    // No entity - regular edit
+    try {
+      await bot.helpers.editMessage(BigInt(channelId), BigInt(messageId), { content });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 /**
  * Handle streaming response with different modes.
  */
@@ -497,8 +562,8 @@ async function handleStreamingResponse(
       case "line": {
         // Single entity: new message per line
         if (entity) {
-          const ids = await executeWebhook(channelId, event.content, entity.name, entity.avatarUrl ?? undefined);
-          if (ids) allMessageIds.push(...ids);
+          const msgId = await sendStreamMessage(channelId, event.content, entity);
+          if (msgId) allMessageIds.push(msgId);
           currentLineMessage = null;
         }
         break;
@@ -511,24 +576,24 @@ async function handleStreamingResponse(
             // Edit single message with full content
             if (fullMessage) {
               fullMessage.content = event.fullContent;
-              await editWebhookMessage(channelId, fullMessage.messageId, event.fullContent);
+              await editStreamMessage(channelId, fullMessage.messageId, event.fullContent, entity);
             } else {
-              const ids = await executeWebhook(channelId, event.fullContent, entity.name, entity.avatarUrl ?? undefined);
-              if (ids && ids[0]) {
-                fullMessage = { messageId: ids[0], content: event.fullContent };
-                allMessageIds.push(...ids);
+              const msgId = await sendStreamMessage(channelId, event.fullContent, entity);
+              if (msgId) {
+                fullMessage = { messageId: msgId, content: event.fullContent };
+                allMessageIds.push(msgId);
               }
             }
           } else if (streamMode === "lines_full") {
             // Edit current line message
             if (currentLineMessage) {
               currentLineMessage.content = event.fullContent;
-              await editWebhookMessage(channelId, currentLineMessage.messageId, event.fullContent);
+              await editStreamMessage(channelId, currentLineMessage.messageId, event.fullContent, entity);
             } else {
-              const ids = await executeWebhook(channelId, event.fullContent, entity.name, entity.avatarUrl ?? undefined);
-              if (ids && ids[0]) {
-                currentLineMessage = { messageId: ids[0], content: event.fullContent };
-                allMessageIds.push(...ids);
+              const msgId = await sendStreamMessage(channelId, event.fullContent, entity);
+              if (msgId) {
+                currentLineMessage = { messageId: msgId, content: event.fullContent };
+                allMessageIds.push(msgId);
               }
             }
           }
@@ -548,20 +613,20 @@ async function handleStreamingResponse(
         if (charEntity) {
           if (streamMode === "lines") {
             // New message per line
-            const ids = await executeWebhook(channelId, event.content, event.name, charEntity.avatarUrl ?? undefined);
-            if (ids) allMessageIds.push(...ids);
+            const msgId = await sendStreamMessage(channelId, event.content, charEntity);
+            if (msgId) allMessageIds.push(msgId);
           } else {
             // For full/lines_full, accumulate and edit
             const existing = entityMessages.get(event.name);
             const newContent = existing ? `${existing.content}\n${event.content}` : event.content;
             if (existing) {
               existing.content = newContent;
-              await editWebhookMessage(channelId, existing.messageId, newContent);
+              await editStreamMessage(channelId, existing.messageId, newContent, charEntity);
             } else {
-              const ids = await executeWebhook(channelId, newContent, event.name, charEntity.avatarUrl ?? undefined);
-              if (ids && ids[0]) {
-                entityMessages.set(event.name, { messageId: ids[0], content: newContent });
-                allMessageIds.push(...ids);
+              const msgId = await sendStreamMessage(channelId, newContent, charEntity);
+              if (msgId) {
+                entityMessages.set(event.name, { messageId: msgId, content: newContent });
+                allMessageIds.push(msgId);
               }
             }
           }
@@ -576,12 +641,12 @@ async function handleStreamingResponse(
           const existing = entityMessages.get(event.name);
           if (existing) {
             existing.content = event.content;
-            await editWebhookMessage(channelId, existing.messageId, event.content);
+            await editStreamMessage(channelId, existing.messageId, event.content, charEntity);
           } else {
-            const ids = await executeWebhook(channelId, event.content, event.name, charEntity.avatarUrl ?? undefined);
-            if (ids && ids[0]) {
-              entityMessages.set(event.name, { messageId: ids[0], content: event.content });
-              allMessageIds.push(...ids);
+            const msgId = await sendStreamMessage(channelId, event.content, charEntity);
+            if (msgId) {
+              entityMessages.set(event.name, { messageId: msgId, content: event.content });
+              allMessageIds.push(msgId);
             }
           }
         }
@@ -595,11 +660,11 @@ async function handleStreamingResponse(
           const existing = entityMessages.get(event.name);
           if (existing) {
             // Final edit with complete content
-            await editWebhookMessage(channelId, existing.messageId, event.content);
+            await editStreamMessage(channelId, existing.messageId, event.content, charEntity);
           } else if (event.content) {
             // No message created yet, create one
-            const ids = await executeWebhook(channelId, event.content, event.name, charEntity.avatarUrl ?? undefined);
-            if (ids) allMessageIds.push(...ids);
+            const msgId = await sendStreamMessage(channelId, event.content, charEntity);
+            if (msgId) allMessageIds.push(msgId);
           }
         }
         break;
@@ -612,12 +677,12 @@ async function handleStreamingResponse(
     }
   }
 
-  // Track all webhook messages
+  // Track all messages for reply detection
   if (allMessageIds.length > 0) {
     if (isSingleEntity && entity) {
       trackWebhookMessages(allMessageIds, entity.id, entity.name);
     } else {
-      // For multi-char, we tracked per character already
+      // For multi-char, track per character
       for (const [name, msg] of entityMessages) {
         const charEntity = entities.find(e => e.name === name);
         if (charEntity) {

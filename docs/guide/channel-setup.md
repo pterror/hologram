@@ -130,7 +130,7 @@ Each character's response streams independently to their own message.
 
 ### Notes
 
-- Streaming requires webhook permissions
+- Works with webhooks or regular messages (falls back automatically)
 - `full` and `lines_full` modes edit messages, which has rate limits
 - For very long responses, `lines` mode is most reliable
 
