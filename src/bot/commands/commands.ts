@@ -12,6 +12,7 @@ import {
   getEntityWithFacts,
   getEntityWithFactsByName,
   deleteEntity,
+  transferOwnership,
   addFact,
   setFacts,
   ensureSystemEntity,
@@ -333,6 +334,63 @@ registerCommand({
 
     deleteEntity(entity.id);
     await respond(ctx.bot, ctx.interaction, `Deleted "${entity.name}"`, true);
+  },
+});
+
+// =============================================================================
+// /transfer - Transfer entity ownership
+// =============================================================================
+
+registerCommand({
+  name: "transfer",
+  description: "Transfer entity ownership to another user",
+  options: [
+    {
+      name: "entity",
+      description: "Entity name or ID",
+      type: ApplicationCommandOptionTypes.String,
+      required: true,
+      autocomplete: true,
+    },
+    {
+      name: "user",
+      description: "User to transfer ownership to",
+      type: ApplicationCommandOptionTypes.User,
+      required: true,
+    },
+  ],
+  async handler(ctx, options) {
+    const input = options.entity as string;
+    const newOwnerId = options.user as string;
+
+    let entity = null;
+    const id = parseInt(input);
+    if (!isNaN(id)) {
+      entity = getEntity(id);
+    }
+    if (!entity) {
+      entity = getEntityByName(input);
+    }
+
+    if (!entity) {
+      await respond(ctx.bot, ctx.interaction, `Entity not found: ${input}`, true);
+      return;
+    }
+
+    // Only current owner can transfer
+    if (entity.owned_by !== ctx.userId) {
+      await respond(ctx.bot, ctx.interaction, "You can only transfer entities you own", true);
+      return;
+    }
+
+    // Prevent transferring to self
+    if (newOwnerId === ctx.userId) {
+      await respond(ctx.bot, ctx.interaction, "You already own this entity", true);
+      return;
+    }
+
+    transferOwnership(entity.id, newOwnerId);
+    await respond(ctx.bot, ctx.interaction, `Transferred "${entity.name}" to <@${newOwnerId}>`, true);
   },
 });
 
