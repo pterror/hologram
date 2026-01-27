@@ -2,7 +2,7 @@ import { createBot, Intents } from "@discordeno/bot";
 import { info, debug, warn, error } from "../logger";
 import { registerCommands, handleInteraction } from "./commands";
 import { handleMessage, type EvaluatedEntity } from "../ai/handler";
-import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage } from "../db/discord";
+import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, trackWebhookMessage, getWebhookMessageEntity } from "../db/discord";
 import { getEntity, getEntityWithFacts, getSystemEntity, getFactsForEntity, type EntityWithFacts } from "../db/entities";
 import { evaluateFacts, createBaseContext } from "../logic/expr";
 import { executeWebhook, setBot } from "./webhooks";
@@ -34,7 +34,7 @@ export const bot = createBot({
       guildId: true,
       author: true,
       mentionedUserIds: true as const,
-      messageReference: true as const,
+      messageReference: true,
       messageSnapshots: true as const,
       webhookId: true as const,
     },
@@ -68,6 +68,11 @@ export const bot = createBot({
       type: true,
       parentId: true,
     },
+    messageReference: {
+      messageId: true,
+      channelId: true,
+      guildId: true,
+    },
   },
 });
 
@@ -100,13 +105,6 @@ const MAX_PROCESSED = 1000;
 const botMessageIds = new Set<string>();
 const MAX_BOT_MESSAGES = 1000;
 
-// Track webhook message IDs → entity info (for webhook reply detection)
-interface WebhookMessageInfo {
-  entityId: number;
-  entityName: string;
-}
-const webhookMessageEntities = new Map<string, WebhookMessageInfo>();
-const MAX_WEBHOOK_MESSAGES = 1000;
 
 function markProcessed(messageId: bigint): boolean {
   const id = messageId.toString();
@@ -161,7 +159,7 @@ bot.events.messageCreate = async (message) => {
   if (isWebhookMessage) {
     // Check if this is one of our own webhook messages
     const msgId = message.id.toString();
-    if (webhookMessageEntities.has(msgId)) {
+    if (getWebhookMessageEntity(msgId)) {
       // This is our own webhook - increment chain depth
       const depth = (responseChainDepth.get(channelId) ?? 0) + 1;
       responseChainDepth.set(channelId, depth);
@@ -526,21 +524,8 @@ function trackBotMessage(messageId: bigint): void {
 /** Track webhook message IDs with entity association for reply detection */
 function trackWebhookMessages(messageIds: string[], entityId: number, entityName: string): void {
   for (const id of messageIds) {
-    webhookMessageEntities.set(id, { entityId, entityName });
+    trackWebhookMessage(id, entityId, entityName);
   }
-  // Trim if too large
-  if (webhookMessageEntities.size > MAX_WEBHOOK_MESSAGES) {
-    const iter = webhookMessageEntities.keys();
-    for (let i = 0; i < MAX_WEBHOOK_MESSAGES / 2; i++) {
-      const v = iter.next().value;
-      if (v) webhookMessageEntities.delete(v);
-    }
-  }
-}
-
-/** Look up entity info for a webhook message */
-function getWebhookMessageEntity(messageId: string): WebhookMessageInfo | undefined {
-  return webhookMessageEntities.get(messageId);
 }
 
 async function sendWelcomeDm(userId: bigint): Promise<void> {

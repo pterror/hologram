@@ -111,6 +111,16 @@ function initSchema(db: Database) {
     )
   `);
 
+  // Webhook messages - track which entity sent which message (for reply detection)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS webhook_messages (
+      message_id TEXT PRIMARY KEY,
+      entity_id INTEGER NOT NULL,
+      entity_name TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Indexes
   db.exec(`CREATE INDEX IF NOT EXISTS idx_facts_entity ON facts(entity_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_discord_entities_lookup ON discord_entities(discord_id, discord_type)`);

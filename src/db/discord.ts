@@ -276,3 +276,41 @@ export function markUserWelcomed(userId: string): void {
     INSERT OR IGNORE INTO welcomed_users (discord_id) VALUES (?)
   `).run(userId);
 }
+
+// =============================================================================
+// Webhook Message Tracking (for reply detection)
+// =============================================================================
+
+export interface WebhookMessageInfo {
+  entityId: number;
+  entityName: string;
+}
+
+/**
+ * Track a webhook message for reply detection.
+ */
+export function trackWebhookMessage(
+  messageId: string,
+  entityId: number,
+  entityName: string
+): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT OR REPLACE INTO webhook_messages (message_id, entity_id, entity_name)
+    VALUES (?, ?, ?)
+  `).run(messageId, entityId, entityName);
+}
+
+/**
+ * Look up entity info for a webhook message.
+ */
+export function getWebhookMessageEntity(messageId: string): WebhookMessageInfo | null {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT entity_id, entity_name FROM webhook_messages WHERE message_id = ?
+  `).get(messageId) as { entity_id: number; entity_name: string } | null;
+
+  if (!row) return null;
+  return { entityId: row.entity_id, entityName: row.entity_name };
+}
+

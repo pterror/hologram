@@ -7,7 +7,7 @@ Discord bot for collaborative worldbuilding and roleplay, built on an entity-fac
 - **Runtime**: Bun (native SQLite, TypeScript-first)
 - **Discord**: Discordeno (Bun-native)
 - **LLM**: AI SDK v5 with provider-agnostic `provider:model` spec (default: `google:gemini-3-flash-preview`)
-- **Database**: bun:sqlite (6 tables)
+- **Database**: bun:sqlite (7 tables)
 - **Linting**: oxlint
 - **Type checking**: tsgo
 
@@ -53,15 +53,16 @@ Facts:
   - $if mentioned: $respond
 ```
 
-### Database (6 tables)
+### Database (7 tables)
 
 ```sql
-entities        -- id, name, owned_by, created_at
-facts           -- id, entity_id, content, created_at, updated_at
+entities         -- id, name, owned_by, created_at
+facts            -- id, entity_id, content, created_at, updated_at
 discord_entities -- discord_id, discord_type, entity_id, scope_guild_id, scope_channel_id
-fact_embeddings -- (planned) vector search
-messages        -- channel_id, user_id, author_name, content, created_at
-welcomed_users  -- discord_id, welcomed_at (onboarding DM tracking)
+fact_embeddings  -- (planned) vector search
+messages         -- channel_id, user_id, author_name, content, created_at
+welcomed_users   -- discord_id, welcomed_at (onboarding DM tracking)
+webhook_messages -- message_id, entity_id, entity_name (for reply detection)
 ```
 
 ### Message Pipeline
