@@ -152,6 +152,26 @@ describe("parser", () => {
     expect(evalExpr('has_fact("healthy")', ctx)).toBe(false);
   });
 
+  test("random with arguments", () => {
+    // Mock that tracks calls
+    let lastArgs: number[] = [];
+    const ctx = makeContext({
+      random: (min?: number, max?: number) => {
+        lastArgs = [min ?? -1, max ?? -1];
+        return 0.5;
+      },
+    });
+
+    evalExpr("random()", ctx);
+    expect(lastArgs).toEqual([-1, -1]);
+
+    evalExpr("random(10)", ctx);
+    expect(lastArgs).toEqual([10, -1]);
+
+    evalExpr("random(5, 15)", ctx);
+    expect(lastArgs).toEqual([5, 15]);
+  });
+
   test("nested member and call", () => {
     const ctx = makeContext();
     expect(evalExpr("time.is_day", ctx)).toBe(true);
@@ -445,6 +465,96 @@ describe("integration", () => {
     expect(ctx.content).toBe("hello");
     expect(typeof ctx.random).toBe("function");
     expect(typeof ctx.time.hour).toBe("number");
+  });
+
+  test("random() returns values in correct ranges", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+
+    // Test many times to check range bounds
+    for (let i = 0; i < 100; i++) {
+      const r0 = ctx.random();
+      expect(r0).toBeGreaterThanOrEqual(0);
+      expect(r0).toBeLessThan(1);
+
+      const r10 = ctx.random(10);
+      expect(r10).toBeGreaterThanOrEqual(1);
+      expect(r10).toBeLessThanOrEqual(10);
+      expect(Number.isInteger(r10)).toBe(true);
+
+      const r5_15 = ctx.random(5, 15);
+      expect(r5_15).toBeGreaterThanOrEqual(5);
+      expect(r5_15).toBeLessThanOrEqual(15);
+      expect(Number.isInteger(r5_15)).toBe(true);
+    }
+  });
+
+  test("roll() returns values in correct ranges", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+
+    // Test dice rolls
+    for (let i = 0; i < 100; i++) {
+      const d6 = ctx.roll("1d6");
+      expect(d6).toBeGreaterThanOrEqual(1);
+      expect(d6).toBeLessThanOrEqual(6);
+      expect(Number.isInteger(d6)).toBe(true);
+
+      const twod6 = ctx.roll("2d6");
+      expect(twod6).toBeGreaterThanOrEqual(2);
+      expect(twod6).toBeLessThanOrEqual(12);
+      expect(Number.isInteger(twod6)).toBe(true);
+
+      const d6plus3 = ctx.roll("1d6+3");
+      expect(d6plus3).toBeGreaterThanOrEqual(4);
+      expect(d6plus3).toBeLessThanOrEqual(9);
+      expect(Number.isInteger(d6plus3)).toBe(true);
+
+      const d6minus2 = ctx.roll("1d6-2");
+      expect(d6minus2).toBeGreaterThanOrEqual(-1);
+      expect(d6minus2).toBeLessThanOrEqual(4);
+      expect(Number.isInteger(d6minus2)).toBe(true);
+    }
+  });
+
+  test("roll() throws on invalid dice expression", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+
+    expect(() => ctx.roll("invalid")).toThrow("Invalid dice expression");
+    expect(() => ctx.roll("d6")).toThrow("Invalid dice expression");
+    expect(() => ctx.roll("1d")).toThrow("Invalid dice expression");
+  });
+
+  test("random() and roll() work in expressions", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+
+    // These should all evaluate without error
+    for (let i = 0; i < 20; i++) {
+      const r1 = evalExpr("random() < 0.5", ctx);
+      expect(typeof r1).toBe("boolean");
+
+      const r2 = evalExpr("random(100) < 50", ctx);
+      expect(typeof r2).toBe("boolean");
+
+      const r3 = evalExpr('roll("1d6") >= 1', ctx);
+      expect(r3).toBe(true);
+
+      const r4 = evalExpr('roll("1d6") <= 6', ctx);
+      expect(r4).toBe(true);
+
+      const r5 = evalExpr('roll("2d6+3") >= 5', ctx);
+      expect(r5).toBe(true);
+    }
   });
 
   test("real-world expression: self-reference", () => {

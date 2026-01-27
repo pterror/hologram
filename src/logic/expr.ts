@@ -18,7 +18,7 @@ export type SelfContext = Record<string, string | number | boolean>;
 export interface ExprContext {
   /** Entity's own parsed fact values (from "key: value" facts) */
   self: SelfContext;
-  /** Returns random float in [0,1), [0,max), or [min,max). Use roll() for dice. */
+  /** Returns random float [0,1), or random int [1,max] or [min,max]. */
   random: (min?: number, max?: number) => number;
   /** Check if entity has a fact matching pattern */
   has_fact: (pattern: string) => boolean;
@@ -715,8 +715,8 @@ export function createBaseContext(options: BaseContextOptions): ExprContext {
     self: parseSelfContext(options.facts ?? []),
     random: (min?: number, max?: number) => {
       if (min === undefined) return Math.random();
-      if (max === undefined) return Math.random() * min;
-      return min + Math.random() * (max - min);
+      if (max === undefined) return Math.floor(Math.random() * min) + 1; // 1 to min
+      return Math.floor(min + Math.random() * (max - min + 1)); // min to max inclusive
     },
     has_fact: options.has_fact,
     roll: (dice: string) => rollDice(dice),

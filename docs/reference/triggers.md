@@ -35,7 +35,7 @@ Conditions are JavaScript-like expressions with access to context variables.
 | `author` | string | Message author name |
 | `dt_ms` | number | Milliseconds since last response |
 | `elapsed_ms` | number | Milliseconds since message (for retries) |
-| `random()` | function | Random float in [0,1). Also `random(max)` or `random(min,max)` |
+| `random()` | function | Float [0,1), or int with `random(max)` [1,max] / `random(min,max)` [min,max] |
 | `has_fact(pattern)` | function | Check if entity has matching fact |
 | `time.hour` | number | Current hour (0-23) |
 | `time.is_day` | boolean | 6am-6pm |
