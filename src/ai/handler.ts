@@ -5,8 +5,8 @@ import { info, debug, error } from "../logger";
 import {
   getEntityWithFacts,
   addFact,
-  updateFact,
-  removeFact,
+  updateFactByContent,
+  removeFactByContent,
   formatEntitiesForContext,
   type EntityWithFacts,
 } from "../db/entities";
@@ -56,12 +56,13 @@ const tools = {
   update_fact: tool({
     description: "Update an existing fact. Use this when a fact changes.",
     inputSchema: z.object({
-      factId: z.number().describe("The fact ID to update"),
-      content: z.string().describe("The new fact content"),
+      entityId: z.number().describe("The entity ID"),
+      oldContent: z.string().describe("The exact current fact text to match"),
+      newContent: z.string().describe("The new fact content"),
     }),
-    execute: async ({ factId, content }) => {
-      const fact = updateFact(factId, content);
-      debug("Tool: update_fact", { factId, content, success: !!fact });
+    execute: async ({ entityId, oldContent, newContent }) => {
+      const fact = updateFactByContent(entityId, oldContent, newContent);
+      debug("Tool: update_fact", { entityId, oldContent, newContent, success: !!fact });
       return { success: !!fact };
     },
   }),
@@ -69,11 +70,12 @@ const tools = {
   remove_fact: tool({
     description: "Remove a fact that is no longer true.",
     inputSchema: z.object({
-      factId: z.number().describe("The fact ID to remove"),
+      entityId: z.number().describe("The entity ID"),
+      content: z.string().describe("The exact fact text to remove"),
     }),
-    execute: async ({ factId }) => {
-      const success = removeFact(factId);
-      debug("Tool: remove_fact", { factId, success });
+    execute: async ({ entityId, content }) => {
+      const success = removeFactByContent(entityId, content);
+      debug("Tool: remove_fact", { entityId, content, success });
       return { success };
     },
   }),

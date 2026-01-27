@@ -105,9 +105,24 @@ export function updateFact(id: number, content: string): Fact | null {
   `).get(content, id) as Fact | null;
 }
 
+export function updateFactByContent(entityId: number, oldContent: string, newContent: string): Fact | null {
+  const db = getDb();
+  return db.prepare(`
+    UPDATE facts SET content = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE entity_id = ? AND content = ?
+    RETURNING id, entity_id, content, created_at, updated_at
+  `).get(newContent, entityId, oldContent) as Fact | null;
+}
+
 export function removeFact(id: number): boolean {
   const db = getDb();
   const result = db.prepare(`DELETE FROM facts WHERE id = ?`).run(id);
+  return result.changes > 0;
+}
+
+export function removeFactByContent(entityId: number, content: string): boolean {
+  const db = getDb();
+  const result = db.prepare(`DELETE FROM facts WHERE entity_id = ? AND content = ?`).run(entityId, content);
   return result.changes > 0;
 }
 
@@ -162,7 +177,7 @@ export function getAllFactContent(entityId: number): string[] {
 
 export function formatEntityForContext(entity: EntityWithFacts): string {
   const factLines = entity.facts.map(f => f.content).join("\n");
-  return `<facts entity="${entity.name}">\n${factLines}\n</facts>`;
+  return `<facts entity="${entity.name}" id="${entity.id}">\n${factLines}\n</facts>`;
 }
 
 export function formatEntitiesForContext(entities: EntityWithFacts[]): string {
