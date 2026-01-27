@@ -97,11 +97,11 @@ By default, the AI generates a complete response and sends it as a single messag
 ### Stream Modes
 
 ```
-$stream              # New message per line (default)
+$stream              # New message per line, sent when complete
 $stream full         # Single message, edited as content streams
 ```
 
-**lines** (default) - Each completed line becomes a separate Discord message. Creates a natural, conversational feel.
+**Default mode** - Each completed line becomes a separate Discord message. Creates a natural, conversational feel.
 
 **full** - One message that gets progressively edited with the full response. Useful for seeing the complete thought form.
 
@@ -111,10 +111,11 @@ You can use a custom delimiter instead of newlines:
 
 ```
 $stream "kitten:"        # New message each time LLM outputs "kitten:"
-$stream full "---"       # Edit message, treating "---" as the separator
+$stream full "\n"        # New message per line, each edited as it streams
+$stream full "---"       # New message per "---", each edited as it streams
 ```
 
-This lets you control exactly when messages are sent based on what the LLM outputs.
+When `full` mode has a delimiter, it creates a new message for each chunk AND edits that message progressively as content streams in. This gives you the benefits of both modes.
 
 ### Conditional Streaming
 

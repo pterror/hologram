@@ -839,10 +839,18 @@ interface StreamDirectiveResult {
 /**
  * Parse a $stream directive.
  * Returns null if not a stream directive, or the stream mode and optional delimiter.
- * "$stream" or "$stream lines" → "lines" mode (new message per delimiter, default: newline)
- * "$stream full" → "full" mode (single message, edited progressively)
- * "$stream "delim"" → "lines" mode with custom delimiter (e.g., $stream "kitten:")
- * "$stream full "delim"" → "full" mode with custom delimiter
+ *
+ * Modes:
+ * - default (no keyword): new message per delimiter, sent when complete (no editing)
+ * - "full": message(s) edited progressively as content streams
+ *   - Without delimiter: single message for entire response
+ *   - With delimiter: new message per delimiter, each edited progressively
+ *
+ * Syntax:
+ * - $stream → new message per newline, sent complete
+ * - $stream "delim" → new message per delimiter, sent complete
+ * - $stream full → single message, edited progressively
+ * - $stream full "delim" → new message per delimiter, each edited progressively
  */
 function parseStreamDirective(content: string): StreamDirectiveResult | null {
   if (!content.startsWith(STREAM_SIGIL)) {
@@ -862,11 +870,11 @@ function parseStreamDirective(content: string): StreamDirectiveResult | null {
 
   // Parse mode
   let mode: "lines" | "full" = "lines";
-  if (rest === "" || rest === "lines") {
+  if (rest === "") {
     mode = "lines";
   } else if (rest === "full") {
     mode = "full";
-  } else if (rest !== "") {
+  } else {
     // Unknown mode
     return null;
   }

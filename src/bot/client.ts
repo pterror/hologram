@@ -550,6 +550,10 @@ async function handleStreamingResponse(
   const entityMessages = new Map<string, { messageId: string; content: string }>();
   // Single message for full mode
   let fullMessage: { messageId: string; content: string } | null = null;
+  // Current line message for "lines full" mode
+  let currentLineMessage: { messageId: string; content: string } | null = null;
+  // Track current line messages per character for multi-char "lines full" mode
+  const charLineMessages = new Map<string, { messageId: string; content: string }>();
 
   const isSingleEntity = entities.length === 1;
   const entity = isSingleEntity ? entities[0] : null;
@@ -562,11 +566,47 @@ async function handleStreamingResponse(
   })) {
     switch (event.type) {
       case "line": {
-        // Single entity: new message per chunk
+        // Single entity lines mode: new message per chunk
         if (entity) {
           const msgId = await sendStreamMessage(channelId, event.content, entity);
           if (msgId) allMessageIds.push(msgId);
         }
+        break;
+      }
+
+      case "line_start": {
+        // Single entity lines full mode: prepare for new line
+        currentLineMessage = null;
+        break;
+      }
+
+      case "line_delta": {
+        // Single entity lines full mode: delta within current line
+        if (entity) {
+          if (currentLineMessage) {
+            currentLineMessage.content = event.content;
+            await editStreamMessage(channelId, currentLineMessage.messageId, event.content, entity);
+          } else {
+            const msgId = await sendStreamMessage(channelId, event.content, entity);
+            if (msgId) {
+              currentLineMessage = { messageId: msgId, content: event.content };
+              allMessageIds.push(msgId);
+            }
+          }
+        }
+        break;
+      }
+
+      case "line_end": {
+        // Single entity lines full mode: finalize current line
+        if (entity && currentLineMessage) {
+          await editStreamMessage(channelId, currentLineMessage.messageId, event.content, entity);
+        } else if (entity && !currentLineMessage) {
+          // Line was too short for delta, send final content
+          const msgId = await sendStreamMessage(channelId, event.content, entity);
+          if (msgId) allMessageIds.push(msgId);
+        }
+        currentLineMessage = null;
         break;
       }
 
@@ -590,32 +630,59 @@ async function handleStreamingResponse(
       case "char_start": {
         // Multi-character: prepare for new character
         entityMessages.delete(event.name);
+        charLineMessages.delete(event.name);
         break;
       }
 
       case "char_line": {
-        // Multi-character: new line/chunk for this character
+        // Multi-character lines mode: new line/chunk for this character
         const charEntity = entities.find(e => e.name === event.name);
         if (charEntity) {
-          if (streamMode === "lines") {
-            // New message per chunk
-            const msgId = await sendStreamMessage(channelId, event.content, charEntity);
-            if (msgId) allMessageIds.push(msgId);
+          // New message per chunk
+          const msgId = await sendStreamMessage(channelId, event.content, charEntity);
+          if (msgId) allMessageIds.push(msgId);
+        }
+        break;
+      }
+
+      case "char_line_start": {
+        // Multi-character lines full mode: new line starting for character
+        charLineMessages.delete(event.name);
+        break;
+      }
+
+      case "char_line_delta": {
+        // Multi-character lines full mode: delta within current line
+        const charEntity = entities.find(e => e.name === event.name);
+        if (charEntity) {
+          const existing = charLineMessages.get(event.name);
+          if (existing) {
+            existing.content = event.content;
+            await editStreamMessage(channelId, existing.messageId, event.content, charEntity);
           } else {
-            // Full mode: accumulate and edit
-            const existing = entityMessages.get(event.name);
-            const newContent = existing ? `${existing.content}\n${event.content}` : event.content;
-            if (existing) {
-              existing.content = newContent;
-              await editStreamMessage(channelId, existing.messageId, newContent, charEntity);
-            } else {
-              const msgId = await sendStreamMessage(channelId, newContent, charEntity);
-              if (msgId) {
-                entityMessages.set(event.name, { messageId: msgId, content: newContent });
-                allMessageIds.push(msgId);
-              }
+            const msgId = await sendStreamMessage(channelId, event.content, charEntity);
+            if (msgId) {
+              charLineMessages.set(event.name, { messageId: msgId, content: event.content });
+              allMessageIds.push(msgId);
             }
           }
+        }
+        break;
+      }
+
+      case "char_line_end": {
+        // Multi-character lines full mode: finalize current line
+        const charEntity = entities.find(e => e.name === event.name);
+        if (charEntity) {
+          const existing = charLineMessages.get(event.name);
+          if (existing) {
+            await editStreamMessage(channelId, existing.messageId, event.content, charEntity);
+          } else {
+            // Line was too short for delta, send final content
+            const msgId = await sendStreamMessage(channelId, event.content, charEntity);
+            if (msgId) allMessageIds.push(msgId);
+          }
+          charLineMessages.delete(event.name);
         }
         break;
       }

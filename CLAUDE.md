@@ -101,16 +101,18 @@ $if messages(10).includes("help"): $respond  # Check last 10 messages
 Streaming sends LLM responses progressively as they're generated:
 
 ```
-$stream                            # New message per line (default delimiter: newline)
+$stream                            # New message per newline, sent complete
 $stream full                       # Single message, edited progressively
-$stream "kitten:"                  # New message per custom delimiter
-$stream full "---"                 # Single message with custom delimiter
+$stream "kitten:"                  # New message per custom delimiter, sent complete
+$stream full "\n"                  # New message per line, each edited progressively
+$stream full "---"                 # New message per delimiter, each edited progressively
 $if mentioned: $stream             # Conditional streaming
 ```
 
 **Modes:**
-- `lines` (default): Each completed chunk (split by delimiter) becomes a new Discord message
-- `full`: One message, continuously edited with accumulated content
+- Default: Each completed chunk (split by delimiter) becomes a new Discord message
+- `full` (no delimiter): One message, continuously edited with accumulated content
+- `full` (with delimiter): New message per chunk, each edited progressively as it streams
 
 **Custom delimiters:** Use `$stream "delimiter"` to split on custom text instead of newlines. E.g., `$stream "kitten:"` sends a new message each time the LLM outputs "kitten:".
 

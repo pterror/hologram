@@ -426,7 +426,7 @@ export interface StreamingContext extends MessageContext {
   entities: EvaluatedEntity[];
   /** Stream mode */
   streamMode: "lines" | "full";
-  /** Custom delimiter (default: newline) */
+  /** Custom delimiter (default: newline for lines mode, none for full mode) */
   delimiter?: string;
 }
 
@@ -434,9 +434,15 @@ export interface StreamingContext extends MessageContext {
 export type StreamEvent =
   | { type: "delta"; content: string; fullContent: string }
   | { type: "line"; content: string }
+  | { type: "line_start" }  // lines full: new line starting
+  | { type: "line_delta"; delta: string; content: string }  // lines full: delta within current line
+  | { type: "line_end"; content: string }  // lines full: line complete
   | { type: "char_start"; name: string; entityId: number; avatarUrl?: string }
   | { type: "char_delta"; name: string; delta: string; content: string }
   | { type: "char_line"; name: string; content: string }
+  | { type: "char_line_start"; name: string }  // lines full: new line starting for character
+  | { type: "char_line_delta"; name: string; delta: string; content: string }  // lines full: delta within current line
+  | { type: "char_line_end"; name: string; content: string }  // lines full: line complete for character
   | { type: "char_end"; name: string; content: string }
   | { type: "done"; fullText: string };
 
@@ -456,7 +462,7 @@ export type StreamEvent =
 export async function* handleMessageStreaming(
   ctx: StreamingContext
 ): AsyncGenerator<StreamEvent, void, unknown> {
-  const { channelId, guildId, entities, streamMode, delimiter = "\n" } = ctx;
+  const { channelId, guildId, entities, streamMode, delimiter } = ctx;
 
   // Build context (resolve entity references)
   const other: EntityWithFacts[] = [];
@@ -558,28 +564,72 @@ export async function* handleMessageStreaming(
 
 /**
  * Stream events for a single entity.
+ *
+ * Modes:
+ * - "lines": new message per delimiter, sent when complete (emits "line" events)
+ * - "full" without delimiter: single message, edited progressively (emits "delta" events)
+ * - "full" with delimiter: new message per delimiter, each edited progressively
+ *   (emits "line_start", "line_delta", "line_end" events)
  */
 async function* streamSingleEntity(
   textStream: AsyncIterable<string>,
   streamMode: "lines" | "full",
-  delimiter: string
+  delimiter: string | undefined
 ): AsyncGenerator<StreamEvent, void, unknown> {
   let buffer = "";
   let fullContent = "";
+  let lineContent = "";  // For full mode with delimiter
+  let lineStarted = false;
+
+  const hasDelimiter = delimiter !== undefined;
 
   for await (const delta of textStream) {
     buffer += delta;
     fullContent += delta;
 
-    if (streamMode === "full") {
-      // Emit every delta
+    if (streamMode === "full" && !hasDelimiter) {
+      // Full mode without delimiter: single message, emit every delta
       yield { type: "delta", content: delta, fullContent };
-    } else {
-      // lines mode: split on delimiter
+    } else if (streamMode === "full" && hasDelimiter) {
+      // Full mode with delimiter: new message per chunk, each edited progressively
       let delimIndex: number;
       while ((delimIndex = buffer.indexOf(delimiter)) !== -1) {
-        const chunk = buffer.slice(0, delimIndex).trim();
+        const chunk = buffer.slice(0, delimIndex);
         buffer = buffer.slice(delimIndex + delimiter.length);
+
+        // Complete current line
+        lineContent += chunk;
+        const trimmed = lineContent.trim();
+        if (trimmed && trimmed !== "<none/>") {
+          if (!lineStarted) {
+            yield { type: "line_start" };
+          }
+          yield { type: "line_end", content: trimmed };
+        }
+        lineContent = "";
+        lineStarted = false;
+      }
+
+      // Emit delta for partial content in buffer
+      if (buffer) {
+        if (!lineStarted) {
+          yield { type: "line_start" };
+          lineStarted = true;
+        }
+        lineContent += buffer;
+        const trimmed = lineContent.trim();
+        if (trimmed && trimmed !== "<none/>") {
+          yield { type: "line_delta", delta: buffer, content: trimmed };
+        }
+        buffer = "";
+      }
+    } else {
+      // Lines mode: split on delimiter, emit complete chunks
+      const effectiveDelim = delimiter ?? "\n";
+      let delimIndex: number;
+      while ((delimIndex = buffer.indexOf(effectiveDelim)) !== -1) {
+        const chunk = buffer.slice(0, delimIndex).trim();
+        buffer = buffer.slice(delimIndex + effectiveDelim.length);
 
         if (chunk && chunk !== "<none/>") {
           yield { type: "line", content: chunk };
@@ -593,23 +643,40 @@ async function* streamSingleEntity(
   if (remaining && remaining !== "<none/>") {
     if (streamMode === "lines") {
       yield { type: "line", content: remaining };
+    } else if (streamMode === "full" && hasDelimiter) {
+      lineContent += buffer;
+      const trimmed = lineContent.trim();
+      if (trimmed && trimmed !== "<none/>") {
+        if (!lineStarted) {
+          yield { type: "line_start" };
+        }
+        yield { type: "line_end", content: trimmed };
+      }
     }
-    // For full mode, already emitted as deltas
+    // For full mode without delimiter, already emitted as deltas
   }
 }
 
 /**
  * Stream events for multiple characters with heuristic XML parsing.
  * Parses <CharName>content</CharName> tags as they stream.
+ *
+ * Modes:
+ * - "lines": new message per delimiter, sent when complete (emits "char_line" events)
+ * - "full" without delimiter: single message per char, edited progressively (emits "char_delta" events)
+ * - "full" with delimiter: new message per delimiter, each edited progressively
+ *   (emits "char_line_start", "char_line_delta", "char_line_end" events)
  */
 async function* streamMultiCharacter(
   textStream: AsyncIterable<string>,
   entities: EvaluatedEntity[],
   streamMode: "lines" | "full",
-  delimiter: string
+  delimiter: string | undefined
 ): AsyncGenerator<StreamEvent, void, unknown> {
   let buffer = "";
-  let currentChar: { name: string; entityId: number; avatarUrl?: string; content: string } | null = null;
+  let currentChar: { name: string; entityId: number; avatarUrl?: string; content: string; lineContent: string; lineStarted: boolean } | null = null;
+
+  const hasDelimiter = delimiter !== undefined;
 
   // Build entity lookup map (case-insensitive)
   const entityMap = new Map<string, EvaluatedEntity>();
@@ -641,6 +708,8 @@ async function* streamMultiCharacter(
               entityId: entity.id,
               avatarUrl: entity.avatarUrl ?? undefined,
               content: "",
+              lineContent: "",
+              lineStarted: false,
             };
             yield { type: "char_start", name: entity.name, entityId: entity.id, avatarUrl: entity.avatarUrl ?? undefined };
           }
@@ -665,14 +734,26 @@ async function* streamMultiCharacter(
             currentChar.content += content;
             if (streamMode === "lines") {
               // Emit any remaining chunks
-              const chunks = content.split(delimiter);
+              const effectiveDelim = delimiter ?? "\n";
+              const chunks = content.split(effectiveDelim);
               for (const chunk of chunks) {
                 const trimmed = chunk.trim();
                 if (trimmed) {
                   yield { type: "char_line", name: currentChar.name, content: trimmed };
                 }
               }
+            } else if (streamMode === "full" && hasDelimiter) {
+              // Full mode with delimiter: emit final line
+              currentChar.lineContent += content;
+              const trimmed = currentChar.lineContent.trim();
+              if (trimmed) {
+                if (!currentChar.lineStarted) {
+                  yield { type: "char_line_start", name: currentChar.name };
+                }
+                yield { type: "char_line_end", name: currentChar.name, content: trimmed };
+              }
             } else {
+              // Full mode without delimiter: emit delta
               yield { type: "char_delta", name: currentChar.name, delta: content, content: currentChar.content };
             }
           }
@@ -682,20 +763,56 @@ async function* streamMultiCharacter(
         } else {
           // No closing tag yet - emit content progressively
           if (streamMode === "lines") {
-            // Check for delimiter
+            // Lines mode: emit complete chunks
+            const effectiveDelim = delimiter ?? "\n";
             let delimIndex: number;
-            while ((delimIndex = buffer.indexOf(delimiter)) !== -1) {
+            while ((delimIndex = buffer.indexOf(effectiveDelim)) !== -1) {
               const chunk = buffer.slice(0, delimIndex);
-              buffer = buffer.slice(delimIndex + delimiter.length);
-              currentChar.content += chunk + delimiter;
+              buffer = buffer.slice(delimIndex + effectiveDelim.length);
+              currentChar.content += chunk + effectiveDelim;
 
               const trimmed = chunk.trim();
               if (trimmed) {
                 yield { type: "char_line", name: currentChar.name, content: trimmed };
               }
             }
+          } else if (streamMode === "full" && hasDelimiter) {
+            // Full mode with delimiter: emit deltas within each line
+            let delimIndex: number;
+            while ((delimIndex = buffer.indexOf(delimiter)) !== -1) {
+              const chunk = buffer.slice(0, delimIndex);
+              buffer = buffer.slice(delimIndex + delimiter.length);
+              currentChar.content += chunk + delimiter;
+
+              // Complete current line
+              currentChar.lineContent += chunk;
+              const trimmed = currentChar.lineContent.trim();
+              if (trimmed) {
+                if (!currentChar.lineStarted) {
+                  yield { type: "char_line_start", name: currentChar.name };
+                }
+                yield { type: "char_line_end", name: currentChar.name, content: trimmed };
+              }
+              currentChar.lineContent = "";
+              currentChar.lineStarted = false;
+            }
+
+            // Emit delta for partial line content
+            if (buffer && !buffer.includes("<")) {
+              if (!currentChar.lineStarted) {
+                yield { type: "char_line_start", name: currentChar.name };
+                currentChar.lineStarted = true;
+              }
+              currentChar.content += buffer;
+              currentChar.lineContent += buffer;
+              const trimmed = currentChar.lineContent.trim();
+              if (trimmed) {
+                yield { type: "char_line_delta", name: currentChar.name, delta: buffer, content: trimmed };
+              }
+              buffer = "";
+            }
           } else {
-            // Full mode: emit deltas
+            // Full mode without delimiter: emit deltas
             // Check if this might be a partial closing tag
             const mightBeClosing = buffer.includes("<");
             if (!mightBeClosing) {
