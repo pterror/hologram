@@ -138,6 +138,13 @@ function buildSystemPrompt(
     e.facts.some(f => f.includes("is a character"))
   );
 
+  debug("Multi-char check", {
+    respondingCount: respondingEntities.length,
+    characterCount: characters.length,
+    characterNames: characters.map(c => c.name),
+    allFacts: respondingEntities.map(e => ({ name: e.name, facts: e.facts })),
+  });
+
   let multiCharGuidance = "";
   if (characters.length > 1) {
     const names = characters.map(c => c.name).join(", ");
