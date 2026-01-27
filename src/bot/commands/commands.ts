@@ -11,6 +11,7 @@ import {
   getEntityByName,
   getEntityWithFacts,
   getEntityWithFactsByName,
+  updateEntity,
   deleteEntity,
   transferOwnership,
   addFact,
@@ -284,8 +285,27 @@ registerCommand({
       remaining = remaining.slice(splitAt + 1); // Skip the newline
     }
 
-    // Build modal fields
-    const fields = chunks.map((chunk, i) => ({
+    // Build modal fields - name first, then facts
+    const fields: Array<{
+      customId: string;
+      label: string;
+      style: number;
+      value?: string;
+      required?: boolean;
+      placeholder?: string;
+    }> = [];
+
+    // Name field for renaming
+    fields.push({
+      customId: "name",
+      label: "Name",
+      style: TextStyles.Short,
+      value: entity.name,
+      required: true,
+    });
+
+    // Facts fields
+    const factFields = chunks.map((chunk, i) => ({
       customId: `facts${i}`,
       label: chunks.length === 1 ? "Facts (one per line)" : `Facts (part ${i + 1}/${chunks.length})`,
       style: TextStyles.Paragraph,
@@ -293,9 +313,9 @@ registerCommand({
       required: false,
     }));
 
-    // If empty, still show one field
-    if (fields.length === 0) {
-      fields.push({
+    // If no facts, still show one field
+    if (factFields.length === 0) {
+      factFields.push({
         customId: "facts0",
         label: "Facts (one per line)",
         style: TextStyles.Paragraph,
@@ -304,6 +324,8 @@ registerCommand({
       });
     }
 
+    fields.push(...factFields);
+
     await respondWithModal(ctx.bot, ctx.interaction, `edit:${entity.id}`, `Edit: ${entity.name}`, fields);
   },
 });
@@ -311,6 +333,14 @@ registerCommand({
 registerModalHandler("edit", async (bot, interaction, values) => {
   const customId = interaction.data?.customId ?? "";
   const entityId = parseInt(customId.split(":")[1]);
+
+
+  // Get new name from modal
+  const newName = values.name?.trim();
+  if (!newName) {
+    await respond(bot, interaction, `Name cannot be empty (received keys: ${Object.keys(values).join(", ")})`, true);
+    return;
+  }
 
   // Combine all fact fields (facts0, facts1, etc.)
   const factParts: string[] = [];
@@ -341,9 +371,18 @@ registerModalHandler("edit", async (bot, interaction, values) => {
     return;
   }
 
+  // Update name if changed
+  const nameChanged = newName !== entity.name;
+  if (nameChanged) {
+    updateEntity(entityId, newName);
+  }
+
   setFacts(entityId, facts);
 
-  await respond(bot, interaction, `Updated "${entity.name}" with ${facts.length} facts`, true);
+  const message = nameChanged
+    ? `Renamed "${entity.name}" to "${newName}" and updated with ${facts.length} facts`
+    : `Updated "${entity.name}" with ${facts.length} facts`;
+  await respond(bot, interaction, message, true);
 });
 
 // =============================================================================

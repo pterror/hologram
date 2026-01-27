@@ -48,6 +48,12 @@ export const bot = createBot({
       token: true,
       member: true,
     },
+    component: {
+      type: true,
+      customId: true,
+      value: true,
+      components: true,
+    },
     guild: {
       id: true,
       name: true,

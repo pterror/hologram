@@ -110,18 +110,22 @@ export async function respondWithModal(
     data: {
       customId,
       title,
-      components: components.map(c => ({
-        type: MessageComponentTypes.ActionRow,
-        components: [{
+      components: components.map(c => {
+        const textInput: Record<string, unknown> = {
           type: MessageComponentTypes.TextInput,
           customId: c.customId,
           label: c.label,
           style: c.style,
-          value: c.value,
           required: c.required ?? true,
-          placeholder: c.placeholder,
-        }],
-      })),
+        };
+        if (c.value !== undefined) textInput.value = c.value;
+        if (c.placeholder !== undefined) textInput.placeholder = c.placeholder;
+
+        return {
+          type: MessageComponentTypes.ActionRow,
+          components: [textInput],
+        };
+      }),
     },
   });
 }

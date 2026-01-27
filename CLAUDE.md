@@ -134,7 +134,25 @@ DEFAULT_MODEL=       # Default LLM (google:gemini-3-flash-preview)
 GOOGLE_API_KEY=      # For Google/Gemini
 ANTHROPIC_API_KEY=   # For Anthropic/Claude (optional)
 OPENAI_API_KEY=      # For OpenAI (optional)
+LOG_LEVEL=           # debug, info (default), warn, error
 ```
+
+## Logging
+
+Use structured logger from `src/logger.ts`:
+
+```typescript
+import { debug, info, warn, error } from "./logger";
+
+debug("Message", { key: "value" });  // Only shown when LOG_LEVEL=debug
+info("Message", { key: "value" });
+warn("Message", { key: "value" });
+error("Message", err, { key: "value" });
+```
+
+- **Never use `console.log`** - use the logger functions
+- Set `LOG_LEVEL=debug` for verbose output during development
+- Context objects are automatically JSON-serialized
 
 ## Design Principles
 
