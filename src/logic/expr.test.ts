@@ -451,7 +451,21 @@ describe("parseFact", () => {
   });
 
   test("throws on invalid $if (missing colon)", () => {
-    expect(() => parseFact("$if random() < 0.5 has wings")).toThrow("missing colon");
+    expect(() => parseFact("$if random() < 0.5 has wings")).toThrow("Expected ':'");
+  });
+
+  test("handles colon inside string in $if expression", () => {
+    const result = parseFact('$if name == "foo:bar": $respond');
+    expect(result.conditional).toBe(true);
+    expect(result.expression).toBe('name == "foo:bar"');
+    expect(result.isRespond).toBe(true);
+  });
+
+  test("handles ternary with colon in $if expression", () => {
+    const result = parseFact("$if a ? b : c: some fact");
+    expect(result.conditional).toBe(true);
+    expect(result.expression).toBe("a ? b : c");
+    expect(result.content).toBe("some fact");
   });
 });
 

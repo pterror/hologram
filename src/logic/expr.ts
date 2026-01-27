@@ -81,6 +81,8 @@ interface Token {
   type: TokenType;
   value: string | number | boolean;
   raw: string;
+  /** Position in original string where this token starts */
+  pos: number;
 }
 
 const OPERATORS = [
@@ -88,7 +90,7 @@ const OPERATORS = [
   "+", "-", "*", "/", "%", "!", "?", ":"
 ];
 
-function tokenize(expr: string): Token[] {
+function tokenize(expr: string, lenient = false): Token[] {
   const tokens: Token[] = [];
   let i = 0;
 
@@ -101,16 +103,18 @@ function tokenize(expr: string): Token[] {
 
     // Number
     if (/\d/.test(expr[i]) || (expr[i] === "." && /\d/.test(expr[i + 1]))) {
+      const start = i;
       let num = "";
       while (i < expr.length && /[\d.]/.test(expr[i])) {
         num += expr[i++];
       }
-      tokens.push({ type: "number", value: parseFloat(num), raw: num });
+      tokens.push({ type: "number", value: parseFloat(num), raw: num, pos: start });
       continue;
     }
 
     // String (double or single quotes)
     if (expr[i] === '"' || expr[i] === "'") {
+      const start = i;
       const quote = expr[i++];
       let str = "";
       while (i < expr.length && expr[i] !== quote) {
@@ -123,22 +127,23 @@ function tokenize(expr: string): Token[] {
       }
       if (expr[i] !== quote) throw new ExprError("Unterminated string");
       i++; // skip closing quote
-      tokens.push({ type: "string", value: str, raw: `${quote}${str}${quote}` });
+      tokens.push({ type: "string", value: str, raw: `${quote}${str}${quote}`, pos: start });
       continue;
     }
 
     // Identifier or boolean
     if (/[a-zA-Z_]/.test(expr[i])) {
+      const start = i;
       let id = "";
       while (i < expr.length && /[a-zA-Z0-9_]/.test(expr[i])) {
         id += expr[i++];
       }
       if (id === "true") {
-        tokens.push({ type: "boolean", value: true, raw: id });
+        tokens.push({ type: "boolean", value: true, raw: id, pos: start });
       } else if (id === "false") {
-        tokens.push({ type: "boolean", value: false, raw: id });
+        tokens.push({ type: "boolean", value: false, raw: id, pos: start });
       } else {
-        tokens.push({ type: "identifier", value: id, raw: id });
+        tokens.push({ type: "identifier", value: id, raw: id, pos: start });
       }
       continue;
     }
@@ -147,7 +152,7 @@ function tokenize(expr: string): Token[] {
     let matched = false;
     for (const op of OPERATORS) {
       if (expr.slice(i, i + op.length) === op) {
-        tokens.push({ type: "operator", value: op, raw: op });
+        tokens.push({ type: "operator", value: op, raw: op, pos: i });
         i += op.length;
         matched = true;
         break;
@@ -157,29 +162,33 @@ function tokenize(expr: string): Token[] {
 
     // Parentheses
     if (expr[i] === "(" || expr[i] === ")") {
-      tokens.push({ type: "paren", value: expr[i], raw: expr[i] });
+      tokens.push({ type: "paren", value: expr[i], raw: expr[i], pos: i });
       i++;
       continue;
     }
 
     // Dot
     if (expr[i] === ".") {
-      tokens.push({ type: "dot", value: ".", raw: "." });
+      tokens.push({ type: "dot", value: ".", raw: ".", pos: i });
       i++;
       continue;
     }
 
     // Comma
     if (expr[i] === ",") {
-      tokens.push({ type: "comma", value: ",", raw: "," });
+      tokens.push({ type: "comma", value: ",", raw: ",", pos: i });
       i++;
       continue;
     }
 
+    // Unknown character
+    if (lenient) {
+      break;
+    }
     throw new ExprError(`Unexpected character: ${expr[i]}`);
   }
 
-  tokens.push({ type: "eof", value: "", raw: "" });
+  tokens.push({ type: "eof", value: "", raw: "", pos: i });
   return tokens;
 }
 
@@ -227,6 +236,13 @@ class Parser {
     }
     return node;
   }
+
+  /** Parse expression without expecting EOF, return next token */
+  parseExpr(): Token {
+    this.parseTernary();
+    return this.peek();
+  }
+
 
   private parseTernary(): ExprNode {
     let node = this.parseOr();
@@ -503,6 +519,17 @@ export interface ProcessedFact {
   isLockedFact: boolean;
 }
 
+/** Parse expression, expect ':', return position after ':' */
+function parseCondition(str: string): number {
+  const tokens = tokenize(str, true);
+  const parser = new Parser(tokens);
+  const next = parser.parseExpr();
+  if (next.type !== "operator" || next.value !== ":") {
+    throw new ExprError(`Expected ':'`);
+  }
+  return next.pos + 1;
+}
+
 /**
  * Parse a fact, detecting $if prefix, $respond, $retry, $locked directives.
  */
@@ -539,12 +566,9 @@ export function parseFact(fact: string): ProcessedFact {
 
   if (trimmed.startsWith(IF_SIGIL)) {
     const rest = trimmed.slice(IF_SIGIL.length);
-    const colonIdx = rest.indexOf(":");
-    if (colonIdx === -1) {
-      throw new ExprError(`Invalid $if fact, missing colon: ${fact}`);
-    }
-    const expression = rest.slice(0, colonIdx).trim();
-    const content = rest.slice(colonIdx + 1).trim();
+    const colonEnd = parseCondition(rest);
+    const expression = rest.slice(0, colonEnd - 1).trim();
+    const content = rest.slice(colonEnd).trim();
 
     // Check if content is a $respond directive
     const respondResult = parseRespondDirective(content);
