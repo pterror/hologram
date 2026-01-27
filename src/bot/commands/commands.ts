@@ -29,21 +29,6 @@ import {
 import { parsePermissionDirectives } from "../../logic/expr";
 
 // =============================================================================
-// Type aliases for create command
-// =============================================================================
-
-const TYPE_ALIASES: Record<string, string> = {
-  c: "character",
-  char: "character",
-  character: "character",
-  l: "location",
-  loc: "location",
-  location: "location",
-  i: "item",
-  item: "item",
-};
-
-// =============================================================================
 // Permission Helpers
 // =============================================================================
 
@@ -100,12 +85,6 @@ registerCommand({
   description: "Create a new entity",
   options: [
     {
-      name: "type",
-      description: "Entity type (character, location, item) or template name",
-      type: ApplicationCommandOptionTypes.String,
-      required: true,
-    },
-    {
       name: "name",
       description: "Name of the entity",
       type: ApplicationCommandOptionTypes.String,
@@ -113,32 +92,28 @@ registerCommand({
     },
   ],
   async handler(ctx, options) {
-    const typeInput = (options.type as string).toLowerCase();
-    const type = TYPE_ALIASES[typeInput] ?? typeInput;
     const name = options.name as string | undefined;
 
     if (name) {
       // Quick create with name
       const entity = createEntity(name, ctx.userId);
-      // Add type as a fact
-      addFact(entity.id, `is a ${type}`);
-      await respond(ctx.bot, ctx.interaction, `Created ${type} "${name}" (id: ${entity.id})`, true);
+      await respond(ctx.bot, ctx.interaction, `Created "${name}" (id: ${entity.id})`, true);
     } else {
       // Open modal for details
-      await respondWithModal(ctx.bot, ctx.interaction, `create:${type}`, `Create ${type}`, [
+      await respondWithModal(ctx.bot, ctx.interaction, "create", "Create entity", [
         {
           customId: "name",
           label: "Name",
           style: TextStyles.Short,
           required: true,
-          placeholder: `Enter ${type} name`,
+          placeholder: "Enter entity name",
         },
         {
           customId: "facts",
           label: "Facts (one per line)",
           style: TextStyles.Paragraph,
           required: false,
-          placeholder: `Enter facts about this ${type}, one per line`,
+          placeholder: "Enter facts about this entity, one per line",
         },
       ]);
     }
@@ -146,16 +121,11 @@ registerCommand({
 });
 
 registerModalHandler("create", async (bot, interaction, values) => {
-  const customId = interaction.data?.customId ?? "";
-  const type = customId.split(":")[1] ?? "entity";
   const name = values.name;
   const factsText = values.facts ?? "";
 
   const userId = interaction.user?.id?.toString() ?? "";
   const entity = createEntity(name, userId);
-
-  // Add type fact
-  addFact(entity.id, `is a ${type}`);
 
   // Add user-provided facts
   const facts = factsText.split("\n").map(f => f.trim()).filter(f => f);
@@ -163,7 +133,7 @@ registerModalHandler("create", async (bot, interaction, values) => {
     addFact(entity.id, fact);
   }
 
-  await respond(bot, interaction, `Created ${type} "${name}" (id: ${entity.id}) with ${facts.length + 1} facts`, true);
+  await respond(bot, interaction, `Created "${name}" (id: ${entity.id}) with ${facts.length} facts`, true);
 });
 
 // =============================================================================
@@ -743,15 +713,15 @@ const HELP_ENTITY_FACTS: Record<string, string[]> = {
     "is the getting started guide",
     "---",
     "**Setting up a channel:**",
-    "1. `/c character Aria` - Create a character",
+    "1. `/c Aria` - Create an entity",
     "2. `/e Aria` - Add facts like personality, appearance",
     "3. `/b channel Aria` - Bind Aria to this channel",
     "4. Chat! Aria responds when @mentioned",
     "---",
-    "**Creating a persona (speak as a character):**",
-    "1. `/c character MyChar` - Create your character",
-    "2. `/e MyChar` - Add your character's facts",
-    "3. `/b me MyChar` - Bind yourself to this character",
+    "**Creating a persona:**",
+    "1. `/c MyChar` - Create your entity",
+    "2. `/e MyChar` - Add your entity's facts",
+    "3. `/b me MyChar` - Bind yourself to this entity",
     "4. Your messages now come from MyChar's perspective",
     "---",
     "**Tips:**",
@@ -772,10 +742,8 @@ const HELP_ENTITY_FACTS: Record<string, string[]> = {
     "`/unbind` (`/ub`) - Remove entity binding",
     "`/status` (`/s`) - Channel state",
     "---",
-    "**Type shortcuts:** `c`/`char`, `l`/`loc`, `i`",
-    "---",
     "**Examples:**",
-    "`/c c Aria` - Create character",
+    "`/c Aria` - Create entity",
     "`/v Aria` - View facts",
     "`/b channel Aria` - Bind to channel",
   ],
@@ -863,9 +831,8 @@ const HELP_ENTITY_FACTS: Record<string, string[]> = {
     "Both work fine!",
     "---",
     "**Special patterns:**",
-    "• `is a character/location/item`",
-    "• `is in [entity:12]`",
-    "• `$if condition: $respond`",
+    "• `is in [entity:12]` - location reference",
+    "• `$if condition: $respond` - response control",
     "---",
     "**Permissions:** See `/v help:permissions`",
   ],

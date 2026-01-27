@@ -107,7 +107,7 @@ Discord channels/users map to entities via `discord_entities`:
 
 | Command | Alias | Description |
 |---------|-------|-------------|
-| `/create <type> [name]` | `/c` | Create entity |
+| `/create [name]` | `/c` | Create entity |
 | `/view <entity>` | `/v` | View entity facts |
 | `/edit <entity>` | `/e` | Edit facts (modal) |
 | `/delete <entity>` | `/d` | Delete entity |
