@@ -29,7 +29,10 @@ export async function getOrCreateWebhook(channelId: string): Promise<CachedWebho
   }
   // Check memory cache first
   const cached = webhookCache.get(channelId);
-  if (cached) return cached;
+  if (cached) {
+    debug("Using cached webhook", { channelId, webhookId: cached.webhookId });
+    return cached;
+  }
 
   // Check database
   const db = getDb();
@@ -104,6 +107,12 @@ export async function executeWebhook(
   if (!webhook) return false;
 
   try {
+    debug("Executing webhook", {
+      webhookId: webhook.webhookId,
+      username,
+      contentLength: content.length,
+      hasAvatar: !!avatarUrl,
+    });
     await bot!.helpers.executeWebhook(
       BigInt(webhook.webhookId),
       webhook.webhookToken,
@@ -111,14 +120,21 @@ export async function executeWebhook(
         content,
         username,
         avatarUrl,
+        wait: true, // Wait for confirmation to get better error messages
       }
     );
+    debug("Webhook executed successfully");
     return true;
   } catch (err: unknown) {
-    const errObj = err as { status?: number; body?: unknown; message?: string };
+    // Try to extract all properties from the error
+    const allProps: Record<string, unknown> = {};
+    if (err && typeof err === "object") {
+      for (const key of Object.getOwnPropertyNames(err)) {
+        allProps[key] = (err as Record<string, unknown>)[key];
+      }
+    }
     error("Failed to execute webhook", err, {
-      status: errObj.status,
-      body: errObj.body,
+      errorProps: allProps,
       webhookId: webhook.webhookId,
       username,
       contentLength: content.length,
