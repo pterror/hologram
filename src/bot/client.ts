@@ -68,6 +68,12 @@ let botUserId: bigint | null = null;
 // Track last response time per channel (for dt_ms in expressions)
 const lastResponseTime = new Map<string, number>();
 
+// Track consecutive self-response chain depth per channel (resets on real user message)
+const responseChainDepth = new Map<string, number>();
+const MAX_RESPONSE_CHAIN = process.env.MAX_RESPONSE_CHAIN
+  ? parseInt(process.env.MAX_RESPONSE_CHAIN, 10)
+  : 3;
+
 // Pending retry timers per channel:entity
 const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -138,6 +144,25 @@ bot.events.messageCreate = async (message) => {
   const isReplied = isRepliedToBot || !!repliedToWebhookEntity;
   // Forwarded messages have messageSnapshots
   const isForward = (message.messageSnapshots?.length ?? 0) > 0;
+
+  // Track response chain depth to prevent infinite self-response loops
+  const isWebhookMessage = !!message.webhookId;
+  if (isWebhookMessage) {
+    // Check if this is one of our own webhook messages
+    const msgId = message.id.toString();
+    if (webhookMessageEntities.has(msgId)) {
+      // This is our own webhook - increment chain depth
+      const depth = (responseChainDepth.get(channelId) ?? 0) + 1;
+      responseChainDepth.set(channelId, depth);
+      if (MAX_RESPONSE_CHAIN > 0 && depth > MAX_RESPONSE_CHAIN) {
+        debug("Response chain limit reached", { channel: channelId, depth, max: MAX_RESPONSE_CHAIN });
+        return;
+      }
+    }
+  } else {
+    // Real user message - reset chain depth
+    responseChainDepth.set(channelId, 0);
+  }
 
   debug("Mention check", {
     botUserId: botUserId?.toString(),
