@@ -90,105 +90,137 @@ const OPERATORS = [
   "+", "-", "*", "/", "%", "!", "?", ":"
 ];
 
-function tokenize(expr: string, lenient = false): Token[] {
-  const tokens: Token[] = [];
-  let i = 0;
+/**
+ * Lazy tokenizer that produces tokens on demand.
+ * This is crucial for parseCondition to avoid tokenizing content after the colon.
+ */
+class Tokenizer {
+  private expr: string;
+  private pos = 0;
+  private peeked: Token | null = null;
 
-  while (i < expr.length) {
+  constructor(expr: string) {
+    this.expr = expr;
+  }
+
+  /** Get current position in the expression */
+  getPos(): number {
+    return this.peeked ? this.peeked.pos : this.pos;
+  }
+
+  /** Peek at next token without consuming */
+  peek(): Token {
+    if (this.peeked) return this.peeked;
+    this.peeked = this.nextToken();
+    return this.peeked;
+  }
+
+  /** Consume and return next token */
+  next(): Token {
+    if (this.peeked) {
+      const t = this.peeked;
+      this.peeked = null;
+      return t;
+    }
+    return this.nextToken();
+  }
+
+  /** Internal: read the next token from the expression */
+  private nextToken(): Token {
+    const expr = this.expr;
+
     // Skip whitespace
-    if (/\s/.test(expr[i])) {
-      i++;
-      continue;
+    while (this.pos < expr.length && /\s/.test(expr[this.pos])) {
+      this.pos++;
     }
 
+    if (this.pos >= expr.length) {
+      return { type: "eof", value: "", raw: "", pos: this.pos };
+    }
+
+    const start = this.pos;
+
     // Number
-    if (/\d/.test(expr[i]) || (expr[i] === "." && /\d/.test(expr[i + 1]))) {
-      const start = i;
+    if (/\d/.test(expr[this.pos]) || (expr[this.pos] === "." && /\d/.test(expr[this.pos + 1]))) {
       let num = "";
-      while (i < expr.length && /[\d.]/.test(expr[i])) {
-        num += expr[i++];
+      while (this.pos < expr.length && /[\d.]/.test(expr[this.pos])) {
+        num += expr[this.pos++];
       }
-      tokens.push({ type: "number", value: parseFloat(num), raw: num, pos: start });
-      continue;
+      return { type: "number", value: parseFloat(num), raw: num, pos: start };
     }
 
     // String (double or single quotes)
-    if (expr[i] === '"' || expr[i] === "'") {
-      const start = i;
-      const quote = expr[i++];
+    if (expr[this.pos] === '"' || expr[this.pos] === "'") {
+      const quote = expr[this.pos++];
       let str = "";
-      while (i < expr.length && expr[i] !== quote) {
-        if (expr[i] === "\\") {
-          i++; // skip backslash
-          if (i < expr.length) str += expr[i++];
+      while (this.pos < expr.length && expr[this.pos] !== quote) {
+        if (expr[this.pos] === "\\") {
+          this.pos++; // skip backslash
+          if (this.pos < expr.length) str += expr[this.pos++];
         } else {
-          str += expr[i++];
+          str += expr[this.pos++];
         }
       }
-      if (expr[i] !== quote) throw new ExprError("Unterminated string");
-      i++; // skip closing quote
-      tokens.push({ type: "string", value: str, raw: `${quote}${str}${quote}`, pos: start });
-      continue;
+      if (expr[this.pos] !== quote) throw new ExprError("Unterminated string");
+      this.pos++; // skip closing quote
+      return { type: "string", value: str, raw: `${quote}${str}${quote}`, pos: start };
     }
 
     // Identifier or boolean
-    if (/[a-zA-Z_]/.test(expr[i])) {
-      const start = i;
+    if (/[a-zA-Z_]/.test(expr[this.pos])) {
       let id = "";
-      while (i < expr.length && /[a-zA-Z0-9_]/.test(expr[i])) {
-        id += expr[i++];
+      while (this.pos < expr.length && /[a-zA-Z0-9_]/.test(expr[this.pos])) {
+        id += expr[this.pos++];
       }
       if (id === "true") {
-        tokens.push({ type: "boolean", value: true, raw: id, pos: start });
+        return { type: "boolean", value: true, raw: id, pos: start };
       } else if (id === "false") {
-        tokens.push({ type: "boolean", value: false, raw: id, pos: start });
+        return { type: "boolean", value: false, raw: id, pos: start };
       } else {
-        tokens.push({ type: "identifier", value: id, raw: id, pos: start });
+        return { type: "identifier", value: id, raw: id, pos: start };
       }
-      continue;
     }
 
     // Operators (try longest match first)
-    let matched = false;
     for (const op of OPERATORS) {
-      if (expr.slice(i, i + op.length) === op) {
-        tokens.push({ type: "operator", value: op, raw: op, pos: i });
-        i += op.length;
-        matched = true;
-        break;
+      if (expr.slice(this.pos, this.pos + op.length) === op) {
+        this.pos += op.length;
+        return { type: "operator", value: op, raw: op, pos: start };
       }
     }
-    if (matched) continue;
 
     // Parentheses
-    if (expr[i] === "(" || expr[i] === ")") {
-      tokens.push({ type: "paren", value: expr[i], raw: expr[i], pos: i });
-      i++;
-      continue;
+    if (expr[this.pos] === "(" || expr[this.pos] === ")") {
+      const ch = expr[this.pos++];
+      return { type: "paren", value: ch, raw: ch, pos: start };
     }
 
     // Dot
-    if (expr[i] === ".") {
-      tokens.push({ type: "dot", value: ".", raw: ".", pos: i });
-      i++;
-      continue;
+    if (expr[this.pos] === ".") {
+      this.pos++;
+      return { type: "dot", value: ".", raw: ".", pos: start };
     }
 
     // Comma
-    if (expr[i] === ",") {
-      tokens.push({ type: "comma", value: ",", raw: ",", pos: i });
-      i++;
-      continue;
+    if (expr[this.pos] === ",") {
+      this.pos++;
+      return { type: "comma", value: ",", raw: ",", pos: start };
     }
 
     // Unknown character
-    if (lenient) {
-      break;
-    }
-    throw new ExprError(`Unexpected character: ${expr[i]}`);
+    throw new ExprError(`Unexpected character: ${expr[this.pos]}`);
   }
+}
 
-  tokens.push({ type: "eof", value: "", raw: "", pos: i });
+/** Eager tokenize - used for full expression compilation */
+function tokenize(expr: string): Token[] {
+  const tokenizer = new Tokenizer(expr);
+  const tokens: Token[] = [];
+  while (true) {
+    const token = tokenizer.next();
+    tokens.push(token);
+    if (token.type === "eof") break;
+  }
   return tokens;
 }
 
@@ -205,7 +237,15 @@ type ExprNode =
   | { type: "binary"; operator: string; left: ExprNode; right: ExprNode }
   | { type: "ternary"; test: ExprNode; consequent: ExprNode; alternate: ExprNode };
 
-class Parser {
+/** Token source interface - works with both eager Token[] and lazy Tokenizer */
+interface TokenSource {
+  peek(): Token;
+  next(): Token;
+  getPos(): number;
+}
+
+/** Adapter to use Token[] as TokenSource */
+class ArrayTokenSource implements TokenSource {
   private tokens: Token[];
   private pos = 0;
 
@@ -213,12 +253,32 @@ class Parser {
     this.tokens = tokens;
   }
 
-  private peek(): Token {
+  peek(): Token {
     return this.tokens[this.pos];
   }
 
-  private consume(): Token {
+  next(): Token {
     return this.tokens[this.pos++];
+  }
+
+  getPos(): number {
+    return this.tokens[this.pos]?.pos ?? this.tokens[this.tokens.length - 1].pos;
+  }
+}
+
+class Parser {
+  private source: TokenSource;
+
+  constructor(source: Token[] | TokenSource) {
+    this.source = Array.isArray(source) ? new ArrayTokenSource(source) : source;
+  }
+
+  private peek(): Token {
+    return this.source.peek();
+  }
+
+  private consume(): Token {
+    return this.source.next();
   }
 
   private expect(type: TokenType, value?: string | number | boolean): Token {
@@ -237,10 +297,10 @@ class Parser {
     return node;
   }
 
-  /** Parse expression without expecting EOF, return next token */
-  parseExpr(): Token {
+  /** Parse expression without expecting EOF, return next token and position */
+  parseExprLazy(): { token: Token; pos: number } {
     this.parseTernary();
-    return this.peek();
+    return { token: this.peek(), pos: this.source.getPos() };
   }
 
 
@@ -520,14 +580,17 @@ export interface ProcessedFact {
 }
 
 /** Parse expression, expect ':', return position after ':' */
+/** Parse expression lazily, expect ':', return position after ':' */
 function parseCondition(str: string): number {
-  const tokens = tokenize(str, true);
-  const parser = new Parser(tokens);
-  const next = parser.parseExpr();
-  if (next.type !== "operator" || next.value !== ":") {
+  // Use lazy tokenization to avoid parsing content after the colon.
+  // This prevents "Unterminated string" errors when content contains apostrophes.
+  const tokenizer = new Tokenizer(str);
+  const parser = new Parser(tokenizer);
+  const { token, pos } = parser.parseExprLazy();
+  if (token.type !== "operator" || token.value !== ":") {
     throw new ExprError(`Expected ':'`);
   }
-  return next.pos + 1;
+  return pos + 1;
 }
 
 /**

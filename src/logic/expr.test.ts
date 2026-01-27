@@ -467,6 +467,42 @@ describe("parseFact", () => {
     expect(result.expression).toBe("a ? b : c");
     expect(result.content).toBe("some fact");
   });
+
+  test("handles apostrophe in content (not expression)", () => {
+    // BUG: Eager tokenization was parsing content after colon,
+    // seeing the apostrophe in "It's" as start of unterminated string
+    const result = parseFact("$if true: It's adorable.");
+    expect(result.conditional).toBe(true);
+    expect(result.expression).toBe("true");
+    expect(result.content).toBe("It's adorable.");
+  });
+
+  test("handles multiple apostrophes in content", () => {
+    const result = parseFact("$if mentioned: She's sure that it's working.");
+    expect(result.conditional).toBe(true);
+    expect(result.expression).toBe("mentioned");
+    expect(result.content).toBe("She's sure that it's working.");
+  });
+
+  test("handles Discord emote in expression followed by apostrophe in content", () => {
+    const result = parseFact('$if messages(5).includes("<:nnsob:123>"): It\'s an emote.');
+    expect(result.conditional).toBe(true);
+    expect(result.expression).toBe('messages(5).includes("<:nnsob:123>")');
+    expect(result.content).toBe("It's an emote.");
+  });
+
+  test("handles unbalanced quotes in content", () => {
+    // Content after colon shouldn't be tokenized as expression
+    const result = parseFact('$if true: He said "hello and left');
+    expect(result.conditional).toBe(true);
+    expect(result.content).toBe('He said "hello and left');
+  });
+
+  test("handles colons in content after expression", () => {
+    const result = parseFact("$if true: time: 12:34:56");
+    expect(result.conditional).toBe(true);
+    expect(result.content).toBe("time: 12:34:56");
+  });
 });
 
 // =============================================================================
@@ -769,3 +805,542 @@ describe("integration", () => {
     expect(evalExpr('mentioned_in_dialogue("Alice") && !is_self', selfCtx)).toBe(false);
   });
 });
+
+// =============================================================================
+// Edge Cases - Discord Emotes
+// =============================================================================
+
+describe("Discord emote edge cases", () => {
+  test("emote in expression string", () => {
+    const ctx = makeContext({
+      messages: () => "hey <:smile:123456789012345678> nice",
+    });
+    expect(evalExpr('messages().includes("<:smile:123456789012345678>")', ctx)).toBe(true);
+  });
+
+  test("multiple emotes in messages check", () => {
+    const ctx = makeContext({
+      messages: () => "<:a:123> <:b:456> <:c:789>",
+    });
+    expect(evalExpr('messages().includes("<:a:123>")', ctx)).toBe(true);
+    expect(evalExpr('messages().includes("<:b:456>")', ctx)).toBe(true);
+    expect(evalExpr('messages().includes("<:d:000>")', ctx)).toBe(false);
+  });
+
+  test("animated emote format", () => {
+    const ctx = makeContext({
+      messages: () => "look <a:animated:12345>",
+    });
+    expect(evalExpr('messages().includes("<a:animated:12345>")', ctx)).toBe(true);
+  });
+
+  test("$if with emote followed by content with apostrophe", () => {
+    // Tests that apostrophes in content after emote conditions don't break parsing
+    const facts = [
+      '$if messages(5).includes("<:emote:123456789>"): <:emote:123456789> is an emote. It\'s adorable.',
+    ];
+    const ctx = makeContext({
+      messages: () => "test <:emote:123456789> test",
+    });
+    const result = evaluateFacts(facts, ctx);
+    expect(result.facts).toContain("<:emote:123456789> is an emote. It's adorable.");
+  });
+});
+
+// =============================================================================
+// Edge Cases - Complex Expressions
+// =============================================================================
+
+describe("complex expression edge cases", () => {
+  test("deeply nested boolean logic", () => {
+    const ctx = makeContext({
+      mentioned: true,
+      replied: false,
+      is_self: false,
+      is_forward: false,
+    });
+    expect(evalExpr("((mentioned || replied) && !is_self) || is_forward", ctx)).toBe(true);
+    expect(evalExpr("(mentioned && (replied || !is_self)) && !is_forward", ctx)).toBe(true);
+  });
+
+  test("chained comparisons", () => {
+    const ctx = makeContext({ dt_ms: 5000 });
+    expect(evalExpr("dt_ms > 1000 && dt_ms < 10000", ctx)).toBe(true);
+    expect(evalExpr("dt_ms >= 5000 && dt_ms <= 5000", ctx)).toBe(true);
+  });
+
+  test("arithmetic in conditions", () => {
+    const ctx = makeContext({ dt_ms: 30000 });
+    expect(evalExpr("dt_ms / 1000 > 20", ctx)).toBe(true);
+    expect(evalExpr("dt_ms % 10000 == 0", ctx)).toBe(true);
+    expect(evalExpr("(dt_ms / 1000) * 2 == 60", ctx)).toBe(true);
+  });
+
+  test("string methods with arguments", () => {
+    const ctx = makeContext({ content: "Hello World!" });
+    expect(evalExpr('content.startsWith("Hello")', ctx)).toBe(true);
+    expect(evalExpr('content.endsWith("!")', ctx)).toBe(true);
+    expect(evalExpr('content.slice(0, 5) == "Hello"', ctx)).toBe(true);
+    expect(evalExpr("content.indexOf(\"World\") == 6", ctx)).toBe(true);
+  });
+
+  test("ternary with method calls", () => {
+    const ctx = makeContext({ content: "LOUD" });
+    expect(evalExpr('content == content.toUpperCase() ? true : false', ctx)).toBe(true);
+    const ctx2 = makeContext({ content: "quiet" });
+    expect(evalExpr('content == content.toUpperCase() ? true : false', ctx2)).toBe(false);
+  });
+
+  test("multiple function calls", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: (p) => p === "wings" || p === "can fly",
+    });
+    expect(evalExpr('has_fact("wings") && has_fact("can fly")', ctx)).toBe(true);
+    expect(evalExpr('has_fact("wings") && has_fact("gills")', ctx)).toBe(false);
+  });
+});
+
+// =============================================================================
+// Permission Directives
+// =============================================================================
+
+describe("permission directives", () => {
+  test("$edit with usernames", () => {
+    const facts = ["$edit alice, bob, carol", "some fact"];
+    const result = parsePermissionDirectives(facts);
+    expect(result.editList).toEqual(["alice", "bob", "carol"]);
+  });
+
+  test("$edit @everyone", () => {
+    const facts = ["$edit @everyone"];
+    const result = parsePermissionDirectives(facts);
+    expect(result.editList).toBe("everyone");
+  });
+
+  test("$edit everyone (without @)", () => {
+    const facts = ["$edit everyone"];
+    const result = parsePermissionDirectives(facts);
+    expect(result.editList).toBe("everyone");
+  });
+
+  test("$view with usernames", () => {
+    const facts = ["$view alice, bob"];
+    const result = parsePermissionDirectives(facts);
+    expect(result.viewList).toEqual(["alice", "bob"]);
+  });
+
+  test("$view @everyone", () => {
+    const facts = ["$view @everyone"];
+    const result = parsePermissionDirectives(facts);
+    expect(result.viewList).toBe("everyone");
+  });
+
+  test("$locked directive", () => {
+    const facts = ["$locked"];
+    const result = parsePermissionDirectives(facts);
+    expect(result.isLocked).toBe(true);
+    expect(result.lockedFacts.size).toBe(0);
+  });
+
+  test("$locked prefix on fact", () => {
+    const facts = ["$locked this is protected", "$locked another protected"];
+    const result = parsePermissionDirectives(facts);
+    expect(result.isLocked).toBe(false);
+    expect(result.lockedFacts.has("this is protected")).toBe(true);
+    expect(result.lockedFacts.has("another protected")).toBe(true);
+  });
+
+  test("multiple permission directives", () => {
+    const facts = [
+      "$edit alice, bob",
+      "$view @everyone",
+      "$locked secret fact",
+      "normal fact",
+    ];
+    const result = parsePermissionDirectives(facts);
+    expect(result.editList).toEqual(["alice", "bob"]);
+    expect(result.viewList).toBe("everyone");
+    expect(result.lockedFacts.has("secret fact")).toBe(true);
+  });
+
+  test("ignores comments in permission parsing", () => {
+    const facts = [
+      "# $edit everyone",
+      "$edit alice",
+    ];
+    const result = parsePermissionDirectives(facts);
+    expect(result.editList).toEqual(["alice"]);
+  });
+});
+
+// =============================================================================
+// $avatar Directive
+// =============================================================================
+
+describe("$avatar directive", () => {
+  test("parses avatar URL", () => {
+    const result = parseFact("$avatar https://example.com/avatar.png");
+    expect(result.isAvatar).toBe(true);
+    expect(result.avatarUrl).toBe("https://example.com/avatar.png");
+  });
+
+  test("handles URL with query params", () => {
+    const result = parseFact("$avatar https://cdn.example.com/img.png?size=128&format=webp");
+    expect(result.isAvatar).toBe(true);
+    expect(result.avatarUrl).toBe("https://cdn.example.com/img.png?size=128&format=webp");
+  });
+
+  test("avatar in evaluateFacts", () => {
+    const facts = ["$avatar https://example.com/avatar.png", "some fact"];
+    const ctx = makeContext();
+    const result = evaluateFacts(facts, ctx);
+    expect(result.avatarUrl).toBe("https://example.com/avatar.png");
+    expect(result.facts).toEqual(["some fact"]);
+  });
+
+  test("last avatar wins", () => {
+    const facts = [
+      "$avatar https://example.com/first.png",
+      "$avatar https://example.com/second.png",
+    ];
+    const ctx = makeContext();
+    const result = evaluateFacts(facts, ctx);
+    expect(result.avatarUrl).toBe("https://example.com/second.png");
+  });
+});
+
+// =============================================================================
+// $locked in evaluateFacts
+// =============================================================================
+
+describe("$locked in evaluateFacts", () => {
+  test("$locked sets isLocked flag", () => {
+    const facts = ["$locked", "some fact"];
+    const ctx = makeContext();
+    const result = evaluateFacts(facts, ctx);
+    expect(result.isLocked).toBe(true);
+    expect(result.facts).toEqual(["some fact"]);
+  });
+
+  test("$locked prefix adds to lockedFacts and includes in facts", () => {
+    const facts = ["$locked protected content", "normal content"];
+    const ctx = makeContext();
+    const result = evaluateFacts(facts, ctx);
+    expect(result.isLocked).toBe(false);
+    expect(result.lockedFacts.has("protected content")).toBe(true);
+    expect(result.facts).toContain("protected content");
+    expect(result.facts).toContain("normal content");
+  });
+
+  test("$lockedOther is not a directive", () => {
+    const facts = ["$lockedOther"];
+    const ctx = makeContext();
+    const result = evaluateFacts(facts, ctx);
+    expect(result.isLocked).toBe(false);
+    expect(result.facts).toContain("$lockedOther");
+  });
+});
+
+// =============================================================================
+// Error Messages
+// =============================================================================
+
+describe("error messages", () => {
+  test("unterminated string error", () => {
+    const ctx = makeContext();
+    expect(() => evalExpr('"hello', ctx)).toThrow("Unterminated string");
+    expect(() => evalExpr("'hello", ctx)).toThrow("Unterminated string");
+  });
+
+  test("unexpected character error", () => {
+    const ctx = makeContext();
+    expect(() => evalExpr("1 @ 2", ctx)).toThrow("Unexpected character: @");
+    expect(() => evalExpr("$foo", ctx)).toThrow("Unexpected character: $");
+  });
+
+  test("unknown identifier error", () => {
+    const ctx = makeContext();
+    expect(() => evalExpr("unknownVar", ctx)).toThrow("Unknown identifier: unknownVar");
+  });
+
+  test("blocked property error", () => {
+    const ctx = makeContext();
+    expect(() => evalExpr("self.constructor", ctx)).toThrow("Blocked property access: constructor");
+    expect(() => evalExpr("self.__proto__", ctx)).toThrow("Blocked property access: __proto__");
+  });
+
+  test("expected colon error in $if", () => {
+    expect(() => parseFact("$if true has wings")).toThrow("Expected ':'");
+  });
+
+  test("invalid dice expression error", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    expect(() => evalExpr('roll("notdice")', ctx)).toThrow("Invalid dice expression");
+  });
+});
+
+// =============================================================================
+// Numeric Edge Cases
+// =============================================================================
+
+describe("numeric edge cases", () => {
+  test("zero", () => {
+    const ctx = makeContext({ dt_ms: 0 });
+    expect(evalExpr("dt_ms == 0", ctx)).toBe(true);
+    expect(evalExpr("dt_ms > 0", ctx)).toBe(false);
+    expect(evalExpr("dt_ms >= 0", ctx)).toBe(true);
+  });
+
+  test("negative numbers", () => {
+    const ctx = makeContext();
+    expect(evalExpr("-5 < 0", ctx)).toBe(true);
+    expect(evalExpr("-5 + 10 == 5", ctx)).toBe(true);
+    expect(evalExpr("-(-5) == 5", ctx)).toBe(true);
+  });
+
+  test("large numbers", () => {
+    const ctx = makeContext({ dt_ms: 86400000 }); // 24 hours in ms
+    expect(evalExpr("dt_ms > 60000", ctx)).toBe(true);
+    expect(evalExpr("dt_ms / 1000 / 60 / 60 == 24", ctx)).toBe(true);
+  });
+
+  test("decimal precision", () => {
+    const ctx = makeContext();
+    expect(evalExpr("0.1 + 0.2 > 0.29", ctx)).toBe(true);
+    expect(evalExpr("0.1 + 0.2 < 0.31", ctx)).toBe(true);
+  });
+});
+
+// =============================================================================
+// String Edge Cases
+// =============================================================================
+
+describe("string edge cases", () => {
+  test("empty string", () => {
+    const ctx = makeContext({ content: "" });
+    expect(evalExpr('content == ""', ctx)).toBe(true);
+    expect(evalExpr("content.length == 0", ctx)).toBe(true);
+    expect(evalExpr('content.includes("")', ctx)).toBe(true);
+  });
+
+  test("whitespace only", () => {
+    const ctx = makeContext({ content: "   " });
+    expect(evalExpr("content.trim() == ''", ctx)).toBe(true);
+    expect(evalExpr("content.length == 3", ctx)).toBe(true);
+  });
+
+  test("unicode characters", () => {
+    const ctx = makeContext({ content: "Hello 🌍 World 日本語" });
+    expect(evalExpr('content.includes("🌍")', ctx)).toBe(true);
+    expect(evalExpr('content.includes("日本語")', ctx)).toBe(true);
+  });
+
+  test("newlines in content", () => {
+    const ctx = makeContext({ content: "line1\nline2\nline3" });
+    // Note: \n in expression string is interpreted as escape sequence for 'n'
+    // so includes("\\n") actually searches for 'n', not newline
+    expect(evalExpr('content.includes("n")', ctx)).toBe(true);
+    // The content has actual newline characters
+    expect(ctx.content.includes("\n")).toBe(true);
+  });
+
+  test("special regex characters in string", () => {
+    const ctx = makeContext({ content: "test.*+?^${}()|[]" });
+    expect(evalExpr('content.includes(".*")', ctx)).toBe(true);
+    expect(evalExpr('content.includes("[]")', ctx)).toBe(true);
+  });
+});
+
+// =============================================================================
+// Real World Entity Test (sanitized)
+// =============================================================================
+
+describe("real world: complex entity with apostrophes", () => {
+  // Simulates a real entity with various $if conditions and apostrophes in content
+  const entityFacts = [
+    "$edit user1, user2",
+    "$avatar https://example.com/avatar.png",
+    "entity is a friendly bot",
+    "responds in short messages",
+    "### Rules",
+    '$if mentioned_in_dialogue("buddy") && !is_self: $respond',
+    "### Server Emotes",
+    '$if messages(5).includes("<:happy:123456>"): <:happy:123456> is a happy face emote.',
+    '$if messages(5).includes("<:sad:789012>"): <:sad:789012> is a sad face. It\'s quite expressive!',
+    "$if true: There's always something to say. It's nice to chat!",
+    "### Terms",
+    '$if messages(5).includes("hello"): "Hello" is a common greeting.',
+    "### Memory",
+    "The entity's favorite color is blue.",
+    "Users have been asking about the bot's features, which it finds flattering.",
+  ];
+
+  test("parses all facts without error", () => {
+    const ctx = makeContext({
+      messages: () => "test message",
+      is_self: false,
+    });
+    // This should not throw - especially the apostrophes in content
+    expect(() => evaluateFacts(entityFacts, ctx)).not.toThrow();
+  });
+
+  test("responds when name mentioned in dialogue", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      messages: (n, fmt) => fmt === "%m" ? '"Hey buddy, come here!"' : "User",
+      is_self: false,
+    });
+    const result = evaluateFacts(entityFacts, ctx);
+    expect(result.shouldRespond).toBe(true);
+  });
+
+  test("does not respond when is_self", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      messages: (n, fmt) => fmt === "%m" ? '"Hey buddy!"' : "User",
+      is_self: true,
+    });
+    const result = evaluateFacts(entityFacts, ctx);
+    expect(result.shouldRespond).toBe(null); // Condition not met
+  });
+
+  test("includes emote info when emote in messages", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      messages: () => "look at this <:happy:123456>",
+      is_self: false,
+    });
+    const result = evaluateFacts(entityFacts, ctx);
+    expect(result.facts.some(f => f.includes("happy face emote"))).toBe(true);
+  });
+
+  test("includes always-true fact with apostrophes", () => {
+    const ctx = makeContext({
+      messages: () => "random message",
+      is_self: false,
+    });
+    const result = evaluateFacts(entityFacts, ctx);
+    expect(result.facts.some(f => f.includes("There's always"))).toBe(true);
+    expect(result.facts.some(f => f.includes("It's nice"))).toBe(true);
+  });
+
+  test("includes term definition when keyword mentioned", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      messages: () => "hello there friend",
+      is_self: false,
+    });
+    const result = evaluateFacts(entityFacts, ctx);
+    expect(result.facts.some(f => f.includes("common greeting"))).toBe(true);
+  });
+
+  test("gets avatar URL", () => {
+    const ctx = makeContext({
+      messages: () => "test",
+      is_self: false,
+    });
+    const result = evaluateFacts(entityFacts, ctx);
+    expect(result.avatarUrl).toBe("https://example.com/avatar.png");
+  });
+
+  test("handles possessive apostrophes in content", () => {
+    const ctx = makeContext({
+      messages: () => "test",
+      is_self: false,
+    });
+    const result = evaluateFacts(entityFacts, ctx);
+    // These facts have possessive apostrophes that shouldn't break parsing
+    expect(result.facts.some(f => f.includes("entity's favorite"))).toBe(true);
+    expect(result.facts.some(f => f.includes("bot's features"))).toBe(true);
+  });
+});
+
+// =============================================================================
+// messages() Function
+// =============================================================================
+
+describe("messages() function", () => {
+  test("default call returns last message formatted", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      messages: (n = 1, fmt = "%a: %m") => {
+        const msgs = [{ a: "Alice", m: "Hello!" }];
+        return msgs.slice(0, n).map(msg =>
+          fmt.replace("%a", msg.a).replace("%m", msg.m)
+        ).join("\n");
+      },
+    });
+    expect(evalExpr('messages().includes("Alice")', ctx)).toBe(true);
+    expect(evalExpr('messages().includes("Hello")', ctx)).toBe(true);
+  });
+
+  test("messages with custom format", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      messages: (n = 1, fmt = "%a: %m") => {
+        if (fmt === "%m") return "Hello!";
+        if (fmt === "%a") return "Alice";
+        return "Alice: Hello!";
+      },
+    });
+    expect(evalExpr('messages(1, "%m") == "Hello!"', ctx)).toBe(true);
+    expect(evalExpr('messages(1, "%a") == "Alice"', ctx)).toBe(true);
+  });
+
+  test("messages(n) returns multiple", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      messages: (n = 1) => {
+        const all = ["Alice: Hi", "Bob: Hello", "Carol: Hey"];
+        return all.slice(0, n).join("\n");
+      },
+    });
+    expect(evalExpr('messages(1).includes("Alice")', ctx)).toBe(true);
+    expect(evalExpr('messages(1).includes("Bob")', ctx)).toBe(false);
+    expect(evalExpr('messages(2).includes("Bob")', ctx)).toBe(true);
+    expect(evalExpr('messages(3).includes("Carol")', ctx)).toBe(true);
+  });
+
+  test("content is alias for messages(1, %m)", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      messages: (n = 1, fmt = "%a: %m") => {
+        if (fmt === "%m") return "the message content";
+        return "Author: the message content";
+      },
+    });
+    expect(ctx.content).toBe("the message content");
+    expect(evalExpr('content == "the message content"', ctx)).toBe(true);
+  });
+
+  test("author is alias for messages(1, %a)", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      messages: (n = 1, fmt = "%a: %m") => {
+        if (fmt === "%a") return "TheAuthor";
+        return "TheAuthor: message";
+      },
+    });
+    expect(ctx.author).toBe("TheAuthor");
+    expect(evalExpr('author == "TheAuthor"', ctx)).toBe(true);
+  });
+});
+
+// =============================================================================
+// Import parsePermissionDirectives for permission tests
+// =============================================================================
+
+import { parsePermissionDirectives } from "./expr";
