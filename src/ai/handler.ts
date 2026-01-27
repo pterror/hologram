@@ -12,7 +12,6 @@ import {
 } from "../db/entities";
 import {
   resolveDiscordEntity,
-  addMessage,
   getMessages,
 } from "../db/discord";
 
@@ -109,10 +108,7 @@ function buildUserMessage(messages: Array<{ author_name: string; content: string
 // =============================================================================
 
 export async function handleMessage(ctx: MessageContext): Promise<ResponseResult | null> {
-  const { channelId, guildId, userId, username, content, isMentioned } = ctx;
-
-  // Store message in history
-  addMessage(channelId, userId, username, content);
+  const { channelId, guildId, userId, isMentioned } = ctx;
 
   // Resolve channel and user entities
   const channelEntityId = resolveDiscordEntity(channelId, "channel", guildId, channelId);

@@ -2,7 +2,7 @@ import { createBot, Intents } from "@discordeno/bot";
 import { info, debug, error } from "../logger";
 import { registerCommands, handleInteraction } from "./commands";
 import { handleMessage } from "../ai/handler";
-import { resolveDiscordEntity, isNewUser, markUserWelcomed } from "../db/discord";
+import { resolveDiscordEntity, isNewUser, markUserWelcomed, addMessage } from "../db/discord";
 import { getEntityWithFacts, getSystemEntity, getFactsForEntity } from "../db/entities";
 import { evaluateFacts, createBaseContext } from "../logic/expr";
 import "./commands/commands"; // Register all commands
@@ -103,6 +103,9 @@ bot.events.messageCreate = async (message) => {
     content: message.content.slice(0, 50),
     mentioned: isMentioned,
   });
+
+  // Store message in history (before response decision so context builds up)
+  addMessage(channelId, message.author.id.toString(), message.author.username, message.content);
 
   // Get channel entity
   const channelEntityId = resolveDiscordEntity(channelId, "channel", guildId, channelId);
