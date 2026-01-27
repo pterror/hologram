@@ -204,6 +204,10 @@ See `docs/postmortem/2026-01-26-ux-critique.md` for full analysis.
 - [ ] Clone/fork functionality with permissions
 - [ ] Zero-command start (mention → "who should I be?" → works)
 
+### Very Low Priority
+
+- [ ] Regex support in `$if` expressions - would need tokenizer extension for `/pattern/` literals; low priority because regex is opaque and hard to read
+
 ### Plugin Ideas
 
 - [ ] D&D support as plugin
