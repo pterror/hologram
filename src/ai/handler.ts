@@ -141,11 +141,11 @@ function buildSystemPrompt(
   let multiCharGuidance = "";
   if (characters.length > 1) {
     const names = characters.map(c => c.name).join(", ");
-    multiCharGuidance = `\n\nMultiple characters are present: ${names}. Format your response with character markers like this:
-[${characters[0]?.name ?? "Name"}]: *waves* Hello there!
-[${characters[1]?.name ?? "Other"}]: Nice to meet you.
+    multiCharGuidance = `\n\nMultiple characters are present: ${names}. Format your response with XML tags:
+<${characters[0]?.name ?? "Name"}>*waves* Hello there!</${characters[0]?.name ?? "Name"}>
+<${characters[1]?.name ?? "Other"}>Nice to meet you.</${characters[1]?.name ?? "Other"}>
 
-Each character's response starts with [CharacterName]: on its own line. Characters may interact naturally.`;
+Wrap each character's dialogue in their name tag. Characters may interact naturally.`;
   }
 
   return `${context}
@@ -163,9 +163,9 @@ function buildUserMessage(messages: Array<{ author_name: string; content: string
 }
 
 /**
- * Parse LLM response into per-character segments.
- * Handles both [CharName]: and **CharName**: formats.
- * Returns undefined if no markers found (single character response).
+ * Parse LLM response into per-character segments using XML tags.
+ * Format: <CharName>content</CharName>
+ * Returns undefined if no valid tags found.
  */
 function parseMultiCharacterResponse(
   response: string,
@@ -173,61 +173,40 @@ function parseMultiCharacterResponse(
 ): CharacterResponse[] | undefined {
   if (entities.length <= 1) return undefined;
 
-  // Build case-insensitive name to entity map
-  const entityMap = new Map<string, EvaluatedEntity>();
+  type ParsedResponse = CharacterResponse & { position: number };
+  const results: ParsedResponse[] = [];
+
+  // Match XML tags for each entity: <Name>content</Name>
   for (const entity of entities) {
-    entityMap.set(entity.name.toLowerCase(), entity);
-  }
+    // Escape special regex chars in name
+    const escapedName = entity.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`<${escapedName}>([\\s\\S]*?)</${escapedName}>`, "gi");
+    let match: RegExpExecArray | null;
 
-  // Pattern: various markdown formats at start of line
-  // [Name]: **Name**: *Name*: __Name__: _Name_: Name:
-  const pattern = /^(?:\[([^\]]+)\]|\*\*([^*]+)\*\*|\*([^*]+)\*|__([^_]+)__|_([^_]+)_|([A-Za-z][A-Za-z0-9 ]*)):\s*/gm;
-  const results: CharacterResponse[] = [];
-
-  let lastIndex = 0;
-  let lastEntity: EvaluatedEntity | null = null;
-  let match: RegExpExecArray | null;
-
-  while ((match = pattern.exec(response)) !== null) {
-    // Save content for previous character
-    if (lastEntity !== null) {
-      const content = response.slice(lastIndex, match.index).trim();
+    while ((match = pattern.exec(response)) !== null) {
+      const content = match[1].trim();
       if (content) {
         results.push({
-          entityId: lastEntity.id,
-          name: lastEntity.name,
+          entityId: entity.id,
+          name: entity.name,
           content,
-          avatarUrl: lastEntity.avatarUrl ?? undefined,
+          avatarUrl: entity.avatarUrl ?? undefined,
+          position: match.index,
         });
       }
     }
-
-    // Find entity for this marker (check all capture groups)
-    const charName = (match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? match[6])
-      .toLowerCase().trim();
-    lastEntity = entityMap.get(charName) ?? null;
-    lastIndex = match.index + match[0].length;
   }
 
-  // Handle remaining content after last marker
-  if (lastEntity !== null) {
-    const content = response.slice(lastIndex).trim();
-    if (content) {
-      results.push({
-        entityId: lastEntity.id,
-        name: lastEntity.name,
-        content,
-        avatarUrl: lastEntity.avatarUrl ?? undefined,
-      });
-    }
-  }
-
-  // No markers found - return undefined to use single response
+  // No tags found - return undefined to use single response
   if (results.length === 0) {
     return undefined;
   }
 
-  return results;
+  // Sort by position in original response to maintain order
+  results.sort((a, b) => a.position - b.position);
+
+  // Remove position from results
+  return results.map(({ position: _, ...rest }) => rest);
 }
 
 // =============================================================================

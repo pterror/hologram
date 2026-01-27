@@ -36,6 +36,7 @@ export const bot = createBot({
       mentionedUserIds: true as const,
       messageReference: true as const,
       messageSnapshots: true as const,
+      webhookId: true as const,
     },
     interaction: {
       id: true,
@@ -232,9 +233,13 @@ bot.events.messageCreate = async (message) => {
     } else {
       // Default response logic (when no $respond directive):
       // 1. If only one character: respond to mentions or replies
-      // 2. Always respond if entity's name is mentioned in content
+      // 2. Respond if entity's name is mentioned in content
       const namePattern = new RegExp(`\\b${entity.name}\\b`, "i");
-      const nameMentioned = namePattern.test(message.content);
+      // Skip if name only appears as an XML tag (e.g., "<Aria>") to prevent loops
+      const escapedName = entity.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const xmlTagPattern = new RegExp(`<${escapedName}>`, "i");
+      const nameMentioned = namePattern.test(message.content) &&
+        !xmlTagPattern.test(message.content);
       const defaultRespond =
         (channelEntities.length === 1 && (isMentioned || isReplied)) ||
         nameMentioned;
