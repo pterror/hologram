@@ -614,16 +614,10 @@ export function parseFact(fact: string): ProcessedFact {
         isLockedFact: false,
       };
     } else {
-      // $locked prefix - fact content is locked but visible
-      return {
-        content: lockedResult.content,
-        conditional: false,
-        isRespond: false,
-        isRetry: false,
-        isAvatar: false,
-        isLockedDirective: false,
-        isLockedFact: true,
-      };
+      // $locked prefix - recursively parse the rest, then mark as locked
+      const inner = parseFact(lockedResult.content);
+      inner.isLockedFact = true;
+      return inner;
     }
   }
 

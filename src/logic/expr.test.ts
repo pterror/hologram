@@ -1040,6 +1040,30 @@ describe("$locked in evaluateFacts", () => {
     expect(result.isLocked).toBe(false);
     expect(result.facts).toContain("$lockedOther");
   });
+
+  test("$locked $if evaluates condition", () => {
+    const facts = ["$locked $if mentioned: secret info"];
+    const ctx = makeContext({ mentioned: true });
+    const result = evaluateFacts(facts, ctx);
+    expect(result.facts).toContain("secret info");
+    expect(result.lockedFacts.has("secret info")).toBe(true);
+  });
+
+  test("$locked $if does not include when condition false", () => {
+    const facts = ["$locked $if mentioned: secret info"];
+    const ctx = makeContext({ mentioned: false });
+    const result = evaluateFacts(facts, ctx);
+    expect(result.facts).not.toContain("secret info");
+    expect(result.lockedFacts.has("secret info")).toBe(false);
+  });
+
+  test("$locked $if with complex condition", () => {
+    const facts = ["$locked $if dt_ms > 1000 && !is_self: rate limited response"];
+    const ctx = makeContext({ dt_ms: 5000, is_self: false });
+    const result = evaluateFacts(facts, ctx);
+    expect(result.facts).toContain("rate limited response");
+    expect(result.lockedFacts.has("rate limited response")).toBe(true);
+  });
 });
 
 // =============================================================================
