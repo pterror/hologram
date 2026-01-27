@@ -95,6 +95,10 @@ $if content.includes("hello"): $respond  # String matching (note quotes)
 ```
 
 **Context variables:** `mentioned`, `replied`, `is_forward`, `is_self`, `content`, `author`, `dt_ms`, `elapsed_ms`, `time.is_night`, `self.*`
+
+### Stickers
+
+Stickers are serialized as `[Sticker :name:]` and appended to message content. A sticker-only message becomes just the sticker text, e.g. `[Sticker :catwave:]`.
 **Functions:** `random(n)`, `has_fact(pattern)`, `roll(dice)`, `mentioned_in_dialogue(name)`
 
 ### Bindings

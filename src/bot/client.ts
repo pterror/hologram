@@ -37,6 +37,7 @@ export const bot = createBot({
       messageReference: true,
       messageSnapshots: true as const,
       webhookId: true as const,
+      stickerItems: true as const,
     },
     interaction: {
       id: true,
@@ -72,6 +73,10 @@ export const bot = createBot({
       messageId: true,
       channelId: true,
       guildId: true,
+    },
+    sticker: {
+      id: true,
+      name: true,
     },
   },
 });
@@ -133,13 +138,22 @@ bot.events.ready = async (payload) => {
 bot.events.messageCreate = async (message) => {
   // Ignore own messages
   if (botUserId && message.author.id === botUserId) return;
-  if (!message.content) return;
+  if (!message.content && !message.stickerItems?.length) return;
   if (!markProcessed(message.id)) return;
+
+  // Serialize stickers as [Sticker :name:] appended to content
+  let content = message.content ?? "";
+  if (message.stickerItems?.length) {
+    const stickerText = message.stickerItems
+      .map(s => `[Sticker :${s.name}:]`)
+      .join(" ");
+    content = content ? `${content} ${stickerText}` : stickerText;
+  }
 
   // mentionedUserIds is unreliable in Discordeno, parse from content as fallback
   const isMentioned = botUserId !== null && (
     message.mentionedUserIds?.includes(botUserId) ||
-    message.content.includes(`<@${botUserId}>`)
+    content.includes(`<@${botUserId}>`)
   );
   const channelId = message.channelId.toString();
   const guildId = message.guildId?.toString();
@@ -186,14 +200,14 @@ bot.events.messageCreate = async (message) => {
   debug("Message", {
     channel: channelId,
     author: authorName,
-    content: message.content.slice(0, 50),
+    content: content.slice(0, 50),
     mentioned: isMentioned,
     replied: isReplied,
     is_forward: isForward,
   });
 
   // Store message in history (before response decision so context builds up)
-  addMessage(channelId, authorId, authorName, message.content);
+  addMessage(channelId, authorId, authorName, content);
 
   // Get ALL channel entities (supports multiple characters)
   const channelEntityIds = resolveDiscordEntities(channelId, "channel", guildId, channelId);
@@ -256,7 +270,7 @@ bot.events.messageCreate = async (message) => {
       replied_to: repliedToWebhookEntity?.entityName ?? "",
       is_forward: isForward,
       is_self: isSelf,
-      content: message.content,
+      content,
       author: authorName,
       name: entity.name,
       chars: channelEntities.map(e => e.name),
@@ -297,7 +311,7 @@ bot.events.messageCreate = async (message) => {
       if (shouldRespond) {
         // Log the trigger source
         const source = result.respondSource
-          ?? (nameMentioned ? `name mentioned in: "${message.content.slice(0, 50)}"`
+          ?? (nameMentioned ? `name mentioned in: "${content.slice(0, 50)}"`
             : isMentioned ? "bot @mentioned"
             : isReplied ? "reply to bot"
             : "unknown");
@@ -319,7 +333,7 @@ bot.events.messageCreate = async (message) => {
     if (!message.webhookId) {
       responseChainDepth.set(channelId, 0);
     }
-    await sendResponse(channelId, guildId, authorName, message.content, isMentioned ?? false, respondingEntities);
+    await sendResponse(channelId, guildId, authorName, content, isMentioned ?? false, respondingEntities);
   }
 
   // Schedule per-entity retries (don't block other characters)
@@ -328,7 +342,7 @@ bot.events.messageCreate = async (message) => {
     debug("Scheduling entity retry", { entity: entity.name, retryMs });
     const timer = setTimeout(() => {
       retryTimers.delete(key);
-      processEntityRetry(channelId, guildId, entity.id, authorName, message.content, messageTime, channelEntities);
+      processEntityRetry(channelId, guildId, entity.id, authorName, content, messageTime, channelEntities);
     }, retryMs);
     retryTimers.set(key, timer);
   }
