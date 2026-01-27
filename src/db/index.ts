@@ -121,6 +121,20 @@ function initSchema(db: Database) {
     )
   `);
 
+  // Evaluation errors - for deduped DM notifications to entity owners
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS eval_errors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+      owner_id TEXT NOT NULL,
+      error_message TEXT NOT NULL,
+      condition TEXT,
+      notified_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (entity_id, error_message)
+    )
+  `);
+
   // Indexes
   db.exec(`CREATE INDEX IF NOT EXISTS idx_facts_entity ON facts(entity_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_discord_entities_lookup ON discord_entities(discord_id, discord_type)`);
@@ -128,6 +142,7 @@ function initSchema(db: Database) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_effects_entity ON effects(entity_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_effects_expires ON effects(expires_at)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_webhooks_channel ON webhooks(channel_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_eval_errors_owner ON eval_errors(owner_id, notified_at)`);
 
   // Migrations
   migrateCreatedByToOwnedBy(db);

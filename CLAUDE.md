@@ -7,7 +7,7 @@ Discord bot for collaborative worldbuilding and roleplay, built on an entity-fac
 - **Runtime**: Bun (native SQLite, TypeScript-first)
 - **Discord**: Discordeno (Bun-native)
 - **LLM**: AI SDK v5 with provider-agnostic `provider:model` spec (default: `google:gemini-3-flash-preview`)
-- **Database**: bun:sqlite (7 tables)
+- **Database**: bun:sqlite (8 tables)
 - **Linting**: oxlint
 - **Type checking**: tsgo
 
@@ -53,7 +53,7 @@ Facts:
   - $if mentioned: $respond
 ```
 
-### Database (7 tables)
+### Database (8 tables)
 
 ```sql
 entities         -- id, name, owned_by, created_at
@@ -63,6 +63,7 @@ fact_embeddings  -- (planned) vector search
 messages         -- channel_id, user_id, author_name, content, created_at
 welcomed_users   -- discord_id, welcomed_at (onboarding DM tracking)
 webhook_messages -- message_id, entity_id, entity_name (for reply detection)
+eval_errors      -- entity_id, owner_id, error_message, condition (deduped error notifications)
 ```
 
 ### Message Pipeline
@@ -179,14 +180,15 @@ error("Message", err, { key: "value" });
 ## Core Rules
 
 - **No cutting corners. Ever.** If state needs to persist, use the database. If something needs tracking, track it properly. No "resets on restart is fine" or in-memory shortcuts for persistent data.
-- **Note things down immediately:** problems, tech debt, issues → TODO.md
-- **Do the work properly.** No undocumented workarounds.
+- **Note things down immediately:** problems, tech debt, issues → TODO.md. If you see ANY issue while working - inconsistency, bug, missing feature, tech debt - add it to TODO.md before you forget.
+- **Do the work properly.** No undocumented workarounds. No copouts like "this is out of date, leaving it" - fix it or flag it.
+- **Update docs after every task.** Keep `docs/`, `README.md`, and `CLAUDE.md` in sync with code changes. Outdated docs are bugs.
 
 ## Negative Constraints
 
 Do not:
 - Announce actions ("I will now...") - just do them
-- Leave work uncommitted
+- Leave work uncommitted - commit after completing each task
 - Use `--no-verify` - fix the issue or fix the hook
 - Assume tools are missing - check if `bun` is available
 

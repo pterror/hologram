@@ -2,9 +2,9 @@ import { createBot, Intents } from "@discordeno/bot";
 import { info, debug, warn, error } from "../logger";
 import { registerCommands, handleInteraction } from "./commands";
 import { handleMessage, type EvaluatedEntity } from "../ai/handler";
-import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, trackWebhookMessage, getWebhookMessageEntity, getMessages, formatMessagesForContext } from "../db/discord";
+import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, trackWebhookMessage, getWebhookMessageEntity, getMessages, formatMessagesForContext, recordEvalError } from "../db/discord";
 import { getEntity, getEntityWithFacts, getSystemEntity, getFactsForEntity, type EntityWithFacts } from "../db/entities";
-import { evaluateFacts, createBaseContext } from "../logic/expr";
+import { evaluateFacts, createBaseContext, parsePermissionDirectives } from "../logic/expr";
 import { executeWebhook, setBot } from "./webhooks";
 import "./commands/commands"; // Register all commands
 import { ensureHelpEntities } from "./commands/commands";
@@ -287,10 +287,24 @@ bot.events.messageCreate = async (message) => {
     try {
       result = evaluateFacts(facts, ctx);
     } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
       warn("Fact evaluation failed", {
         entity: entity.name,
-        error: err instanceof Error ? err.message : String(err),
+        error: errorMsg,
       });
+
+      // Notify all editors of the error (deduped by error message)
+      const editors = getEditorsToNotify(entity.owned_by, facts);
+      if (editors.length > 0) {
+        const isNew = recordEvalError(entity.id, editors[0], errorMsg);
+        if (isNew) {
+          for (const userId of editors) {
+            notifyUserOfError(userId, entity.name, errorMsg).catch(() => {
+              // DMs may fail if user has them disabled
+            });
+          }
+        }
+      }
       continue;
     }
 
@@ -389,7 +403,30 @@ async function processEntityRetry(
     chars: allChannelEntities.map(e => e.name),
   });
 
-  const result = evaluateFacts(facts, ctx);
+  let result;
+  try {
+    result = evaluateFacts(facts, ctx);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    warn("Fact evaluation failed during retry", {
+      entity: entity.name,
+      error: errorMsg,
+    });
+
+    // Notify all editors of the error (deduped by error message)
+    const editors = getEditorsToNotify(entity.owned_by, facts);
+    if (editors.length > 0) {
+      const isNew = recordEvalError(entity.id, editors[0], errorMsg);
+      if (isNew) {
+        for (const userId of editors) {
+          notifyUserOfError(userId, entity.name, errorMsg).catch(() => {
+            // DMs may fail if user has them disabled
+          });
+        }
+      }
+    }
+    return;
+  }
 
   // Handle chained $retry
   if (result.retryMs !== null && result.retryMs > 0) {
@@ -585,6 +622,37 @@ async function sendWelcomeDm(userId: bigint): Promise<void> {
   });
 
   debug("Sent welcome DM", { userId: userId.toString() });
+}
+
+/**
+ * Get all user IDs that should be notified of errors for an entity.
+ * Includes owner + anyone in the $edit list (but not "everyone").
+ */
+function getEditorsToNotify(ownerId: string | null, facts: string[]): string[] {
+  const editors = new Set<string>();
+
+  if (ownerId) {
+    editors.add(ownerId);
+  }
+
+  const permissions = parsePermissionDirectives(facts);
+  if (Array.isArray(permissions.editList)) {
+    for (const userId of permissions.editList) {
+      editors.add(userId);
+    }
+  }
+
+  return [...editors];
+}
+
+async function notifyUserOfError(userId: string, entityName: string, errorMsg: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dmChannel = await bot.helpers.getDmChannel(BigInt(userId)) as any;
+  await bot.helpers.sendMessage(dmChannel.id, {
+    content: `**Condition error in ${entityName}**\n\`\`\`\n${errorMsg}\n\`\`\`\nUse \`/edit ${entityName}\` to fix the condition.`,
+  });
+
+  debug("Sent error DM", { userId, entityName });
 }
 
 bot.events.interactionCreate = async (interaction) => {

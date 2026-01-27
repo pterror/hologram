@@ -1,63 +1,101 @@
 # Hologram
 
-Discord RP bot with smart state/worldstate/memory/context management.
+Discord bot for collaborative worldbuilding and roleplay, built on an entity-facts model.
 
-Inspired by SillyTavern but with proper knowledge graph, RAG, and tiered memory systems for sophisticated context assembly.
+## Core Concept
+
+Everything is an **entity** with **facts**. Characters, locations, items, even help topics - all entities.
+
+```
+Entity: Aria
+Facts:
+  - is a character
+  - has silver hair
+  - speaks with a gentle voice
+  - $if mentioned: $respond
+```
+
+Bind an entity to a channel and it comes alive - responding to messages, maintaining character, and evolving through play.
 
 ## Quick Start
 
-When you add Hologram to your server:
-1. Click **Quick Setup** in the welcome message, or
-2. Use `/setup quick` for one-command setup, or
-3. Use `/setup guided` for step-by-step configuration
+1. Create an entity: `/create Aria`
+2. Add facts via `/edit Aria`
+3. Bind to a channel: `/bind #rp Aria`
+4. Start chatting!
 
-Then create a character with `/build character` and start chatting!
+## Commands
 
-## Features
+| Command | Description |
+|---------|-------------|
+| `/create [name]` | Create entity |
+| `/view <entity>` | View entity facts |
+| `/edit <entity>` | Edit facts (modal) |
+| `/delete <entity>` | Delete entity |
+| `/transfer <entity> <user>` | Transfer ownership |
+| `/bind <target> <entity>` | Bind channel/user/server to entity |
+| `/unbind <target> <entity>` | Remove binding |
+| `/status` | Show channel bindings |
 
-- **Zero-config start** - One button click to get going
-- **Freeform character system** - Not locked to CCv2 spec
-- **World state** - Location, time, weather tracking
-- **Inventory** - Items with consistent descriptions and stats
-- **Knowledge graph** - Entities and relationships in SQLite
-- **RAG** - Semantic search over memories via sqlite-vec
-- **Tiered memory** - Ephemeral → Session → Persistent
-- **Context assembly** - Smart selection of what fits in the LLM window
-- **Multi-provider LLM** - AI SDK with `provider:model` spec
-- **User App support** - Install personally, use in any DM or server
-- **Progressive disclosure** - Starts minimal, suggests features as you need them
+**Help is an entity**: `/view help`, `/view help:commands`, `/view help:respond`
+
+## Response Control
+
+Control when entities respond using `$respond` directives and `$if` conditions:
+
+```
+$respond                              # Always respond
+$respond false                        # Never respond
+$if mentioned: $respond               # Respond when @mentioned
+$if replied: $respond                 # Respond to replies
+$if random() < 0.1: $respond          # 10% chance
+$if content.includes("hello"): $respond  # Keyword trigger
+$if dt_ms > 30000: $respond           # Rate limit (30s cooldown)
+```
+
+### Context Variables
+
+| Variable | Description |
+|----------|-------------|
+| `mentioned` | Bot was @mentioned |
+| `replied` | Message is a reply to bot |
+| `is_forward` | Message is forwarded |
+| `is_self` | Message from own webhook |
+| `content` | Message content |
+| `author` | Message author name |
+| `dt_ms` | Ms since last response |
+| `time.is_night` | Between 6pm-6am |
+| `self.*` | Entity's own fact values |
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `random(n)` | Random int 1-n, or float 0-1 |
+| `has_fact(pattern)` | Check if entity has matching fact |
+| `roll(dice)` | Roll dice (e.g. "2d6+3") |
+| `messages(n, format)` | Last n messages |
+
+## Bindings
+
+Bind entities to Discord channels, users, or servers:
+
+- **Channel binding**: Entity responds in that channel
+- **Server binding**: Entity responds in all channels of that server
+- **User binding**: User speaks as that entity (persona)
+
+Scope precedence: channel > server > global
 
 ## Setup
 
-### 1. Discord Application
+### 1. Discord Bot
 
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
-2. Click **New Application** and name it
-3. Copy the **Application ID** → `DISCORD_APP_ID`
-
-#### Bot Setup
-1. Go to **Bot** tab
-2. Click **Reset Token** and copy it → `DISCORD_TOKEN`
-3. Enable these **Privileged Gateway Intents**:
-   - Message Content Intent
-
-#### Installation Settings
-1. Go to **Installation** tab
-2. Enable both installation contexts:
-   - **Guild Install** - For server installation
-   - **User Install** - For personal installation (works in DMs)
-3. For **Guild Install**, set scopes: `bot`, `applications.commands`
-4. For **User Install**, set scopes: `applications.commands`
-
-#### OAuth2 (for inviting)
-1. Go to **OAuth2 → URL Generator**
-2. Select scopes: `bot`, `applications.commands`
-3. Select bot permissions: `Send Messages`, `Use Slash Commands`
-4. Copy the generated URL to invite to a server
+1. Create app at [Discord Developer Portal](https://discord.com/developers/applications)
+2. Go to **Bot** tab, click **Reset Token**, copy it
+3. Enable **Message Content Intent**
+4. Invite with `bot` + `applications.commands` scopes
 
 ### 2. LLM API Key
-
-Get an API key from your preferred provider:
 
 | Provider | Get Key | Env Variable |
 |----------|---------|--------------|
@@ -65,132 +103,32 @@ Get an API key from your preferred provider:
 | Anthropic | [console.anthropic.com](https://console.anthropic.com/) | `ANTHROPIC_API_KEY` |
 | OpenAI | [platform.openai.com](https://platform.openai.com/api-keys) | `OPENAI_API_KEY` |
 
-### 3. Install & Run
+### 3. Run
 
 ```bash
-# Install dependencies
 bun install
-
-# Set up environment
-cp .env.example .env
-# Edit .env with your tokens
-
-# Run in development
+cp .env.example .env  # Edit with your tokens
 bun run dev
 ```
 
 ## Environment Variables
 
 ```bash
-# Required
-DISCORD_TOKEN=       # Discord bot token (from Bot tab)
-DISCORD_APP_ID=      # Discord application ID
-
-# LLM (at least one required)
-DEFAULT_MODEL=google:gemini-3-flash-preview  # provider:model format
-GOOGLE_API_KEY=      # For google:* models
-ANTHROPIC_API_KEY=   # For anthropic:* models (optional)
-OPENAI_API_KEY=      # For openai:* models (optional)
+DISCORD_TOKEN=        # Required
+DEFAULT_MODEL=google:gemini-3-flash-preview
+GOOGLE_API_KEY=       # For google:* models
+ANTHROPIC_API_KEY=    # Optional
+OPENAI_API_KEY=       # Optional
+LOG_LEVEL=info        # debug, info, warn, error
 ```
-
-### Model Format
-
-Use `provider:model` format:
-- `google:gemini-3-flash-preview`
-- `google:gemini-2.5-pro-preview` (or gemini-3 when available)
-- `anthropic:claude-sonnet-4-20250514`
-- `openai:gpt-4o`
-
-## Slash Commands
-
-### Getting Started
-- `/setup quick` - One-command setup (creates world, enables session)
-- `/setup guided` - Step-by-step interactive setup
-- `/setup status` - Check current setup state
-- `/help` - Overview of setup and commands
-- `/help <topic>` - Deep dive (start, characters, worlds, memory, etc.)
-- `/tips enable|disable` - Toggle helpful suggestions
-
-### `/build` (AI-Assisted Wizards)
-- `character` - Create a character with AI suggestions
-- `world` - Create a world with AI suggestions
-- `location` - Create a location
-- `item` - Create an item
-
-### `/character`
-- `create <name> <persona>` - Create a character
-- `list` - List all characters
-- `select <name>` - Set active character for channel
-- `view <name>` - Show character details
-- `edit <name>` - Edit character
-- `delete <name>` - Delete character
-
-### `/world`
-- `create <name>` - Create a world
-- `init <world>` - Initialize world for this channel
-- `status` - Show current world state
-
-### `/config`
-- `show [section]` - Show current configuration
-- `set <path> <value>` - Set a config value
-- `preset <mode>` - Apply a mode (minimal, sillytavern, mud, tabletop, etc.)
-- `wizard` - Interactive feature toggles
-- `reset` - Reset to defaults
-
-### `/session`
-- `enable` - Enable bot in channel
-- `disable` - Disable bot in channel
-- `status` - Show session state
-- `clear` - Clear history
-- `scene <description>` - Set scene
-- `debug` - Show context debug info
-
-### `/chronicle` (Memory)
-- `recall <query>` - Search memories
-- `history` - View recent entries
-- `add <text>` - Manually add a memory
-- `forget <id>` - Remove a memory
-
-### `/scene`
-- `start <name>` - Start a named RP session
-- `pause` - Pause current scene
-- `resume <name>` - Resume a paused scene
-- `end` - End current scene
-- `list` - View all scenes
-
-### `/location`
-- `go <name>` - Travel to a location
-- `look` - Examine current location
-- `create <name>` - Create new location
-- `connect <from> <to>` - Connect locations
-- `map` - View all locations
-
-### `/roll`
-- `<expression>` - Roll dice (e.g., `2d6+3`, `4d6kh3`)
-- `/r <expression>` - Quick roll shortcut
-
-### `/combat`
-- `start` - Begin combat
-- `join <character>` - Add to initiative
-- `next` - Next turn
-- `status` - View initiative order
-- `end` - End combat
-
-## Tech Stack
-
-- **Runtime**: Bun
-- **Discord**: Discordeno
-- **LLM**: AI SDK (Google, Anthropic, OpenAI)
-- **Database**: bun:sqlite + sqlite-vec
-- **Embeddings**: Local via @huggingface/transformers (MiniLM)
 
 ## Development
 
 ```bash
 bun run dev          # Development with watch
-bun run lint         # Run oxlint
+bun run start        # Production
+bun run lint         # oxlint
 bun run check:types  # TypeScript check
-bun test             # Run tests
 ```
 
 ## License

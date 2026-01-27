@@ -318,3 +318,73 @@ export function getWebhookMessageEntity(messageId: string): WebhookMessageInfo |
   return { entityId: row.entity_id, entityName: row.entity_name };
 }
 
+// =============================================================================
+// Evaluation Error Tracking (for DM notifications)
+// =============================================================================
+
+export interface EvalError {
+  id: number;
+  entity_id: number;
+  owner_id: string;
+  error_message: string;
+  condition: string | null;
+  notified_at: string | null;
+  created_at: string;
+}
+
+/**
+ * Record an evaluation error for an entity.
+ * Returns true if this is a new error (not seen before), false if duplicate.
+ */
+export function recordEvalError(
+  entityId: number,
+  ownerId: string,
+  errorMessage: string,
+  condition?: string
+): boolean {
+  const db = getDb();
+  try {
+    db.prepare(`
+      INSERT INTO eval_errors (entity_id, owner_id, error_message, condition)
+      VALUES (?, ?, ?, ?)
+    `).run(entityId, ownerId, errorMessage, condition ?? null);
+    return true;
+  } catch {
+    // UNIQUE constraint violation - error already recorded
+    return false;
+  }
+}
+
+/**
+ * Get unnotified errors for an owner.
+ */
+export function getUnnotifiedErrors(ownerId: string): EvalError[] {
+  const db = getDb();
+  return db.prepare(`
+    SELECT * FROM eval_errors
+    WHERE owner_id = ? AND notified_at IS NULL
+    ORDER BY created_at DESC
+  `).all(ownerId) as EvalError[];
+}
+
+/**
+ * Mark errors as notified.
+ */
+export function markErrorsNotified(errorIds: number[]): void {
+  if (errorIds.length === 0) return;
+  const db = getDb();
+  const placeholders = errorIds.map(() => "?").join(",");
+  db.prepare(`
+    UPDATE eval_errors SET notified_at = CURRENT_TIMESTAMP
+    WHERE id IN (${placeholders})
+  `).run(...errorIds);
+}
+
+/**
+ * Clear all errors for an entity (e.g., when facts are edited).
+ */
+export function clearEntityErrors(entityId: number): void {
+  const db = getDb();
+  db.prepare(`DELETE FROM eval_errors WHERE entity_id = ?`).run(entityId);
+}
+
