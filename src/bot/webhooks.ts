@@ -21,6 +21,35 @@ export function setBot(b: any): void {
   bot = b;
 }
 
+// Thread channel types in Discord
+const THREAD_TYPES = new Set([
+  11, // PUBLIC_THREAD
+  12, // PRIVATE_THREAD
+  10, // NEWS_THREAD (announcement thread)
+]);
+
+/**
+ * Resolve a channel to its webhook-capable parent if it's a thread.
+ * Returns { webhookChannelId, threadId } where threadId is set if original was a thread.
+ */
+async function resolveWebhookChannel(
+  channelId: string
+): Promise<{ webhookChannelId: string; threadId: string | null } | null> {
+  try {
+    const channel = await bot.helpers.getChannel(BigInt(channelId));
+    if (channel && THREAD_TYPES.has(channel.type) && channel.parentId) {
+      return {
+        webhookChannelId: channel.parentId.toString(),
+        threadId: channelId,
+      };
+    }
+    return { webhookChannelId: channelId, threadId: null };
+  } catch (err) {
+    error("Failed to resolve channel", err, { channelId });
+    return null;
+  }
+}
+
 /**
  * Get or create a webhook for a channel.
  * Returns null if webhook creation fails (permissions, etc.)
@@ -164,7 +193,13 @@ export async function executeWebhook(
     return null;
   }
 
-  const webhook = await getOrCreateWebhook(channelId);
+  // Resolve thread to parent channel if needed
+  const resolved = await resolveWebhookChannel(channelId);
+  if (!resolved) return null;
+
+  const { webhookChannelId, threadId } = resolved;
+
+  const webhook = await getOrCreateWebhook(webhookChannelId);
   if (!webhook) return null;
 
   // Sanitize username (Discord forbids "discord" in webhook usernames)
@@ -175,6 +210,8 @@ export async function executeWebhook(
 
   debug("Executing webhook", {
     webhookId: webhook.webhookId,
+    webhookChannelId,
+    threadId,
     username: safeUsername,
     contentLength: content.length,
     chunks: chunks.length,
@@ -195,6 +232,7 @@ export async function executeWebhook(
           username: safeUsername,
           avatarUrl: avatarUrl ?? DEFAULT_AVATAR,
           wait: true,
+          ...(threadId ? { threadId: BigInt(threadId) } : {}),
         }
       );
       if (result?.id) {
@@ -215,6 +253,8 @@ export async function executeWebhook(
     error("Failed to execute webhook", err, {
       errorProps: allProps,
       channelId,
+      webhookChannelId,
+      threadId,
       webhookId: webhook.webhookId,
       username: safeUsername,
       avatarUrl: avatarUrl ?? DEFAULT_AVATAR,
@@ -222,9 +262,9 @@ export async function executeWebhook(
       contentPreview: content.slice(0, 200) + (content.length > 200 ? "..." : ""),
     });
     // Webhook may have been deleted - clear cache and try once more
-    webhookCache.delete(channelId);
+    webhookCache.delete(webhookChannelId);
     const db = getDb();
-    db.prepare(`DELETE FROM webhooks WHERE channel_id = ?`).run(channelId);
+    db.prepare(`DELETE FROM webhooks WHERE channel_id = ?`).run(webhookChannelId);
     return null;
   }
 }
