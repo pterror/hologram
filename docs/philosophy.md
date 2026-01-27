@@ -288,6 +288,20 @@ is_poisoned: true     → self.is_poisoned = true
 name: Aria            → self.name = "Aria"
 ```
 
+### Line Position
+
+`$if` directives are only recognized at the start of a line (leading whitespace is trimmed). This means regular facts can mention the syntax without being interpreted as conditionals:
+
+```
+# This is a conditional - $if at start
+$if mentioned: $respond
+
+# This is a regular fact - $if not at start
+Instructions can use $if syntax like: $if mentioned: $respond
+```
+
+This allows entities to contain instructions or documentation about the syntax without triggering evaluation.
+
 ### $respond Directive
 
 The `$respond` directive controls whether to respond. Evaluated top to bottom, last fired value wins:
