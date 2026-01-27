@@ -285,17 +285,20 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
   const evaluated: EvaluatedEntity[] = respondingEntities ?? [];
   const other: EntityWithFacts[] = [];
 
-  // Add location entities for each responding character
+  // Add location entities for each responding character and transform location refs
   const seenIds = new Set(evaluated.map(e => e.id));
   for (const entity of evaluated) {
-    const locationFact = entity.facts.find(f => /^is in \[entity:(\d+)\]/.test(f));
-    if (locationFact) {
-      const match = locationFact.match(/^is in \[entity:(\d+)\]/);
+    const locationPattern = /^is in \[entity:(\d+)\]/;
+    const factIndex = entity.facts.findIndex(f => locationPattern.test(f));
+    if (factIndex !== -1) {
+      const match = entity.facts[factIndex].match(locationPattern);
       if (match) {
         const locationId = parseInt(match[1]);
-        if (!seenIds.has(locationId)) {
-          const locationEntity = getEntityWithFacts(locationId);
-          if (locationEntity) {
+        const locationEntity = getEntityWithFacts(locationId);
+        if (locationEntity) {
+          // Transform fact to readable format: "is in The Tavern [12]"
+          entity.facts[factIndex] = `is in ${locationEntity.name} [${locationId}]`;
+          if (!seenIds.has(locationId)) {
             other.push(locationEntity);
             seenIds.add(locationId);
           }
