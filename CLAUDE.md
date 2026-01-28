@@ -53,6 +53,8 @@ Facts:
   - $if mentioned: $respond
 ```
 
+**Macros:** `{{entity:ID}}` expands to entity name, `{{char}}` expands to current entity name, `{{user}}` expands to literal "user".
+
 ### Database (8 tables)
 
 ```sql

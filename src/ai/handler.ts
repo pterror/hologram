@@ -147,22 +147,33 @@ function checkFactLocked(entityId: number, factContent: string): { locked: false
 
 /** Pattern for entity references: {{entity:ID}} */
 const ENTITY_REF_PATTERN = /\{\{entity:(\d+)\}\}/g;
+/** Pattern for {{char}} macro (current entity name) */
+const CHAR_PATTERN = /\{\{char\}\}/gi;
+/** Pattern for {{user}} macro (literal "user") */
+const USER_PATTERN = /\{\{user\}\}/gi;
 
 /**
- * Expand all {{entity:ID}} references in an entity's facts.
- * Replaces references with entity names and collects referenced entities.
+ * Expand all macros in an entity's facts:
+ * - {{entity:ID}} -> entity name with ID
+ * - {{char}} -> current entity's name
+ * - {{user}} -> literal "user"
  *
  * @param entity - The entity whose facts to process (mutates facts in place)
  * @param seenIds - Set of entity IDs already in context (modified in place)
  * @returns Array of newly referenced entities to add to context
  */
 function expandEntityRefs(
-  entity: { facts: string[] },
+  entity: { name: string; facts: string[] },
   seenIds: Set<number>
 ): EntityWithFacts[] {
   const referencedEntities: EntityWithFacts[] = [];
 
   for (let i = 0; i < entity.facts.length; i++) {
+    // Expand {{char}} -> entity name
+    entity.facts[i] = entity.facts[i].replace(CHAR_PATTERN, entity.name);
+    // Expand {{user}} -> literal "user"
+    entity.facts[i] = entity.facts[i].replace(USER_PATTERN, "user");
+    // Expand {{entity:ID}} -> entity name with ID
     entity.facts[i] = entity.facts[i].replace(ENTITY_REF_PATTERN, (match, idStr) => {
       const refId = parseInt(idStr);
       const refEntity = getEntityWithFacts(refId);

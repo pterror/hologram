@@ -26,6 +26,26 @@ is in {{entity:12}} (The Tavern)
 
 The <code v-pre>{{entity:N}}</code> syntax references another entity by ID. The parenthetical note is optional but helpful for readability.
 
+## Macros
+
+Special patterns that expand when facts are processed:
+
+| Macro | Expands To |
+|-------|------------|
+| <code v-pre>{{entity:ID}}</code> | Entity name with ID (e.g., "Aria [#12]") |
+| <code v-pre>{{char}}</code> | Current entity's name |
+| <code v-pre>{{user}}</code> | Literal "user" |
+
+These are useful for writing generic facts that adapt to context:
+
+```
+{{char}} loves adventure
+refers to the player as {{user}}
+is friends with {{entity:5}}
+```
+
+For a character named "Aria", the first fact would expand to "Aria loves adventure".
+
 ## Response Control
 
 Control when the entity responds (see [Response Control](/reference/triggers)):
