@@ -51,6 +51,8 @@ export interface EvaluatedEntity {
   memoryScope: "none" | "channel" | "guild" | "global";
   /** Context character limit from $context directive, if present */
   contextLimit: number | null;
+  /** Freeform multi-char responses (no XML parsing) from $freeform directive */
+  isFreeform: boolean;
 }
 
 export interface MessageContext {
@@ -367,13 +369,21 @@ function buildSystemPrompt(
   let multiEntityGuidance = "";
   if (respondingEntities.length > 1) {
     const names = respondingEntities.map(c => c.name).join(", ");
-    multiEntityGuidance = `\n\nYou are: ${names}. Format your response with XML tags:
+    const isFreeform = respondingEntities.some(e => e.isFreeform);
+
+    if (isFreeform) {
+      // Freeform mode: no structured format required
+      multiEntityGuidance = `\n\nYou are writing as: ${names}. They may interact naturally in your response. Not everyone needs to respond to every message - only include those who would naturally engage. If none would respond, reply with only: none`;
+    } else {
+      // Structured mode: use XML tags
+      multiEntityGuidance = `\n\nYou are: ${names}. Format your response with XML tags:
 <${respondingEntities[0]?.name ?? "Name"}>*waves* Hello there!</${respondingEntities[0]?.name ?? "Name"}>
 <${respondingEntities[1]?.name ?? "Other"}>Nice to meet you.</${respondingEntities[1]?.name ?? "Other"}>
 
 Wrap everyone's dialogue in their name tag. They may interact naturally.
 
 Not everyone needs to respond to every message. Only respond as those who would naturally engage with what was said. If none would respond, reply with only <none/>.`;
+    }
   }
 
   return `${context}
@@ -565,14 +575,16 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
       memoriesRemoved,
     });
 
-    // Check for <none/> sentinel (LLM decided none should respond)
-    if (result.text.trim() === "<none/>") {
-      debug("LLM returned <none/> - no response");
+    // Check for <none/> or "none" sentinel (LLM decided none should respond)
+    const trimmedText = result.text.trim().toLowerCase();
+    if (trimmedText === "<none/>" || trimmedText === "none") {
+      debug("LLM returned none - no response");
       return null;
     }
 
-    // Parse multi-entity response
-    const entityResponses = parseMultiEntityResponse(result.text, evaluated);
+    // Parse multi-entity response (skip if any entity has $freeform)
+    const isFreeform = evaluated.some(e => e.isFreeform);
+    const entityResponses = isFreeform ? undefined : parseMultiEntityResponse(result.text, evaluated);
 
     return {
       response: result.text,
@@ -684,7 +696,9 @@ export async function* handleMessageStreaming(
     });
 
     // Use different streaming logic based on single vs multiple entities
-    if (entities.length === 1) {
+    // In freeform mode, treat multi-entity like single (no XML parsing)
+    const isFreeform = entities.some(e => e.isFreeform);
+    if (entities.length === 1 || isFreeform) {
       yield* streamSingleEntity(result.textStream, streamMode, delimiter);
     } else {
       yield* streamMultiEntity(result.textStream, entities, streamMode, delimiter);

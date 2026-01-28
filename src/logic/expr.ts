@@ -560,6 +560,7 @@ const BLACKLIST_SIGIL = "$blacklist ";
 const STREAM_SIGIL = "$stream";
 const MEMORY_SIGIL = "$memory";
 const CONTEXT_SIGIL = "$context";
+const FREEFORM_SIGIL = "$freeform";
 
 /** Memory retrieval scope */
 export type MemoryScope = "none" | "channel" | "guild" | "global";
@@ -598,6 +599,8 @@ export interface ProcessedFact {
   isContext: boolean;
   /** For $context directives, the character limit */
   contextLimit?: number;
+  /** True if this fact is a $freeform directive */
+  isFreeform: boolean;
 }
 
 /** Parse expression, expect ':', return position after ':' */
@@ -636,6 +639,7 @@ export function parseFact(fact: string): ProcessedFact {
         isStream: false,
         isMemory: false,
         isContext: false,
+        isFreeform: false,
       };
     } else {
       // $locked prefix - recursively parse the rest, then mark as locked
@@ -667,6 +671,7 @@ export function parseFact(fact: string): ProcessedFact {
         isStream: false,
         isMemory: false,
         isContext: false,
+        isFreeform: false,
       };
     }
 
@@ -686,6 +691,7 @@ export function parseFact(fact: string): ProcessedFact {
         isStream: false,
         isMemory: false,
         isContext: false,
+        isFreeform: false,
       };
     }
 
@@ -706,6 +712,7 @@ export function parseFact(fact: string): ProcessedFact {
         streamDelimiter: streamResultCond.delimiter,
         isMemory: false,
         isContext: false,
+        isFreeform: false,
       };
     }
 
@@ -725,6 +732,7 @@ export function parseFact(fact: string): ProcessedFact {
         isMemory: true,
         memoryScope: memoryResultCond,
         isContext: false,
+        isFreeform: false,
       };
     }
 
@@ -744,10 +752,29 @@ export function parseFact(fact: string): ProcessedFact {
         isMemory: false,
         isContext: true,
         contextLimit: contextResultCond,
+        isFreeform: false,
       };
     }
 
-    return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false };
+    // Check if content is a $freeform directive
+    if (content === FREEFORM_SIGIL) {
+      return {
+        content,
+        conditional: true,
+        expression,
+        isRespond: false,
+        isRetry: false,
+        isAvatar: false,
+        isLockedDirective: false,
+        isLockedFact: false,
+        isStream: false,
+        isMemory: false,
+        isContext: false,
+        isFreeform: true,
+      };
+    }
+
+    return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false };
   }
 
   // Check for unconditional $respond
@@ -765,6 +792,7 @@ export function parseFact(fact: string): ProcessedFact {
       isStream: false,
       isMemory: false,
       isContext: false,
+      isFreeform: false,
     };
   }
 
@@ -783,6 +811,7 @@ export function parseFact(fact: string): ProcessedFact {
       isStream: false,
       isMemory: false,
       isContext: false,
+      isFreeform: false,
     };
   }
 
@@ -801,6 +830,7 @@ export function parseFact(fact: string): ProcessedFact {
       isStream: false,
       isMemory: false,
       isContext: false,
+      isFreeform: false,
     };
   }
 
@@ -820,6 +850,7 @@ export function parseFact(fact: string): ProcessedFact {
       streamDelimiter: streamResult.delimiter,
       isMemory: false,
       isContext: false,
+      isFreeform: false,
     };
   }
 
@@ -838,6 +869,7 @@ export function parseFact(fact: string): ProcessedFact {
       isMemory: true,
       memoryScope: memoryResult,
       isContext: false,
+      isFreeform: false,
     };
   }
 
@@ -856,10 +888,28 @@ export function parseFact(fact: string): ProcessedFact {
       isMemory: false,
       isContext: true,
       contextLimit: contextResult,
+      isFreeform: false,
     };
   }
 
-  return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false };
+  // Check for unconditional $freeform
+  if (trimmed === FREEFORM_SIGIL) {
+    return {
+      content: trimmed,
+      conditional: false,
+      isRespond: false,
+      isRetry: false,
+      isAvatar: false,
+      isLockedDirective: false,
+      isLockedFact: false,
+      isStream: false,
+      isMemory: false,
+      isContext: false,
+      isFreeform: true,
+    };
+  }
+
+  return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false };
 }
 
 /**
@@ -1080,6 +1130,8 @@ export interface EvaluatedFacts {
   memoryScope: MemoryScope;
   /** Context character limit if $context directive present */
   contextLimit: number | null;
+  /** True if $freeform directive present (multi-char responses not split) */
+  isFreeform: boolean;
 }
 
 /**
@@ -1108,6 +1160,7 @@ export function evaluateFacts(
   let streamDelimiter: string | null = null;
   let memoryScope: MemoryScope = "none";
   let contextLimit: number | null = null;
+  let isFreeform = false;
 
   // Strip comments first
   const uncommented = stripComments(facts);
@@ -1174,10 +1227,16 @@ export function evaluateFacts(
       continue;
     }
 
+    // Handle $freeform directive
+    if (parsed.isFreeform) {
+      isFreeform = true;
+      continue;
+    }
+
     results.push(parsed.content);
   }
 
-  return { facts: results, shouldRespond, respondSource, retryMs, avatarUrl, isLocked, lockedFacts, streamMode, streamDelimiter, memoryScope, contextLimit };
+  return { facts: results, shouldRespond, respondSource, retryMs, avatarUrl, isLocked, lockedFacts, streamMode, streamDelimiter, memoryScope, contextLimit, isFreeform };
 }
 
 // =============================================================================

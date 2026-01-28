@@ -120,6 +120,17 @@ $if mentioned: $stream             # Conditional streaming
 
 **Multi-character streaming:** When streaming with multiple characters bound to a channel, the system uses heuristic XML parsing to detect `<CharName>...</CharName>` tags and streams each character's response separately.
 
+### Freeform Multi-Character
+
+By default, when multiple entities are bound to a channel, responses are split using XML tags (`<Name>...</Name>`). Use `$freeform` to allow natural prose responses without structured formatting:
+
+```
+$freeform                          # Enable freeform multi-char responses
+$if mentioned: $freeform           # Conditional freeform
+```
+
+With `$freeform`, the LLM can write naturally with multiple characters interacting in the same response. The response is sent as a single message (using the first entity's webhook identity) rather than being split per character.
+
 **Context variables:** `mentioned`, `replied`, `is_forward`, `is_self`, `content`, `author`, `dt_ms`, `elapsed_ms`, `time.is_night`, `self.*`
 
 ### Context Window

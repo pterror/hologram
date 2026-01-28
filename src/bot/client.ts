@@ -355,6 +355,7 @@ bot.events.messageCreate = async (message) => {
           streamDelimiter: result.streamDelimiter,
           memoryScope: result.memoryScope,
           contextLimit: result.contextLimit,
+          isFreeform: result.isFreeform,
         });
       }
     }
@@ -471,6 +472,7 @@ async function processEntityRetry(
     streamDelimiter: result.streamDelimiter,
     memoryScope: result.memoryScope,
     contextLimit: result.contextLimit,
+    isFreeform: result.isFreeform,
   }]);
 }
 
