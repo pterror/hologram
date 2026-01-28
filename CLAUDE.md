@@ -140,11 +140,11 @@ Control how much message history is included in LLM context:
 ```
 $context 16k                       # 16,000 characters of history (default)
 $context 8000                      # 8,000 characters
-$context 200k                      # 200,000 characters (hard cap)
+$context 1000k                     # 1,000,000 characters (hard cap)
 $if mentioned: $context 32k        # Conditional context size
 ```
 
-Default is 16k characters. Supports `k` suffix (e.g., `16k` = 16,000). Hard cap is 200k.
+Default is 16k characters. Supports `k` suffix (e.g., `16k` = 16,000). Hard cap is 1M.
 
 ### Stickers
 
@@ -251,6 +251,7 @@ error("Message", err, { key: "value" });
 ## Core Rules
 
 - **No cutting corners. Ever.** If state needs to persist, use the database. If something needs tracking, track it properly. No "resets on restart is fine" or in-memory shortcuts for persistent data.
+- **Never reimplement.** If logic exists elsewhere, import and use it. No local copies of functions, no "simplified versions for this use case." Find the canonical implementation and make it work.
 - **Note things down immediately:** problems, tech debt, issues → TODO.md. If you see ANY issue while working - inconsistency, bug, missing feature, tech debt - add it to TODO.md before you forget.
 - **Do the work properly.** No undocumented workarounds. No copouts like "this is out of date, leaving it" - fix it or flag it.
 - **Update docs after every task.** Keep `docs/`, `README.md`, and `CLAUDE.md` in sync with code changes. Outdated docs are bugs.

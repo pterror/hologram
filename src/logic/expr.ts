@@ -8,6 +8,8 @@
  *   $if self.fox_tf >= 0.5: has full fur
  */
 
+import { MAX_CONTEXT_CHAR_LIMIT } from "../ai/context";
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -1070,8 +1072,6 @@ function parseMemoryDirective(content: string): MemoryScope | null {
   return null;
 }
 
-/** Hard cap for context limit (200k characters) */
-const CONTEXT_HARD_CAP = 200_000;
 
 /**
  * Parse a $context directive.
@@ -1080,7 +1080,7 @@ const CONTEXT_HARD_CAP = 200_000;
  * Syntax:
  * - $context 8000 → 8000 characters
  * - $context 8k → 8000 characters
- * - $context 200k → 200000 characters (capped at CONTEXT_HARD_CAP)
+ * - $context 200k → 200000 characters (capped at MAX_CONTEXT_CHAR_LIMIT)
  */
 function parseContextDirective(content: string): number | null {
   if (!content.startsWith(CONTEXT_SIGIL)) {
@@ -1104,7 +1104,7 @@ function parseContextDirective(content: string): number | null {
   }
 
   // Cap at hard maximum
-  return Math.min(Math.floor(value), CONTEXT_HARD_CAP);
+  return Math.min(Math.floor(value), MAX_CONTEXT_CHAR_LIMIT);
 }
 
 export interface EvaluatedFacts {

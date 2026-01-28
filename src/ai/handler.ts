@@ -20,40 +20,24 @@ import {
   getMessages,
 } from "../db/discord";
 import { parseFact } from "../logic/expr";
+import {
+  formatEntityDisplay,
+  formatEvaluatedEntity,
+  formatRawEntity,
+  buildMessageHistory,
+  DEFAULT_CONTEXT_LIMIT,
+  type EvaluatedEntity,
+} from "./context";
+
+// Re-export from context for backwards compatibility
+export { formatEntityDisplay, formatEvaluatedEntity, formatRawEntity, buildMessageHistory, type EvaluatedEntity };
 
 // =============================================================================
 // Constants
 // =============================================================================
 
-/** Maximum characters of message history to include in context */
-const MESSAGE_HISTORY_CHAR_LIMIT = 16_000;
-
 /** Number of messages to fetch from DB (we'll trim by char limit) */
 const MESSAGE_FETCH_LIMIT = 100;
-
-// =============================================================================
-// Types
-// =============================================================================
-
-/** Entity with pre-evaluated facts (directives processed and removed) */
-export interface EvaluatedEntity {
-  id: number;
-  name: string;
-  /** Facts with directives ($if, $respond, $avatar, etc.) processed and removed */
-  facts: string[];
-  /** Avatar URL from $avatar directive, if present */
-  avatarUrl: string | null;
-  /** Stream mode from $stream directive, if present */
-  streamMode: "lines" | "full" | null;
-  /** Custom delimiter for streaming (default: newline) */
-  streamDelimiter: string | null;
-  /** Memory retrieval scope from $memory directive (default: "none") */
-  memoryScope: "none" | "channel" | "guild" | "global";
-  /** Context character limit from $context directive, if present */
-  contextLimit: number | null;
-  /** Freeform multi-char responses (no XML parsing) from $freeform directive */
-  isFreeform: boolean;
-}
 
 export interface MessageContext {
   channelId: string;
@@ -86,15 +70,6 @@ export interface ResponseResult {
   memoriesSaved: number;
   memoriesUpdated: number;
   memoriesRemoved: number;
-}
-
-// =============================================================================
-// Display Helpers
-// =============================================================================
-
-/** Format entity name and ID for LLM context */
-export function formatEntityDisplay(name: string, id: number): string {
-  return `${name} [${id}]`;
 }
 
 // =============================================================================
@@ -330,18 +305,6 @@ function createTools(channelId?: string, guildId?: string) {
 // Context Building
 // =============================================================================
 
-/** Format an evaluated entity for LLM context */
-function formatEvaluatedEntity(entity: EvaluatedEntity): string {
-  const factLines = entity.facts.join("\n");
-  return `<defs for="${entity.name}" id="${entity.id}">\n${factLines}\n</defs>`;
-}
-
-/** Format a raw entity for LLM context (used for locations, etc.) */
-function formatRawEntity(entity: EntityWithFacts): string {
-  const factLines = entity.facts.map(f => f.content).join("\n");
-  return `<defs for="${entity.name}" id="${entity.id}">\n${factLines}\n</defs>`;
-}
-
 function buildSystemPrompt(
   respondingEntities: EvaluatedEntity[],
   otherEntities: EntityWithFacts[],
@@ -387,35 +350,6 @@ Not everyone needs to respond to every message. Only respond as those who would 
   }
 
   return `${context}${multiEntityGuidance}`;
-}
-
-/**
- * Build message history up to a character limit.
- * Messages should be in DESC order (newest first) from the database.
- * Returns formatted string in chronological order (oldest first).
- */
-function buildMessageHistory(
-  messages: Array<{ author_name: string; content: string }>,
-  charLimit = MESSAGE_HISTORY_CHAR_LIMIT
-): string {
-  const lines: string[] = [];
-  let totalChars = 0;
-
-  // Process newest to oldest, accumulating until we hit the limit
-  for (const m of messages) {
-    const line = `${m.author_name}: ${m.content}`;
-    const lineLen = line.length + 1; // +1 for newline
-
-    if (totalChars + lineLen > charLimit && lines.length > 0) {
-      break; // Would exceed limit, stop (but always include at least one message)
-    }
-
-    lines.push(line);
-    totalChars += lineLen;
-  }
-
-  // Reverse to chronological order (oldest first)
-  return lines.reverse().join("\n");
 }
 
 /**
@@ -504,7 +438,7 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
   const history = getMessages(channelId, MESSAGE_FETCH_LIMIT);
 
   // Determine context limit from entities (first non-null wins)
-  const contextLimit = evaluated.find(e => e.contextLimit !== null)?.contextLimit ?? MESSAGE_HISTORY_CHAR_LIMIT;
+  const contextLimit = evaluated.find(e => e.contextLimit !== null)?.contextLimit ?? DEFAULT_CONTEXT_LIMIT;
 
   // Build prompts
   const systemPrompt = buildSystemPrompt(evaluated, other, ctx.entityMemories);
@@ -653,7 +587,7 @@ export async function* handleMessageStreaming(
   const history = getMessages(channelId, MESSAGE_FETCH_LIMIT);
 
   // Determine context limit from entities (first non-null wins)
-  const contextLimit = entities.find(e => e.contextLimit !== null)?.contextLimit ?? MESSAGE_HISTORY_CHAR_LIMIT;
+  const contextLimit = entities.find(e => e.contextLimit !== null)?.contextLimit ?? DEFAULT_CONTEXT_LIMIT;
 
   // Build prompts
   const systemPrompt = buildSystemPrompt(entities, other, ctx.entityMemories);

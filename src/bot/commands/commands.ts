@@ -33,7 +33,7 @@ import {
   setChannelForgetTime,
 } from "../../db/discord";
 import { parsePermissionDirectives, matchesUserEntry, isUserBlacklisted } from "../../logic/expr";
-import { formatEntityDisplay } from "../../ai/handler";
+import { formatEntityDisplay, formatRawEntity, buildMessageHistory } from "../../ai/context";
 
 // =============================================================================
 // Permission Helpers
@@ -894,7 +894,19 @@ async function handleInfoPrompt(ctx: CommandContext, options: Record<string, unk
   const targetEntity = await resolveTargetEntity(ctx, entityInput, "prompt");
   if (!targetEntity) return;
 
-  const systemPrompt = buildSystemPrompt(ctx.channelId, ctx.guildId, ctx.userId, targetEntity);
+  // Build system prompt using shared formatter
+  const contextParts: string[] = [formatRawEntity(targetEntity)];
+
+  // Add user entity if bound
+  const userEntityId = resolveDiscordEntity(ctx.userId, "user", ctx.guildId, ctx.channelId);
+  if (userEntityId) {
+    const userEntity = getEntityWithFacts(userEntityId);
+    if (userEntity) {
+      contextParts.push(formatRawEntity(userEntity));
+    }
+  }
+
+  const systemPrompt = contextParts.join("\n\n");
 
   // Format output, eliding if needed
   const MAX_CHARS = 1900;
@@ -914,7 +926,8 @@ async function handleInfoHistory(ctx: CommandContext, options: Record<string, un
   const targetEntity = await resolveTargetEntity(ctx, entityInput, "history");
   if (!targetEntity) return;
 
-  const userMessage = buildMessageHistory(ctx.channelId);
+  const messages = getMessages(ctx.channelId, 100);
+  const userMessage = buildMessageHistory(messages);
 
   // Format output, eliding if needed
   const MAX_CHARS = 1900;
@@ -927,75 +940,6 @@ async function handleInfoHistory(ctx: CommandContext, options: Record<string, un
   }
 
   await respond(ctx.bot, ctx.interaction, output, true);
-}
-
-function buildSystemPrompt(
-  channelId: string,
-  guildId: string | undefined,
-  userId: string,
-  entity: EntityWithFacts
-): string {
-  // Process facts (remove directives, expand macros)
-  const processedFacts = entity.facts
-    .map(f => f.content)
-    .filter(f => !f.startsWith("$")); // Remove directive-only facts
-
-  // Expand {{char}} and {{user}} macros
-  const expandedFacts = processedFacts.map(fact =>
-    fact
-      .replace(/\{\{char\}\}/gi, entity.name)
-      .replace(/\{\{user\}\}/gi, "user")
-  );
-
-  // Build entity context
-  const entityContext = `<defs for="${entity.name}" id="${entity.id}">\n${expandedFacts.join("\n")}\n</defs>`;
-
-  // Check for user persona
-  let userContext = "";
-  const userEntityId = resolveDiscordEntity(userId, "user", guildId, channelId);
-  if (userEntityId) {
-    const userEntity = getEntityWithFacts(userEntityId);
-    if (userEntity) {
-      const userFacts = userEntity.facts
-        .map(f => f.content)
-        .filter(f => !f.startsWith("$"));
-      userContext = `\n\n<defs for="${userEntity.name}" id="${userEntity.id}">\n${userFacts.join("\n")}\n</defs>`;
-    }
-  }
-
-  return `${entityContext}${userContext}
-
-You have access to tools to modify facts and memories about entities.
-
-**Facts** are permanent defining traits. Use very sparingly:
-- Core personality, appearance, abilities
-- Key relationships that define the entity
-- Use add_fact / update_fact / remove_fact
-
-**Memories** are important events worth recalling. Use sparingly:
-- Significant conversations or promises
-- Events that shaped them
-- Things learned that may be relevant later
-- Use save_memory / update_memory / remove_memory
-
-Most interactions don't need saving. Only save what matters long-term.`;
-}
-
-function buildMessageHistory(channelId: string): string {
-  const messages = getMessages(channelId, 100);
-  const historyLines: string[] = [];
-  let totalChars = 0;
-  const charLimit = 16_000; // Default context limit
-
-  for (const m of messages) {
-    const line = `${m.author_name}: ${m.content}`;
-    const lineLen = line.length + 1;
-    if (totalChars + lineLen > charLimit && historyLines.length > 0) break;
-    historyLines.push(line);
-    totalChars += lineLen;
-  }
-
-  return historyLines.reverse().join("\n") || "(no messages)";
 }
 
 function elideText(text: string, maxLen: number, marker: string): string {
