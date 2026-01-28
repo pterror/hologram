@@ -36,6 +36,23 @@ import { parsePermissionDirectives, matchesUserEntry, isUserBlacklisted } from "
 import { formatEntityDisplay, formatRawEntity, buildMessageHistory } from "../../ai/context";
 
 // =============================================================================
+// Text Elision Helper
+// =============================================================================
+
+const MAX_OUTPUT_CHARS = 8000;
+const ELISION_MARKER = "\n... (elided) ...\n";
+
+/**
+ * Elide text that exceeds the max length, keeping beginning and end.
+ */
+function elideText(text: string, maxLen = MAX_OUTPUT_CHARS): string {
+  if (text.length <= maxLen) return text;
+  const keepLen = maxLen - ELISION_MARKER.length;
+  const halfKeep = Math.floor(keepLen / 2);
+  return text.slice(0, halfKeep) + ELISION_MARKER + text.slice(-halfKeep);
+}
+
+// =============================================================================
 // Permission Helpers
 // =============================================================================
 
@@ -228,7 +245,7 @@ registerCommand({
       }
     }
 
-    await respond(ctx.bot, ctx.interaction, parts.join(""), true);
+    await respond(ctx.bot, ctx.interaction, elideText(parts.join("")), true);
   },
 });
 
@@ -906,7 +923,7 @@ async function handleInfoPrompt(ctx: CommandContext, options: Record<string, unk
     }
   }
 
-  const systemPrompt = contextParts.join("\n\n");
+  const systemPrompt = elideText(contextParts.join("\n\n"));
   const output = `**System prompt for ${targetEntity.name}:**\n\`\`\`\n${systemPrompt}\n\`\`\``;
   await respond(ctx.bot, ctx.interaction, output, true);
 }
@@ -917,17 +934,7 @@ async function handleInfoHistory(ctx: CommandContext, options: Record<string, un
   if (!targetEntity) return;
 
   const messages = getMessages(ctx.channelId, 100);
-  let userMessage = buildMessageHistory(messages);
-
-  // Cap at 8k to avoid spamming hundreds of messages (context can be up to 1M)
-  const MAX_HISTORY_CHARS = 8000;
-  if (userMessage.length > MAX_HISTORY_CHARS) {
-    const marker = "\n... (elided) ...\n";
-    const keepLen = MAX_HISTORY_CHARS - marker.length;
-    const halfKeep = Math.floor(keepLen / 2);
-    userMessage = userMessage.slice(0, halfKeep) + marker + userMessage.slice(-halfKeep);
-  }
-
+  const userMessage = elideText(buildMessageHistory(messages));
   const output = `**Message history for ${targetEntity.name}:**\n\`\`\`\n${userMessage}\n\`\`\``;
   await respond(ctx.bot, ctx.interaction, output, true);
 }
