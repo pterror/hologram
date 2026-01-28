@@ -2,6 +2,7 @@ import { createBot, Intents } from "@discordeno/bot";
 import { info, debug, warn, error } from "../logger";
 import { registerCommands, handleInteraction } from "./commands";
 import { handleMessage, handleMessageStreaming, type EvaluatedEntity } from "../ai/handler";
+import { retrieveRelevantMemories, type MemoryScope } from "../db/memories";
 import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, trackWebhookMessage, getWebhookMessageEntity, getMessages, formatMessagesForContext, recordEvalError } from "../db/discord";
 import { getEntity, getEntityWithFacts, getSystemEntity, getFactsForEntity, type EntityWithFacts } from "../db/entities";
 import { evaluateFacts, createBaseContext, parsePermissionDirectives } from "../logic/expr";
@@ -345,6 +346,7 @@ bot.events.messageCreate = async (message) => {
           avatarUrl: result.avatarUrl,
           streamMode: result.streamMode,
           streamDelimiter: result.streamDelimiter,
+          memoryScope: result.memoryScope,
         });
       }
     }
@@ -459,6 +461,7 @@ async function processEntityRetry(
     avatarUrl: result.avatarUrl,
     streamMode: result.streamMode,
     streamDelimiter: result.streamDelimiter,
+    memoryScope: result.memoryScope,
   }]);
 }
 
@@ -542,6 +545,7 @@ async function handleStreamingResponse(
     username: string;
     content: string;
     isMentioned: boolean;
+    entityMemories?: Map<number, Array<{ content: string }>>;
   }
 ): Promise<void> {
   const allMessageIds: string[] = [];
@@ -778,6 +782,34 @@ async function sendResponse(
 
   // Handle message via LLM
   try {
+    // Retrieve memories for entities that have memory enabled
+    const entityMemories = new Map<number, Array<{ content: string }>>();
+    if (respondingEntities) {
+      // Build conversation context from recent messages for semantic search
+      const recentMessages = getMessages(channelId, 10);
+      const conversationContext = recentMessages
+        .slice().reverse()
+        .map(m => `${m.author_name}: ${m.content}`)
+        .join("\n");
+
+      for (const entity of respondingEntities) {
+        if (entity.memoryScope !== "none") {
+          const memories = await retrieveRelevantMemories(
+            entity.id,
+            conversationContext,
+            entity.memoryScope as MemoryScope,
+            channelId,
+            guildId,
+            5 // limit
+          );
+          if (memories.length > 0) {
+            entityMemories.set(entity.id, memories.map(m => ({ content: m.content })));
+            debug("Retrieved memories", { entity: entity.name, count: memories.length });
+          }
+        }
+      }
+    }
+
     // Check for streaming mode
     const streamMode = respondingEntities?.[0]?.streamMode;
     const useStreaming = streamMode && respondingEntities && respondingEntities.length > 0;
@@ -796,6 +828,7 @@ async function sendResponse(
         username,
         content,
         isMentioned,
+        entityMemories,
       });
 
       // Mark response time
@@ -812,6 +845,7 @@ async function sendResponse(
       content,
       isMentioned,
       respondingEntities,
+      entityMemories,
     });
 
     // Mark response time

@@ -557,6 +557,10 @@ const LOCKED_SIGIL = "$locked";
 const EDIT_SIGIL = "$edit ";
 const VIEW_SIGIL = "$view ";
 const STREAM_SIGIL = "$stream";
+const MEMORY_SIGIL = "$memory";
+
+/** Memory retrieval scope */
+export type MemoryScope = "none" | "channel" | "guild" | "global";
 
 export interface ProcessedFact {
   content: string;
@@ -584,6 +588,10 @@ export interface ProcessedFact {
   streamMode?: "lines" | "full";
   /** For $stream directives with custom delimiter (default: newline) */
   streamDelimiter?: string;
+  /** True if this fact is a $memory directive */
+  isMemory: boolean;
+  /** For $memory directives, the scope */
+  memoryScope?: MemoryScope;
 }
 
 /** Parse expression, expect ':', return position after ':' */
@@ -620,6 +628,7 @@ export function parseFact(fact: string): ProcessedFact {
         isLockedDirective: true,
         isLockedFact: false,
         isStream: false,
+        isMemory: false,
       };
     } else {
       // $locked prefix - recursively parse the rest, then mark as locked
@@ -649,6 +658,7 @@ export function parseFact(fact: string): ProcessedFact {
         isLockedDirective: false,
         isLockedFact: false,
         isStream: false,
+        isMemory: false,
       };
     }
 
@@ -666,6 +676,7 @@ export function parseFact(fact: string): ProcessedFact {
         isLockedDirective: false,
         isLockedFact: false,
         isStream: false,
+        isMemory: false,
       };
     }
 
@@ -684,10 +695,29 @@ export function parseFact(fact: string): ProcessedFact {
         isStream: true,
         streamMode: streamResultCond.mode,
         streamDelimiter: streamResultCond.delimiter,
+        isMemory: false,
       };
     }
 
-    return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false };
+    // Check if content is a $memory directive
+    const memoryResultCond = parseMemoryDirective(content);
+    if (memoryResultCond !== null) {
+      return {
+        content,
+        conditional: true,
+        expression,
+        isRespond: false,
+        isRetry: false,
+        isAvatar: false,
+        isLockedDirective: false,
+        isLockedFact: false,
+        isStream: false,
+        isMemory: true,
+        memoryScope: memoryResultCond,
+      };
+    }
+
+    return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false };
   }
 
   // Check for unconditional $respond
@@ -703,6 +733,7 @@ export function parseFact(fact: string): ProcessedFact {
       isLockedDirective: false,
       isLockedFact: false,
       isStream: false,
+      isMemory: false,
     };
   }
 
@@ -719,6 +750,7 @@ export function parseFact(fact: string): ProcessedFact {
       isLockedDirective: false,
       isLockedFact: false,
       isStream: false,
+      isMemory: false,
     };
   }
 
@@ -735,6 +767,7 @@ export function parseFact(fact: string): ProcessedFact {
       isLockedDirective: false,
       isLockedFact: false,
       isStream: false,
+      isMemory: false,
     };
   }
 
@@ -752,10 +785,28 @@ export function parseFact(fact: string): ProcessedFact {
       isStream: true,
       streamMode: streamResult.mode,
       streamDelimiter: streamResult.delimiter,
+      isMemory: false,
     };
   }
 
-  return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false };
+  // Check for unconditional $memory
+  const memoryResult = parseMemoryDirective(trimmed);
+  if (memoryResult !== null) {
+    return {
+      content: trimmed,
+      conditional: false,
+      isRespond: false,
+      isRetry: false,
+      isAvatar: false,
+      isLockedDirective: false,
+      isLockedFact: false,
+      isStream: false,
+      isMemory: true,
+      memoryScope: memoryResult,
+    };
+  }
+
+  return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false };
 }
 
 /**
@@ -882,6 +933,40 @@ function parseStreamDirective(content: string): StreamDirectiveResult | null {
   return { mode, delimiter };
 }
 
+/**
+ * Parse a $memory directive.
+ * Returns null if not a memory directive, or the scope.
+ *
+ * Syntax:
+ * - $memory → defaults to "none" (no retrieval)
+ * - $memory none → no memory retrieval (default)
+ * - $memory channel → retrieve memories from current channel
+ * - $memory guild → retrieve memories from all channels in server
+ * - $memory global → retrieve all memories
+ */
+function parseMemoryDirective(content: string): MemoryScope | null {
+  if (!content.startsWith(MEMORY_SIGIL)) {
+    return null;
+  }
+  const rest = content.slice(MEMORY_SIGIL.length).trim().toLowerCase();
+
+  if (rest === "" || rest === "none") {
+    return "none";
+  }
+  if (rest === "channel") {
+    return "channel";
+  }
+  if (rest === "guild") {
+    return "guild";
+  }
+  if (rest === "global") {
+    return "global";
+  }
+
+  // Unknown scope - not a valid $memory directive
+  return null;
+}
+
 export interface EvaluatedFacts {
   /** Facts that apply (excluding directives) */
   facts: string[];
@@ -901,6 +986,8 @@ export interface EvaluatedFacts {
   streamMode: "lines" | "full" | null;
   /** Custom delimiter for streaming (default: newline) */
   streamDelimiter: string | null;
+  /** Memory retrieval scope (default: "none" = no retrieval) */
+  memoryScope: MemoryScope;
 }
 
 /**
@@ -927,6 +1014,7 @@ export function evaluateFacts(
   const lockedFacts = new Set<string>();
   let streamMode: "lines" | "full" | null = null;
   let streamDelimiter: string | null = null;
+  let memoryScope: MemoryScope = "none";
 
   // Strip comments first
   const uncommented = stripComments(facts);
@@ -981,10 +1069,16 @@ export function evaluateFacts(
       continue;
     }
 
+    // Handle $memory directives - last one wins
+    if (parsed.isMemory) {
+      memoryScope = parsed.memoryScope ?? "none";
+      continue;
+    }
+
     results.push(parsed.content);
   }
 
-  return { facts: results, shouldRespond, respondSource, retryMs, avatarUrl, isLocked, lockedFacts, streamMode, streamDelimiter };
+  return { facts: results, shouldRespond, respondSource, retryMs, avatarUrl, isLocked, lockedFacts, streamMode, streamDelimiter, memoryScope };
 }
 
 // =============================================================================

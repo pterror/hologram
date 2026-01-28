@@ -20,6 +20,10 @@ import {
   type EntityWithFacts,
 } from "../../db/entities";
 import {
+  getMemoriesForEntity,
+  setMemories,
+} from "../../db/memories";
+import {
   addDiscordEntity,
   resolveDiscordEntity,
   resolveDiscordEntities,
@@ -27,6 +31,7 @@ import {
   getMessages,
 } from "../../db/discord";
 import { parsePermissionDirectives } from "../../logic/expr";
+import { formatEntityDisplay } from "../../ai/handler";
 
 // =============================================================================
 // Permission Helpers
@@ -97,7 +102,7 @@ registerCommand({
     if (name) {
       // Quick create with name
       const entity = createEntity(name, ctx.userId);
-      await respond(ctx.bot, ctx.interaction, `Created "${name}" (id: ${entity.id})`, true);
+      await respond(ctx.bot, ctx.interaction, `Created ${formatEntityDisplay(name, entity.id)}`, true);
     } else {
       // Open modal for details
       await respondWithModal(ctx.bot, ctx.interaction, "create", "Create entity", [
@@ -133,7 +138,7 @@ registerModalHandler("create", async (bot, interaction, values) => {
     addFact(entity.id, fact);
   }
 
-  await respond(bot, interaction, `Created "${name}" (id: ${entity.id}) with ${facts.length} facts`, true);
+  await respond(bot, interaction, `Created ${formatEntityDisplay(name, entity.id)} with ${facts.length} facts`, true);
 });
 
 // =============================================================================
@@ -142,7 +147,7 @@ registerModalHandler("create", async (bot, interaction, values) => {
 
 registerCommand({
   name: "view",
-  description: "View an entity and its facts",
+  description: "View an entity and its facts or memories",
   options: [
     {
       name: "entity",
@@ -151,9 +156,21 @@ registerCommand({
       required: true,
       autocomplete: true,
     },
+    {
+      name: "type",
+      description: "What to view (default: all)",
+      type: ApplicationCommandOptionTypes.String,
+      required: false,
+      choices: [
+        { name: "All (facts + memories)", value: "all" },
+        { name: "Facts only", value: "facts" },
+        { name: "Memories only", value: "memories" },
+      ],
+    },
   ],
   async handler(ctx, options) {
     const input = options.entity as string;
+    const viewType = (options.type as string) ?? "all";
 
     // Try by ID first, then by name
     let entity: EntityWithFacts | null = null;
@@ -176,14 +193,34 @@ registerCommand({
       return;
     }
 
-    const factsDisplay = entity.facts.length > 0
-      ? entity.facts.map(f => `• ${f.content}`).join("\n")
-      : "(no facts)";
+    const parts: string[] = [formatEntityDisplay(entity.name, entity.id)];
 
-    await respond(ctx.bot, ctx.interaction,
-      `**${entity.name}** (id: ${entity.id})\n\n${factsDisplay}`,
-      true
-    );
+    // Show facts if requested
+    if (viewType === "all" || viewType === "facts") {
+      const factsDisplay = entity.facts.length > 0
+        ? entity.facts.map(f => `• ${f.content}`).join("\n")
+        : "(no facts)";
+      if (viewType === "all") {
+        parts.push(`\n**Facts:**\n${factsDisplay}`);
+      } else {
+        parts.push(`\n${factsDisplay}`);
+      }
+    }
+
+    // Show memories if requested
+    if (viewType === "all" || viewType === "memories") {
+      const memories = getMemoriesForEntity(entity.id);
+      const memoriesDisplay = memories.length > 0
+        ? memories.map(m => `• ${m.content} (frecency: ${m.frecency.toFixed(2)})`).join("\n")
+        : "(no memories)";
+      if (viewType === "all") {
+        parts.push(`\n**Memories:**\n${memoriesDisplay}`);
+      } else {
+        parts.push(`\n${memoriesDisplay}`);
+      }
+    }
+
+    await respond(ctx.bot, ctx.interaction, parts.join(""), true);
   },
 });
 
@@ -193,7 +230,7 @@ registerCommand({
 
 registerCommand({
   name: "edit",
-  description: "Edit an entity's facts",
+  description: "Edit an entity's facts or memories",
   options: [
     {
       name: "entity",
@@ -202,9 +239,20 @@ registerCommand({
       required: true,
       autocomplete: true,
     },
+    {
+      name: "type",
+      description: "What to edit (default: facts)",
+      type: ApplicationCommandOptionTypes.String,
+      required: false,
+      choices: [
+        { name: "Facts", value: "facts" },
+        { name: "Memories", value: "memories" },
+      ],
+    },
   ],
   async handler(ctx, options) {
     const input = options.entity as string;
+    const editType = (options.type as string) ?? "facts";
 
     let entity: EntityWithFacts | null = null;
     const id = parseInt(input);
@@ -226,23 +274,26 @@ registerCommand({
       return;
     }
 
-    const currentFacts = entity.facts.map(f => f.content).join("\n");
+    // Get content based on type
+    const currentContent = editType === "memories"
+      ? getMemoriesForEntity(entity.id).map(m => m.content).join("\n")
+      : entity.facts.map(f => f.content).join("\n");
 
     // Discord modal: max 5 text inputs, 4000 chars each = 20,000 total
     const MAX_FIELD_LENGTH = 4000;
     const MAX_FIELDS = 5;
 
-    if (currentFacts.length > MAX_FIELD_LENGTH * MAX_FIELDS) {
+    if (currentContent.length > MAX_FIELD_LENGTH * MAX_FIELDS) {
       await respond(ctx.bot, ctx.interaction,
-        `Entity "${entity.name}" has too many facts to edit via modal (${currentFacts.length}/${MAX_FIELD_LENGTH * MAX_FIELDS} chars).`,
+        `Entity "${entity.name}" has too much content to edit via modal (${currentContent.length}/${MAX_FIELD_LENGTH * MAX_FIELDS} chars).`,
         true
       );
       return;
     }
 
-    // Split facts into chunks that fit in 4000 chars, breaking at newlines
+    // Split content into chunks that fit in 4000 chars, breaking at newlines
     const chunks: string[] = [];
-    let remaining = currentFacts;
+    let remaining = currentContent;
     while (remaining.length > 0) {
       if (remaining.length <= MAX_FIELD_LENGTH) {
         chunks.push(remaining);
@@ -255,7 +306,7 @@ registerCommand({
       remaining = remaining.slice(splitAt + 1); // Skip the newline
     }
 
-    // Build modal fields - name first, then facts
+    // Build modal fields - name first, then content
     const fields: Array<{
       customId: string;
       label: string;
@@ -265,38 +316,43 @@ registerCommand({
       placeholder?: string;
     }> = [];
 
-    // Name field for renaming
-    fields.push({
-      customId: "name",
-      label: "Name",
-      style: TextStyles.Short,
-      value: entity.name,
-      required: true,
-    });
+    // Name field for renaming (only for facts)
+    if (editType === "facts") {
+      fields.push({
+        customId: "name",
+        label: "Name",
+        style: TextStyles.Short,
+        value: entity.name,
+        required: true,
+      });
+    }
 
-    // Facts fields
-    const factFields = chunks.map((chunk, i) => ({
-      customId: `facts${i}`,
-      label: chunks.length === 1 ? "Facts (one per line)" : `Facts (part ${i + 1}/${chunks.length})`,
+    // Content fields
+    const contentLabel = editType === "memories" ? "Memories" : "Facts";
+    const contentFields = chunks.map((chunk, i) => ({
+      customId: `${editType}${i}`,
+      label: chunks.length === 1 ? `${contentLabel} (one per line)` : `${contentLabel} (part ${i + 1}/${chunks.length})`,
       style: TextStyles.Paragraph,
       value: chunk,
       required: false,
     }));
 
-    // If no facts, still show one field
-    if (factFields.length === 0) {
-      factFields.push({
-        customId: "facts0",
-        label: "Facts (one per line)",
+    // If no content, still show one field
+    if (contentFields.length === 0) {
+      contentFields.push({
+        customId: `${editType}0`,
+        label: `${contentLabel} (one per line)`,
         style: TextStyles.Paragraph,
         value: "",
         required: false,
       });
     }
 
-    fields.push(...factFields);
+    fields.push(...contentFields);
 
-    await respondWithModal(ctx.bot, ctx.interaction, `edit:${entity.id}`, `Edit: ${entity.name}`, fields);
+    const modalId = editType === "memories" ? `edit-memories:${entity.id}` : `edit:${entity.id}`;
+    const modalTitle = editType === "memories" ? `Edit Memories: ${entity.name}` : `Edit: ${entity.name}`;
+    await respondWithModal(ctx.bot, ctx.interaction, modalId, modalTitle, fields);
   },
 });
 
@@ -354,6 +410,40 @@ registerModalHandler("edit", async (bot, interaction, values) => {
     ? `Renamed "${entity.name}" to "${newName}" and updated with ${facts.length} facts`
     : `Updated "${entity.name}" with ${facts.length} facts`;
   await respond(bot, interaction, message, true);
+});
+
+registerModalHandler("edit-memories", async (bot, interaction, values) => {
+  const customId = interaction.data?.customId ?? "";
+  const entityId = parseInt(customId.split(":")[1]);
+
+  // Combine all memory fields (memories0, memories1, etc.)
+  const memoryParts: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const part = values[`memories${i}`];
+    if (part !== undefined) memoryParts.push(part);
+  }
+  const memoriesText = memoryParts.join("\n");
+
+  const entity = getEntityWithFacts(entityId);
+  if (!entity) {
+    await respond(bot, interaction, "Entity not found", true);
+    return;
+  }
+
+  // Check edit permission (defense in depth)
+  const userId = interaction.user?.id?.toString() ?? "";
+  const username = interaction.user?.username ?? "";
+  if (!canUserEdit(entity, userId, username)) {
+    await respond(bot, interaction, "You don't have permission to edit this entity", true);
+    return;
+  }
+
+  const memories = memoriesText.split("\n").map(m => m.trim()).filter(m => m);
+
+  // Update memories (clear and replace)
+  await setMemories(entityId, memories);
+
+  await respond(bot, interaction, `Updated "${entity.name}" with ${memories.length} memories`, true);
 });
 
 // =============================================================================

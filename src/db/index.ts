@@ -100,6 +100,29 @@ function initSchema(db: Database) {
     )
   `);
 
+  // Entity memories - LLM-curated long-term memory
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS entity_memories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      source_message_id TEXT,
+      source_channel_id TEXT,
+      source_guild_id TEXT,
+      frecency REAL DEFAULT 1.0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Memory embeddings for semantic search
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS memory_embeddings USING vec0(
+      memory_id INTEGER PRIMARY KEY,
+      embedding FLOAT[384]
+    )
+  `);
+
   // Webhook cache (one per channel, reused with different username/avatar)
   db.exec(`
     CREATE TABLE IF NOT EXISTS webhooks (
@@ -141,6 +164,8 @@ function initSchema(db: Database) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel_id, created_at DESC)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_effects_entity ON effects(entity_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_effects_expires ON effects(expires_at)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_memories_entity ON entity_memories(entity_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_memories_frecency ON entity_memories(entity_id, frecency DESC)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_webhooks_channel ON webhooks(channel_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_eval_errors_owner ON eval_errors(owner_id, notified_at)`);
 

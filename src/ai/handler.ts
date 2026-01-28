@@ -11,6 +11,11 @@ import {
   type EntityWithFacts,
 } from "../db/entities";
 import {
+  addMemory,
+  updateMemoryByContent,
+  removeMemoryByContent,
+} from "../db/memories";
+import {
   resolveDiscordEntity,
   getMessages,
 } from "../db/discord";
@@ -32,6 +37,8 @@ export interface EvaluatedEntity {
   streamMode: "lines" | "full" | null;
   /** Custom delimiter for streaming (default: newline) */
   streamDelimiter: string | null;
+  /** Memory retrieval scope from $memory directive (default: "none") */
+  memoryScope: "none" | "channel" | "guild" | "global";
 }
 
 export interface MessageContext {
@@ -43,6 +50,8 @@ export interface MessageContext {
   isMentioned: boolean;
   /** Pre-evaluated responding entities (facts already processed) */
   respondingEntities?: EvaluatedEntity[];
+  /** Retrieved memories per entity (entity id -> memories) */
+  entityMemories?: Map<number, Array<{ content: string }>>;
 }
 
 export interface CharacterResponse {
@@ -60,6 +69,18 @@ export interface ResponseResult {
   factsAdded: number;
   factsUpdated: number;
   factsRemoved: number;
+  memoriesSaved: number;
+  memoriesUpdated: number;
+  memoriesRemoved: number;
+}
+
+// =============================================================================
+// Display Helpers
+// =============================================================================
+
+/** Format entity name and ID for LLM context */
+export function formatEntityDisplay(name: string, id: number): string {
+  return `${name} [${id}]`;
 }
 
 // =============================================================================
@@ -140,7 +161,7 @@ function expandEntityRefs(
           seenIds.add(refId);
         }
         // Keep ID so LLM can use it in tool calls (add_fact, update_fact, etc.)
-        return `${refEntity.name} [${refId}]`;
+        return formatEntityDisplay(refEntity.name, refId);
       }
       return match; // Keep original if entity not found
     });
@@ -153,68 +174,132 @@ function expandEntityRefs(
 // Tool Definitions
 // =============================================================================
 
-const tools = {
-  add_fact: tool({
-    description: "Add a new fact to an entity. Use this when something new is learned or happens.",
-    inputSchema: z.object({
-      entityId: z.number().describe("The entity ID to add the fact to"),
-      content: z.string().describe("The fact content"),
+/** Create tools with context for memory source tracking */
+function createTools(channelId?: string, guildId?: string) {
+  return {
+    add_fact: tool({
+      description: "Add a new permanent fact to an entity. Use sparingly - only for defining traits that won't change.",
+      inputSchema: z.object({
+        entityId: z.number().describe("The entity ID to add the fact to"),
+        content: z.string().describe("The fact content"),
+      }),
+      execute: async ({ entityId, content }) => {
+        // Check if entity is locked
+        const lockCheck = checkEntityLocked(entityId);
+        if (lockCheck.locked) {
+          debug("Tool: add_fact blocked", { entityId, content, reason: lockCheck.reason });
+          return { success: false, error: lockCheck.reason };
+        }
+
+        const fact = addFact(entityId, content);
+        debug("Tool: add_fact", { entityId, content, factId: fact.id });
+        return { success: true, factId: fact.id };
+      },
     }),
-    execute: async ({ entityId, content }) => {
-      // Check if entity is locked
-      const lockCheck = checkEntityLocked(entityId);
-      if (lockCheck.locked) {
-        debug("Tool: add_fact blocked", { entityId, content, reason: lockCheck.reason });
-        return { success: false, error: lockCheck.reason };
-      }
 
-      const fact = addFact(entityId, content);
-      debug("Tool: add_fact", { entityId, content, factId: fact.id });
-      return { success: true, factId: fact.id };
-    },
-  }),
+    update_fact: tool({
+      description: "Update an existing permanent fact. Use when a defining trait changes.",
+      inputSchema: z.object({
+        entityId: z.number().describe("The entity ID"),
+        oldContent: z.string().describe("The exact current fact text to match"),
+        newContent: z.string().describe("The new fact content"),
+      }),
+      execute: async ({ entityId, oldContent, newContent }) => {
+        // Check if entity or specific fact is locked
+        const lockCheck = checkFactLocked(entityId, oldContent);
+        if (lockCheck.locked) {
+          debug("Tool: update_fact blocked", { entityId, oldContent, newContent, reason: lockCheck.reason });
+          return { success: false, error: lockCheck.reason };
+        }
 
-  update_fact: tool({
-    description: "Update an existing fact. Use this when a fact changes.",
-    inputSchema: z.object({
-      entityId: z.number().describe("The entity ID"),
-      oldContent: z.string().describe("The exact current fact text to match"),
-      newContent: z.string().describe("The new fact content"),
+        const fact = updateFactByContent(entityId, oldContent, newContent);
+        debug("Tool: update_fact", { entityId, oldContent, newContent, success: !!fact });
+        return { success: !!fact };
+      },
     }),
-    execute: async ({ entityId, oldContent, newContent }) => {
-      // Check if entity or specific fact is locked
-      const lockCheck = checkFactLocked(entityId, oldContent);
-      if (lockCheck.locked) {
-        debug("Tool: update_fact blocked", { entityId, oldContent, newContent, reason: lockCheck.reason });
-        return { success: false, error: lockCheck.reason };
-      }
 
-      const fact = updateFactByContent(entityId, oldContent, newContent);
-      debug("Tool: update_fact", { entityId, oldContent, newContent, success: !!fact });
-      return { success: !!fact };
-    },
-  }),
+    remove_fact: tool({
+      description: "Remove a permanent fact that is no longer true.",
+      inputSchema: z.object({
+        entityId: z.number().describe("The entity ID"),
+        content: z.string().describe("The exact fact text to remove"),
+      }),
+      execute: async ({ entityId, content }) => {
+        // Check if entity or specific fact is locked
+        const lockCheck = checkFactLocked(entityId, content);
+        if (lockCheck.locked) {
+          debug("Tool: remove_fact blocked", { entityId, content, reason: lockCheck.reason });
+          return { success: false, error: lockCheck.reason };
+        }
 
-  remove_fact: tool({
-    description: "Remove a fact that is no longer true.",
-    inputSchema: z.object({
-      entityId: z.number().describe("The entity ID"),
-      content: z.string().describe("The exact fact text to remove"),
+        const success = removeFactByContent(entityId, content);
+        debug("Tool: remove_fact", { entityId, content, success });
+        return { success };
+      },
     }),
-    execute: async ({ entityId, content }) => {
-      // Check if entity or specific fact is locked
-      const lockCheck = checkFactLocked(entityId, content);
-      if (lockCheck.locked) {
-        debug("Tool: remove_fact blocked", { entityId, content, reason: lockCheck.reason });
-        return { success: false, error: lockCheck.reason };
-      }
 
-      const success = removeFactByContent(entityId, content);
-      debug("Tool: remove_fact", { entityId, content, success });
-      return { success };
-    },
-  }),
-};
+    save_memory: tool({
+      description: "Save a memory for an entity. Use for important events, conversations, or information worth recalling later. More appropriate than facts for things that happened.",
+      inputSchema: z.object({
+        entityId: z.number().describe("The entity ID"),
+        content: z.string().describe("The memory content - what happened or was learned"),
+      }),
+      execute: async ({ entityId, content }) => {
+        // Check if entity is locked
+        const lockCheck = checkEntityLocked(entityId);
+        if (lockCheck.locked) {
+          debug("Tool: save_memory blocked", { entityId, content, reason: lockCheck.reason });
+          return { success: false, error: lockCheck.reason };
+        }
+
+        const memory = await addMemory(entityId, content, undefined, channelId, guildId);
+        debug("Tool: save_memory", { entityId, content, memoryId: memory.id });
+        return { success: true, memoryId: memory.id };
+      },
+    }),
+
+    update_memory: tool({
+      description: "Update an existing memory by content match.",
+      inputSchema: z.object({
+        entityId: z.number().describe("The entity ID"),
+        oldContent: z.string().describe("The exact current memory text to match"),
+        newContent: z.string().describe("The new memory content"),
+      }),
+      execute: async ({ entityId, oldContent, newContent }) => {
+        // Check if entity is locked
+        const lockCheck = checkEntityLocked(entityId);
+        if (lockCheck.locked) {
+          debug("Tool: update_memory blocked", { entityId, oldContent, newContent, reason: lockCheck.reason });
+          return { success: false, error: lockCheck.reason };
+        }
+
+        const memory = await updateMemoryByContent(entityId, oldContent, newContent);
+        debug("Tool: update_memory", { entityId, oldContent, newContent, success: !!memory });
+        return { success: !!memory };
+      },
+    }),
+
+    remove_memory: tool({
+      description: "Remove a memory by content match.",
+      inputSchema: z.object({
+        entityId: z.number().describe("The entity ID"),
+        content: z.string().describe("The exact memory text to remove"),
+      }),
+      execute: async ({ entityId, content }) => {
+        // Check if entity is locked
+        const lockCheck = checkEntityLocked(entityId);
+        if (lockCheck.locked) {
+          debug("Tool: remove_memory blocked", { entityId, content, reason: lockCheck.reason });
+          return { success: false, error: lockCheck.reason };
+        }
+
+        const success = removeMemoryByContent(entityId, content);
+        debug("Tool: remove_memory", { entityId, content, success });
+        return { success };
+      },
+    }),
+  };
+}
 
 // =============================================================================
 // Context Building
@@ -234,7 +319,8 @@ function formatRawEntity(entity: EntityWithFacts): string {
 
 function buildSystemPrompt(
   respondingEntities: EvaluatedEntity[],
-  otherEntities: EntityWithFacts[]
+  otherEntities: EntityWithFacts[],
+  entityMemories?: Map<number, Array<{ content: string }>>
 ): string {
   if (respondingEntities.length === 0 && otherEntities.length === 0) {
     return "You are a helpful assistant. Respond naturally to the user.";
@@ -243,6 +329,12 @@ function buildSystemPrompt(
   const contextParts: string[] = [];
   for (const e of respondingEntities) {
     contextParts.push(formatEvaluatedEntity(e));
+    // Add memories if present
+    const memories = entityMemories?.get(e.id);
+    if (memories && memories.length > 0) {
+      const memoryLines = memories.map(m => m.content).join("\n");
+      contextParts.push(`<memories entity="${e.name}" id="${e.id}">\n${memoryLines}\n</memories>`);
+    }
   }
   for (const e of otherEntities) {
     contextParts.push(formatRawEntity(e));
@@ -263,12 +355,22 @@ Not every character needs to respond to every message. Only respond as character
 
   return `${context}
 
-You have access to tools to modify facts about entities. Use them sparingly—only save things fundamental to the character or that need to be remembered long-term:
-- Something new is learned (add_fact)
-- A fact changes (update_fact)
-- A fact is no longer true (remove_fact)
+You have access to tools to modify facts and memories about entities.
 
-Respond naturally in character based on the facts provided.${multiCharGuidance}`;
+**Facts** are permanent defining traits. Use very sparingly:
+- Core personality, appearance, abilities
+- Key relationships that define the character
+- Use add_fact / update_fact / remove_fact
+
+**Memories** are important events worth recalling. Use sparingly:
+- Significant conversations or promises
+- Events that shaped the character
+- Things learned that may be relevant later
+- Use save_memory / update_memory / remove_memory
+
+Most interactions don't need saving. Only save what matters long-term.
+
+Respond naturally in character based on the facts and memories provided.${multiCharGuidance}`;
 }
 
 function buildUserMessage(messages: Array<{ author_name: string; content: string }>): string {
@@ -361,7 +463,7 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
   const history = getMessages(channelId, 20);
 
   // Build prompts
-  const systemPrompt = buildSystemPrompt(evaluated, other);
+  const systemPrompt = buildSystemPrompt(evaluated, other, ctx.entityMemories);
   const userMessage = buildUserMessage(
     history.slice().reverse().map(m => ({ author_name: m.author_name, content: m.content }))
   );
@@ -377,9 +479,13 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
   let factsAdded = 0;
   let factsUpdated = 0;
   let factsRemoved = 0;
+  let memoriesSaved = 0;
+  let memoriesUpdated = 0;
+  let memoriesRemoved = 0;
 
   try {
     const model = getLanguageModel(DEFAULT_MODEL);
+    const tools = createTools(channelId, guildId);
 
     const result = await generateText({
       model,
@@ -392,6 +498,9 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
           if (call.toolName === "add_fact") factsAdded++;
           if (call.toolName === "update_fact") factsUpdated++;
           if (call.toolName === "remove_fact") factsRemoved++;
+          if (call.toolName === "save_memory") memoriesSaved++;
+          if (call.toolName === "update_memory") memoriesUpdated++;
+          if (call.toolName === "remove_memory") memoriesRemoved++;
         }
       },
     });
@@ -401,6 +510,9 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
       factsAdded,
       factsUpdated,
       factsRemoved,
+      memoriesSaved,
+      memoriesUpdated,
+      memoriesRemoved,
     });
 
     // Check for <none/> sentinel (LLM decided no character should respond)
@@ -418,6 +530,9 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
       factsAdded,
       factsUpdated,
       factsRemoved,
+      memoriesSaved,
+      memoriesUpdated,
+      memoriesRemoved,
     };
   } catch (err) {
     error("LLM error", err);
@@ -493,7 +608,7 @@ export async function* handleMessageStreaming(
   const history = getMessages(channelId, 20);
 
   // Build prompts
-  const systemPrompt = buildSystemPrompt(entities, other);
+  const systemPrompt = buildSystemPrompt(entities, other, ctx.entityMemories);
   const userMessage = buildUserMessage(
     history.slice().reverse().map(m => ({ author_name: m.author_name, content: m.content }))
   );
@@ -501,10 +616,12 @@ export async function* handleMessageStreaming(
   debug("Calling LLM (streaming)", {
     entities: entities.map(e => e.name),
     streamMode,
+    hasMemories: !!ctx.entityMemories?.size,
   });
 
   try {
     const model = getLanguageModel(DEFAULT_MODEL);
+    const tools = createTools(channelId, guildId);
 
     const result = streamText({
       model,
