@@ -907,17 +907,7 @@ async function handleInfoPrompt(ctx: CommandContext, options: Record<string, unk
   }
 
   const systemPrompt = contextParts.join("\n\n");
-
-  // Format output, eliding if needed
-  const MAX_CHARS = 1900;
-  let output = `**System prompt for ${targetEntity.name}:**\n\`\`\`\n${systemPrompt}\n\`\`\``;
-
-  if (output.length > MAX_CHARS) {
-    const budget = MAX_CHARS - `**System prompt for ${targetEntity.name}:**\n\`\`\`\n\n\`\`\``.length;
-    const elided = elideText(systemPrompt, budget, "\n... (elided) ...\n");
-    output = `**System prompt for ${targetEntity.name}:**\n\`\`\`\n${elided}\n\`\`\``;
-  }
-
+  const output = `**System prompt for ${targetEntity.name}:**\n\`\`\`\n${systemPrompt}\n\`\`\``;
   await respond(ctx.bot, ctx.interaction, output, true);
 }
 
@@ -928,40 +918,8 @@ async function handleInfoHistory(ctx: CommandContext, options: Record<string, un
 
   const messages = getMessages(ctx.channelId, 100);
   const userMessage = buildMessageHistory(messages);
-
-  // Format output, eliding if needed
-  const MAX_CHARS = 1900;
-  let output = `**Message history for ${targetEntity.name}:**\n\`\`\`\n${userMessage}\n\`\`\``;
-
-  if (output.length > MAX_CHARS) {
-    const budget = MAX_CHARS - `**Message history for ${targetEntity.name}:**\n\`\`\`\n\n\`\`\``.length;
-    const elided = elideText(userMessage, budget, "\n... (elided) ...\n");
-    output = `**Message history for ${targetEntity.name}:**\n\`\`\`\n${elided}\n\`\`\``;
-  }
-
+  const output = `**Message history for ${targetEntity.name}:**\n\`\`\`\n${userMessage}\n\`\`\``;
   await respond(ctx.bot, ctx.interaction, output, true);
-}
-
-function elideText(text: string, maxLen: number, marker: string): string {
-  if (text.length <= maxLen) return text;
-
-  const overflow = text.length - maxLen;
-  const markerLen = marker.length;
-
-  // If only cutting a small amount, truncate start without marker (end is more relevant)
-  if (overflow <= markerLen + 50) {
-    return text.slice(-maxLen);
-  }
-
-  // Significant cut: use marker between beginning and end
-  const keepLen = maxLen - markerLen;
-  if (keepLen <= 0) return marker.trim();
-
-  const halfKeep = Math.floor(keepLen / 2);
-  const start = text.slice(0, halfKeep);
-  const end = text.slice(-halfKeep);
-
-  return start + marker + end;
 }
 
 // =============================================================================

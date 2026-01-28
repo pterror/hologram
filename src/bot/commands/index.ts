@@ -61,19 +61,65 @@ export function registerCommand(command: Command) {
 // Response Helpers
 // =============================================================================
 
+const DISCORD_MESSAGE_LIMIT = 2000;
+
+/**
+ * Split content into chunks that fit Discord's message limit.
+ * Tries to split at newlines when possible.
+ */
+function splitContent(content: string): string[] {
+  if (content.length <= DISCORD_MESSAGE_LIMIT) {
+    return [content];
+  }
+
+  const chunks: string[] = [];
+  let remaining = content;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= DISCORD_MESSAGE_LIMIT) {
+      chunks.push(remaining);
+      break;
+    }
+
+    // Find last newline within limit
+    let splitIndex = remaining.lastIndexOf("\n", DISCORD_MESSAGE_LIMIT);
+    if (splitIndex === -1 || splitIndex < DISCORD_MESSAGE_LIMIT / 2) {
+      // No good newline, hard split at limit
+      splitIndex = DISCORD_MESSAGE_LIMIT;
+    }
+
+    chunks.push(remaining.slice(0, splitIndex));
+    remaining = remaining.slice(splitIndex).replace(/^\n/, ""); // Remove leading newline
+  }
+
+  return chunks;
+}
+
 export async function respond(
   bot: Bot,
   interaction: Interaction,
   content: string,
   ephemeral = false
 ) {
+  const chunks = splitContent(content);
+  const flags = ephemeral ? 64 : undefined; // 64 = ephemeral
+
+  // Send first chunk as initial response
   await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
     type: InteractionResponseTypes.ChannelMessageWithSource,
     data: {
-      content,
-      flags: ephemeral ? 64 : undefined, // 64 = ephemeral
+      content: chunks[0],
+      flags,
     },
   });
+
+  // Send remaining chunks as follow-ups
+  for (let i = 1; i < chunks.length; i++) {
+    await bot.helpers.sendFollowupMessage(interaction.token, {
+      content: chunks[i],
+      flags,
+    });
+  }
 }
 
 export async function respondWithModal(
