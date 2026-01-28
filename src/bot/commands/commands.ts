@@ -29,6 +29,7 @@ import {
   resolveDiscordEntities,
   removeDiscordEntityBinding,
   getMessages,
+  setChannelForgetTime,
 } from "../../db/discord";
 import { parsePermissionDirectives } from "../../logic/expr";
 import { formatEntityDisplay } from "../../ai/handler";
@@ -802,6 +803,20 @@ registerCommand({
 });
 
 // =============================================================================
+// /forget - Clear message history from context
+// =============================================================================
+
+registerCommand({
+  name: "forget",
+  description: "Forget message history before now (excludes from LLM context)",
+  options: [],
+  async handler(ctx, _options) {
+    setChannelForgetTime(ctx.channelId);
+    await respond(ctx.bot, ctx.interaction, "Done. Messages before now will be excluded from context.", true);
+  },
+});
+
+// =============================================================================
 // Help Entities (seeded on first access via /view)
 // =============================================================================
 
@@ -839,7 +854,7 @@ const HELP_ENTITY_FACTS: Record<string, string[]> = {
   "help:commands": [
     "is help for commands",
     "---",
-    "**Commands** (8 total)",
+    "**Commands** (9 total)",
     "`/create` - Create entity",
     "`/view` - View entity facts",
     "`/edit` - Edit entity facts",
@@ -848,6 +863,7 @@ const HELP_ENTITY_FACTS: Record<string, string[]> = {
     "`/bind` - Bind channel/user to entity",
     "`/unbind` - Remove entity binding",
     "`/status` - Channel state",
+    "`/forget` - Forget history before now",
     "---",
     "**Examples:**",
     "`/create Aria` - Create entity",

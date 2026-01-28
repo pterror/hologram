@@ -158,6 +158,14 @@ function initSchema(db: Database) {
     )
   `);
 
+  // Channel forget timestamps - messages before this time are excluded from context
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS channel_forgets (
+      channel_id TEXT PRIMARY KEY,
+      forget_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Indexes
   db.exec(`CREATE INDEX IF NOT EXISTS idx_facts_entity ON facts(entity_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_discord_entities_lookup ON discord_entities(discord_id, discord_type)`);

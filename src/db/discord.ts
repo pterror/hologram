@@ -222,6 +222,17 @@ export function addMessage(
 
 export function getMessages(channelId: string, limit = 50): Message[] {
   const db = getDb();
+  const forgetTime = getChannelForgetTime(channelId);
+
+  if (forgetTime) {
+    return db.prepare(`
+      SELECT * FROM messages
+      WHERE channel_id = ? AND created_at > ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(channelId, forgetTime, limit) as Message[];
+  }
+
   return db.prepare(`
     SELECT * FROM messages
     WHERE channel_id = ?
@@ -234,6 +245,47 @@ export function clearMessages(channelId: string): number {
   const db = getDb();
   const result = db.prepare(`DELETE FROM messages WHERE channel_id = ?`).run(channelId);
   return result.changes;
+}
+
+// =============================================================================
+// Channel Forget Time
+// =============================================================================
+
+/**
+ * Get the forget timestamp for a channel.
+ * Messages before this time are excluded from context.
+ */
+export function getChannelForgetTime(channelId: string): string | null {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT forget_at FROM channel_forgets WHERE channel_id = ?
+  `).get(channelId) as { forget_at: string } | null;
+  return row?.forget_at ?? null;
+}
+
+/**
+ * Set the forget timestamp for a channel to now.
+ * Returns the timestamp that was set.
+ */
+export function setChannelForgetTime(channelId: string): string {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO channel_forgets (channel_id, forget_at)
+    VALUES (?, ?)
+    ON CONFLICT(channel_id) DO UPDATE SET forget_at = excluded.forget_at
+  `).run(channelId, now);
+  return now;
+}
+
+/**
+ * Clear the forget timestamp for a channel.
+ * Returns true if a timestamp was cleared.
+ */
+export function clearChannelForgetTime(channelId: string): boolean {
+  const db = getDb();
+  const result = db.prepare(`DELETE FROM channel_forgets WHERE channel_id = ?`).run(channelId);
+  return result.changes > 0;
 }
 
 // =============================================================================
