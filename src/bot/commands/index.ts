@@ -13,6 +13,7 @@ type Interaction = any;
 import { info, warn, error } from "../../logger";
 import { searchEntities, searchEntitiesOwnedBy, getEntitiesWithFacts } from "../../db/entities";
 import { parsePermissionDirectives } from "../../logic/expr";
+import { getBoundEntityIds, type DiscordType } from "../../db/discord";
 
 // =============================================================================
 // Types
@@ -228,7 +229,70 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
   if (commandName === "delete" || commandName === "transfer") {
     // These commands require ownership - no permission check needed
     results = searchEntitiesOwnedBy(query, userId, 25);
-  } else if (commandName === "edit" || commandName === "bind" || commandName === "unbind") {
+  } else if (commandName === "unbind") {
+    // Unbind shows only entities bound to the selected target
+    const options = interaction.data?.options ?? [];
+    const targetOption = options.find((o: { name: string }) => o.name === "target");
+    const target = targetOption?.value as string | undefined;
+
+    // If target not yet selected, show all editable entities as fallback
+    if (!target) {
+      const allResults = searchEntities(query, 100);
+      const entitiesWithFacts = getEntitiesWithFacts(allResults.map(e => e.id));
+      results = allResults.filter(entity => {
+        if (entity.owned_by === userId) return true;
+        const entityWithFacts = entitiesWithFacts.get(entity.id);
+        if (!entityWithFacts) return false;
+        const facts = entityWithFacts.facts.map(f => f.content);
+        const permissions = parsePermissionDirectives(facts);
+        if (permissions.editList === "everyone") return true;
+        if (permissions.editList?.some(u => u.toLowerCase() === username.toLowerCase())) return true;
+        return false;
+      }).slice(0, 25);
+    } else {
+      // Determine discordId and discordType based on target
+      const channelId = interaction.channelId?.toString() ?? "";
+      const guildId = interaction.guildId?.toString();
+
+      let discordId: string;
+      let discordType: DiscordType;
+      if (target === "channel") {
+        discordId = channelId;
+        discordType = "channel";
+      } else if (target === "server") {
+        discordId = guildId ?? "";
+        discordType = "guild";
+      } else {
+        discordId = userId;
+        discordType = "user";
+      }
+
+      // Get all entities bound to this target (any scope)
+      const boundEntityIds = getBoundEntityIds(discordId, discordType);
+
+      // Get entity details and filter by search query and edit permission
+      const entitiesWithFacts = getEntitiesWithFacts(boundEntityIds);
+      const queryLower = query.toLowerCase();
+      results = [];
+      for (const [entityId, entityWithFacts] of entitiesWithFacts) {
+        // Filter by search query
+        if (query && !entityWithFacts.name.toLowerCase().includes(queryLower)) continue;
+
+        // Check edit permission
+        if (entityWithFacts.owned_by !== userId) {
+          const facts = entityWithFacts.facts.map(f => f.content);
+          const permissions = parsePermissionDirectives(facts);
+          if (permissions.editList !== "everyone" &&
+              !permissions.editList?.some(u => u.toLowerCase() === username.toLowerCase())) {
+            continue;
+          }
+        }
+
+        results.push({ id: entityId, name: entityWithFacts.name, owned_by: entityWithFacts.owned_by });
+      }
+      results = results.slice(0, 25);
+    }
+  } else if (commandName === "edit" || commandName === "bind") {
     // These commands require edit permission - batch load facts
     const allResults = searchEntities(query, 100);
     const entitiesWithFacts = getEntitiesWithFacts(allResults.map(e => e.id));

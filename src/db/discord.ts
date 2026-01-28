@@ -193,6 +193,59 @@ export function listDiscordMappings(
   `).all(discordId, discordType) as DiscordEntityMapping[];
 }
 
+/**
+ * Get entity IDs bound to a Discord ID, optionally filtered by scope.
+ * If no scope is provided, returns all bound entities regardless of scope.
+ */
+export function getBoundEntityIds(
+  discordId: string,
+  discordType: DiscordType,
+  scopeGuildId?: string,
+  scopeChannelId?: string
+): number[] {
+  const db = getDb();
+
+  // If specific scope requested, filter by it
+  if (scopeChannelId !== undefined) {
+    // Channel scope: exact match (including null for global)
+    if (scopeChannelId === null) {
+      // Global scope with no guild
+      return (db.prepare(`
+        SELECT entity_id FROM discord_entities
+        WHERE discord_id = ? AND discord_type = ?
+          AND scope_channel_id IS NULL AND scope_guild_id IS NULL
+      `).all(discordId, discordType) as { entity_id: number }[]).map(r => r.entity_id);
+    }
+    return (db.prepare(`
+      SELECT entity_id FROM discord_entities
+      WHERE discord_id = ? AND discord_type = ? AND scope_channel_id = ?
+    `).all(discordId, discordType, scopeChannelId) as { entity_id: number }[]).map(r => r.entity_id);
+  }
+
+  if (scopeGuildId !== undefined) {
+    // Guild scope: guild set, no channel
+    if (scopeGuildId === null) {
+      // Global scope
+      return (db.prepare(`
+        SELECT entity_id FROM discord_entities
+        WHERE discord_id = ? AND discord_type = ?
+          AND scope_guild_id IS NULL AND scope_channel_id IS NULL
+      `).all(discordId, discordType) as { entity_id: number }[]).map(r => r.entity_id);
+    }
+    return (db.prepare(`
+      SELECT entity_id FROM discord_entities
+      WHERE discord_id = ? AND discord_type = ?
+        AND scope_guild_id = ? AND scope_channel_id IS NULL
+    `).all(discordId, discordType, scopeGuildId) as { entity_id: number }[]).map(r => r.entity_id);
+  }
+
+  // No scope filter: return all bound entities for this target
+  return (db.prepare(`
+    SELECT entity_id FROM discord_entities
+    WHERE discord_id = ? AND discord_type = ?
+  `).all(discordId, discordType) as { entity_id: number }[]).map(r => r.entity_id);
+}
+
 // =============================================================================
 // Message History
 // =============================================================================
