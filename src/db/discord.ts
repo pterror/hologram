@@ -322,13 +322,15 @@ export function getChannelForgetTime(channelId: string): string | null {
  */
 export function setChannelForgetTime(channelId: string): string {
   const db = getDb();
-  const now = new Date().toISOString();
-  db.prepare(`
+  // Use SQLite's CURRENT_TIMESTAMP format to match messages table
+  // (ISO format "2024-01-15T10:30:45Z" doesn't compare correctly with "2024-01-15 10:30:45")
+  const row = db.prepare(`
     INSERT INTO channel_forgets (channel_id, forget_at)
-    VALUES (?, ?)
-    ON CONFLICT(channel_id) DO UPDATE SET forget_at = excluded.forget_at
-  `).run(channelId, now);
-  return now;
+    VALUES (?, CURRENT_TIMESTAMP)
+    ON CONFLICT(channel_id) DO UPDATE SET forget_at = CURRENT_TIMESTAMP
+    RETURNING forget_at
+  `).get(channelId) as { forget_at: string };
+  return row.forget_at;
 }
 
 /**
