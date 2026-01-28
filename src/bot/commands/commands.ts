@@ -888,7 +888,7 @@ async function handleInfoStatus(ctx: CommandContext) {
   const hasServerBindings = ctx.guildId ? getGuildScopedEntities(ctx.guildId).length > 0 : false;
   if (!hasChannelBindings && !hasServerBindings) {
     lines.push("");
-    lines.push("Use `/bind #channel entity` or `/bind server entity` to add bindings.");
+    lines.push("Use `/bind This channel <entity>` or `/bind This server <entity>` to add bindings.");
   }
 
   await respond(ctx.bot, ctx.interaction, lines.join("\n"), true);
