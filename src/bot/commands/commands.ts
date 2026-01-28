@@ -883,12 +883,24 @@ async function handleInfoStatus(ctx: CommandContext) {
     lines.push(`**Your persona:** ${ctx.username} (default)`);
   }
 
-  // Show bind/unbind hints if no bindings
+  // Show hints
+  const hints: string[] = [];
   const hasChannelBindings = channelEntityIds.length > 0;
   const hasServerBindings = ctx.guildId ? getGuildScopedEntities(ctx.guildId).length > 0 : false;
+  const hasPersona = userEntityId !== null;
+
   if (!hasChannelBindings && !hasServerBindings) {
+    hints.push("`/bind This channel <entity>` or `/bind This server <entity>` to add bindings");
+  } else {
+    hints.push("`/unbind` to remove bindings");
+  }
+  if (!hasPersona) {
+    hints.push("`/bind Me (user) <entity>` to set a persona");
+  }
+
+  if (hints.length > 0) {
     lines.push("");
-    lines.push("Use `/bind This channel <entity>` or `/bind This server <entity>` to add bindings.");
+    lines.push(hints.join(", ") + ".");
   }
 
   await respond(ctx.bot, ctx.interaction, lines.join("\n"), true);
