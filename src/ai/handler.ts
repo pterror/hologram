@@ -203,7 +203,7 @@ function expandEntityRefs(
 function createTools(channelId?: string, guildId?: string) {
   return {
     add_fact: tool({
-      description: "Add a new permanent fact to an entity. Use sparingly - only for defining traits that won't change.",
+      description: "Add a permanent defining trait to an entity. Use very sparingly - only for core personality, appearance, abilities, or key relationships. Most interactions don't need facts saved.",
       inputSchema: z.object({
         entityId: z.number().describe("The entity ID to add the fact to"),
         content: z.string().describe("The fact content"),
@@ -223,7 +223,7 @@ function createTools(channelId?: string, guildId?: string) {
     }),
 
     update_fact: tool({
-      description: "Update an existing permanent fact. Use when a defining trait changes.",
+      description: "Update an existing permanent fact when a core defining trait changes. Facts are for personality, appearance, abilities, key relationships - not events.",
       inputSchema: z.object({
         entityId: z.number().describe("The entity ID"),
         oldContent: z.string().describe("The exact current fact text to match"),
@@ -244,7 +244,7 @@ function createTools(channelId?: string, guildId?: string) {
     }),
 
     remove_fact: tool({
-      description: "Remove a permanent fact that is no longer true.",
+      description: "Remove a permanent defining trait that is no longer true. Facts are core traits - if something happened, it's a memory, not a fact.",
       inputSchema: z.object({
         entityId: z.number().describe("The entity ID"),
         content: z.string().describe("The exact fact text to remove"),
@@ -264,7 +264,7 @@ function createTools(channelId?: string, guildId?: string) {
     }),
 
     save_memory: tool({
-      description: "Save a memory for an entity. Use for important events, conversations, or information worth recalling later. More appropriate than facts for things that happened.",
+      description: "Save a memory of something that happened. Use sparingly for significant conversations, promises, or events that shaped the entity. Most interactions don't need saving - only what matters long-term.",
       inputSchema: z.object({
         entityId: z.number().describe("The entity ID"),
         content: z.string().describe("The memory content - what happened or was learned"),
@@ -284,7 +284,7 @@ function createTools(channelId?: string, guildId?: string) {
     }),
 
     update_memory: tool({
-      description: "Update an existing memory by content match.",
+      description: "Update an existing memory when details change or need correction. Memories are events and experiences, not defining traits.",
       inputSchema: z.object({
         entityId: z.number().describe("The entity ID"),
         oldContent: z.string().describe("The exact current memory text to match"),
@@ -305,7 +305,7 @@ function createTools(channelId?: string, guildId?: string) {
     }),
 
     remove_memory: tool({
-      description: "Remove a memory by content match.",
+      description: "Remove a memory that is no longer relevant or was incorrect.",
       inputSchema: z.object({
         entityId: z.number().describe("The entity ID"),
         content: z.string().describe("The exact memory text to remove"),
@@ -386,22 +386,7 @@ Not everyone needs to respond to every message. Only respond as those who would 
     }
   }
 
-  return `${context}
-
-You have access to tools to modify facts and memories about entities.
-
-**Facts** are permanent defining traits. Use very sparingly:
-- Core personality, appearance, abilities
-- Key relationships that define the entity
-- Use add_fact / update_fact / remove_fact
-
-**Memories** are important events worth recalling. Use sparingly:
-- Significant conversations or promises
-- Events that shaped them
-- Things learned that may be relevant later
-- Use save_memory / update_memory / remove_memory
-
-Most interactions don't need saving. Only save what matters long-term.${multiEntityGuidance}`;
+  return `${context}${multiEntityGuidance}`;
 }
 
 /**
