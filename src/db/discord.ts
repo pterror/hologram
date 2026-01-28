@@ -115,6 +115,30 @@ export function resolveDiscordEntity(
 }
 
 /**
+ * Get channel-scoped entities directly (bypassing precedence).
+ */
+export function getChannelScopedEntities(channelId: string): number[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT entity_id FROM discord_entities
+    WHERE discord_id = ? AND discord_type = 'channel' AND scope_channel_id = ?
+  `).all(channelId, channelId) as { entity_id: number }[];
+  return rows.map(r => r.entity_id);
+}
+
+/**
+ * Get guild-scoped entities directly (bypassing precedence).
+ */
+export function getGuildScopedEntities(guildId: string): number[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT entity_id FROM discord_entities
+    WHERE discord_id = ? AND discord_type = 'channel' AND scope_guild_id = ? AND scope_channel_id IS NULL
+  `).all(guildId, guildId) as { entity_id: number }[];
+  return rows.map(r => r.entity_id);
+}
+
+/**
  * Remove a specific entity binding from a Discord ID.
  */
 export function removeDiscordEntityBinding(

@@ -29,6 +29,8 @@ import {
   resolveDiscordEntity,
   resolveDiscordEntities,
   removeDiscordEntityBinding,
+  getChannelScopedEntities,
+  getGuildScopedEntities,
   getMessages,
   setChannelForgetTime,
 } from "../../db/discord";
@@ -830,15 +832,15 @@ registerCommand({
 async function handleInfoStatus(ctx: CommandContext) {
   const lines: string[] = [];
 
-  // Check channel bindings (now supports multiple)
-  const channelEntityIds = resolveDiscordEntities(ctx.channelId, "channel", ctx.guildId, ctx.channelId);
+  // Check channel bindings (direct query, not precedence-based)
+  const channelEntityIds = getChannelScopedEntities(ctx.channelId);
   if (channelEntityIds.length > 0) {
     const entityNames: string[] = [];
     for (const entityId of channelEntityIds) {
       const entity = getEntity(entityId);
       if (entity) entityNames.push(entity.name);
     }
-    lines.push(`**Channel bound to:** ${entityNames.join(", ")}`);
+    lines.push(`**Channel:** ${entityNames.join(", ")}`);
 
     // Show location for first entity that has one
     for (const entityId of channelEntityIds) {
@@ -852,7 +854,22 @@ async function handleInfoStatus(ctx: CommandContext) {
       }
     }
   } else {
-    lines.push("**Channel:** Not bound to any entity");
+    lines.push("**Channel:** No bindings");
+  }
+
+  // Check server bindings (direct query)
+  if (ctx.guildId) {
+    const serverEntityIds = getGuildScopedEntities(ctx.guildId);
+    if (serverEntityIds.length > 0) {
+      const entityNames: string[] = [];
+      for (const entityId of serverEntityIds) {
+        const entity = getEntity(entityId);
+        if (entity) entityNames.push(entity.name);
+      }
+      lines.push(`**Server:** ${entityNames.join(", ")}`);
+    } else {
+      lines.push("**Server:** No bindings");
+    }
   }
 
   // Check user binding
@@ -866,9 +883,13 @@ async function handleInfoStatus(ctx: CommandContext) {
     lines.push(`**Your persona:** ${ctx.username} (default)`);
   }
 
-  // Message count
-  const messages = getMessages(ctx.channelId, 10);
-  lines.push(`**Recent messages:** ${messages.length}`);
+  // Show bind/unbind hints if no bindings
+  const hasChannelBindings = channelEntityIds.length > 0;
+  const hasServerBindings = ctx.guildId ? getGuildScopedEntities(ctx.guildId).length > 0 : false;
+  if (!hasChannelBindings && !hasServerBindings) {
+    lines.push("");
+    lines.push("Use `/bind #channel entity` or `/bind server entity` to add bindings.");
+  }
 
   await respond(ctx.bot, ctx.interaction, lines.join("\n"), true);
 }
