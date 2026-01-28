@@ -870,21 +870,21 @@ async function sendResponse(
 
     // Use webhooks when we have responding entities (custom name/avatar)
     if (respondingEntities && respondingEntities.length > 0) {
-      if (result.characterResponses && result.characterResponses.length > 0) {
-        // Multi-character: send separate webhook message for each
-        for (const charResponse of result.characterResponses) {
-          // Find the entity for this character response
-          const entity = respondingEntities.find(e => e.name === charResponse.name);
+      if (result.entityResponses && result.entityResponses.length > 0) {
+        // Multiple entities: send separate webhook message for each
+        for (const entityResponse of result.entityResponses) {
+          // Find the entity for this response
+          const entity = respondingEntities.find(e => e.name === entityResponse.name);
           const messageIds = await executeWebhook(
             channelId,
-            charResponse.content,
-            charResponse.name,
-            charResponse.avatarUrl
+            entityResponse.content,
+            entityResponse.name,
+            entityResponse.avatarUrl
           );
           if (messageIds && entity) {
             trackWebhookMessages(messageIds, entity.id, entity.name);
           } else if (!messageIds) {
-            await sendFallbackMessage(channelId, charResponse.name, charResponse.content);
+            await sendFallbackMessage(channelId, entityResponse.name, entityResponse.content);
           }
         }
       } else {

@@ -66,7 +66,7 @@ export interface MessageContext {
   entityMemories?: Map<number, Array<{ content: string }>>;
 }
 
-export interface CharacterResponse {
+export interface EntityResponse {
   entityId: number;
   name: string;
   content: string;
@@ -77,7 +77,7 @@ export interface CharacterResponse {
 
 export interface ResponseResult {
   response: string;
-  characterResponses?: CharacterResponse[];
+  entityResponses?: EntityResponse[];
   factsAdded: number;
   factsUpdated: number;
   factsRemoved: number;
@@ -353,16 +353,16 @@ function buildSystemPrompt(
   }
   const context = contextParts.join("\n\n");
 
-  let multiCharGuidance = "";
+  let multiEntityGuidance = "";
   if (respondingEntities.length > 1) {
     const names = respondingEntities.map(c => c.name).join(", ");
-    multiCharGuidance = `\n\nMultiple characters are present: ${names}. Format your response with XML tags:
+    multiEntityGuidance = `\n\nYou are: ${names}. Format your response with XML tags:
 <${respondingEntities[0]?.name ?? "Name"}>*waves* Hello there!</${respondingEntities[0]?.name ?? "Name"}>
 <${respondingEntities[1]?.name ?? "Other"}>Nice to meet you.</${respondingEntities[1]?.name ?? "Other"}>
 
-Wrap each character's dialogue in their name tag. Characters may interact naturally.
+Wrap everyone's dialogue in their name tag. They may interact naturally.
 
-Not every character needs to respond to every message. Only respond as characters who would naturally engage with what was said. If no character would respond, reply with only <none/>.`;
+Not everyone needs to respond to every message. Only respond as those who would naturally engage with what was said. If none would respond, reply with only <none/>.`;
   }
 
   return `${context}
@@ -371,18 +371,18 @@ You have access to tools to modify facts and memories about entities.
 
 **Facts** are permanent defining traits. Use very sparingly:
 - Core personality, appearance, abilities
-- Key relationships that define the character
+- Key relationships that define the entity
 - Use add_fact / update_fact / remove_fact
 
 **Memories** are important events worth recalling. Use sparingly:
 - Significant conversations or promises
-- Events that shaped the character
+- Events that shaped them
 - Things learned that may be relevant later
 - Use save_memory / update_memory / remove_memory
 
 Most interactions don't need saving. Only save what matters long-term.
 
-Respond naturally in character based on the facts and memories provided.${multiCharGuidance}`;
+Respond naturally based on the facts and memories provided.${multiEntityGuidance}`;
 }
 
 /**
@@ -415,17 +415,17 @@ function buildMessageHistory(
 }
 
 /**
- * Parse LLM response into per-character segments using XML tags.
- * Format: <CharName>content</CharName>
+ * Parse LLM response into per-entity segments using XML tags.
+ * Format: <Name>content</Name>
  * Returns undefined if no valid tags found.
  */
-function parseMultiCharacterResponse(
+function parseMultiEntityResponse(
   response: string,
   entities: EvaluatedEntity[]
-): CharacterResponse[] | undefined {
+): EntityResponse[] | undefined {
   if (entities.length <= 1) return undefined;
 
-  type ParsedResponse = CharacterResponse & { position: number };
+  type ParsedResponse = EntityResponse & { position: number };
   const results: ParsedResponse[] = [];
 
   // Match XML tags for each entity: <Name>content</Name>
@@ -554,18 +554,18 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
       memoriesRemoved,
     });
 
-    // Check for <none/> sentinel (LLM decided no character should respond)
+    // Check for <none/> sentinel (LLM decided none should respond)
     if (result.text.trim() === "<none/>") {
       debug("LLM returned <none/> - no response");
       return null;
     }
 
-    // Parse multi-character response if multiple entities
-    const characterResponses = parseMultiCharacterResponse(result.text, evaluated);
+    // Parse multi-entity response
+    const entityResponses = parseMultiEntityResponse(result.text, evaluated);
 
     return {
       response: result.text,
-      characterResponses,
+      entityResponses,
       factsAdded,
       factsUpdated,
       factsRemoved,
@@ -602,9 +602,9 @@ export type StreamEvent =
   | { type: "char_start"; name: string; entityId: number; avatarUrl?: string }
   | { type: "char_delta"; name: string; delta: string; content: string }
   | { type: "char_line"; name: string; content: string }
-  | { type: "char_line_start"; name: string }  // lines full: new line starting for character
+  | { type: "char_line_start"; name: string }  // lines full: new line starting for entity
   | { type: "char_line_delta"; name: string; delta: string; content: string }  // lines full: delta within current line
-  | { type: "char_line_end"; name: string; content: string }  // lines full: line complete for character
+  | { type: "char_line_end"; name: string; content: string }  // lines full: line complete for entity
   | { type: "char_end"; name: string; content: string }
   | { type: "done"; fullText: string };
 
@@ -617,8 +617,8 @@ export type StreamEvent =
  * - "full": yields { type: "delta" } for each text chunk
  * - "lines_full": yields { type: "line" } when line completes, { type: "delta" } within line
  *
- * Multi-character (heuristic XML parsing):
- * - Parses <CharName>...</CharName> tags as they stream
+ * Multiple entities (heuristic XML parsing):
+ * - Parses <Name>...</Name> tags as they stream
  * - yields char_start, char_delta/char_line, char_end events
  */
 export async function* handleMessageStreaming(
@@ -672,11 +672,11 @@ export async function* handleMessageStreaming(
       stopWhen: stepCountIs(5),
     });
 
-    // Use different streaming logic based on single vs multi-character
+    // Use different streaming logic based on single vs multiple entities
     if (entities.length === 1) {
       yield* streamSingleEntity(result.textStream, streamMode, delimiter);
     } else {
-      yield* streamMultiCharacter(result.textStream, entities, streamMode, delimiter);
+      yield* streamMultiEntity(result.textStream, entities, streamMode, delimiter);
     }
 
     // Yield done event with full text
@@ -790,16 +790,16 @@ async function* streamSingleEntity(
 }
 
 /**
- * Stream events for multiple characters with heuristic XML parsing.
- * Parses <CharName>content</CharName> tags as they stream.
+ * Stream events for multiple entities with heuristic XML parsing.
+ * Parses <Name>content</Name> tags as they stream.
  *
  * Modes:
  * - "lines": new message per delimiter, sent when complete (emits "char_line" events)
- * - "full" without delimiter: single message per char, edited progressively (emits "char_delta" events)
+ * - "full" without delimiter: single message per entity, edited progressively (emits "char_delta" events)
  * - "full" with delimiter: new message per delimiter, each edited progressively
  *   (emits "char_line_start", "char_line_delta", "char_line_end" events)
  */
-async function* streamMultiCharacter(
+async function* streamMultiEntity(
   textStream: AsyncIterable<string>,
   entities: EvaluatedEntity[],
   streamMode: "lines" | "full",
@@ -854,7 +854,7 @@ async function* streamMultiCharacter(
           break;
         }
       } else {
-        // Inside a character tag - look for closing tag
+        // Inside an entity tag - look for closing tag
         const closeMatch = buffer.match(closeTagPattern(currentChar.name));
         if (closeMatch) {
           // Found closing tag
