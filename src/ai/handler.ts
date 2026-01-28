@@ -22,6 +22,16 @@ import {
 import { parseFact } from "../logic/expr";
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/** Maximum characters of message history to include in context */
+const MESSAGE_HISTORY_CHAR_LIMIT = 16_000;
+
+/** Number of messages to fetch from DB (we'll trim by char limit) */
+const MESSAGE_FETCH_LIMIT = 100;
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -39,6 +49,8 @@ export interface EvaluatedEntity {
   streamDelimiter: string | null;
   /** Memory retrieval scope from $memory directive (default: "none") */
   memoryScope: "none" | "channel" | "guild" | "global";
+  /** Context character limit from $context directive, if present */
+  contextLimit: number | null;
 }
 
 export interface MessageContext {
@@ -373,8 +385,33 @@ Most interactions don't need saving. Only save what matters long-term.
 Respond naturally in character based on the facts and memories provided.${multiCharGuidance}`;
 }
 
-function buildUserMessage(messages: Array<{ author_name: string; content: string }>): string {
-  return messages.map(m => `${m.author_name}: ${m.content}`).join("\n");
+/**
+ * Build message history up to a character limit.
+ * Messages should be in DESC order (newest first) from the database.
+ * Returns formatted string in chronological order (oldest first).
+ */
+function buildMessageHistory(
+  messages: Array<{ author_name: string; content: string }>,
+  charLimit = MESSAGE_HISTORY_CHAR_LIMIT
+): string {
+  const lines: string[] = [];
+  let totalChars = 0;
+
+  // Process newest to oldest, accumulating until we hit the limit
+  for (const m of messages) {
+    const line = `${m.author_name}: ${m.content}`;
+    const lineLen = line.length + 1; // +1 for newline
+
+    if (totalChars + lineLen > charLimit && lines.length > 0) {
+      break; // Would exceed limit, stop (but always include at least one message)
+    }
+
+    lines.push(line);
+    totalChars += lineLen;
+  }
+
+  // Reverse to chronological order (oldest first)
+  return lines.reverse().join("\n");
 }
 
 /**
@@ -460,17 +497,19 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
   }
 
   // Get message history
-  const history = getMessages(channelId, 20);
+  const history = getMessages(channelId, MESSAGE_FETCH_LIMIT);
+
+  // Determine context limit from entities (first non-null wins)
+  const contextLimit = evaluated.find(e => e.contextLimit !== null)?.contextLimit ?? MESSAGE_HISTORY_CHAR_LIMIT;
 
   // Build prompts
   const systemPrompt = buildSystemPrompt(evaluated, other, ctx.entityMemories);
-  const userMessage = buildUserMessage(
-    history.slice().reverse().map(m => ({ author_name: m.author_name, content: m.content }))
-  );
+  const userMessage = buildMessageHistory(history, contextLimit);
 
   debug("Calling LLM", {
     respondingEntities: evaluated.map(e => e.name),
     otherEntities: other.map(e => e.name),
+    contextLimit,
     systemPrompt,
     userMessage,
   });
@@ -605,17 +644,19 @@ export async function* handleMessageStreaming(
   }
 
   // Get message history
-  const history = getMessages(channelId, 20);
+  const history = getMessages(channelId, MESSAGE_FETCH_LIMIT);
+
+  // Determine context limit from entities (first non-null wins)
+  const contextLimit = entities.find(e => e.contextLimit !== null)?.contextLimit ?? MESSAGE_HISTORY_CHAR_LIMIT;
 
   // Build prompts
   const systemPrompt = buildSystemPrompt(entities, other, ctx.entityMemories);
-  const userMessage = buildUserMessage(
-    history.slice().reverse().map(m => ({ author_name: m.author_name, content: m.content }))
-  );
+  const userMessage = buildMessageHistory(history, contextLimit);
 
   debug("Calling LLM (streaming)", {
     entities: entities.map(e => e.name),
     streamMode,
+    contextLimit,
     hasMemories: !!ctx.entityMemories?.size,
   });
 

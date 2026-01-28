@@ -120,6 +120,19 @@ $if mentioned: $stream             # Conditional streaming
 
 **Context variables:** `mentioned`, `replied`, `is_forward`, `is_self`, `content`, `author`, `dt_ms`, `elapsed_ms`, `time.is_night`, `self.*`
 
+### Context Window
+
+Control how much message history is included in LLM context:
+
+```
+$context 16k                       # 16,000 characters of history (default)
+$context 8000                      # 8,000 characters
+$context 200k                      # 200,000 characters (hard cap)
+$if mentioned: $context 32k        # Conditional context size
+```
+
+Default is 16k characters. Supports `k` suffix (e.g., `16k` = 16,000). Hard cap is 200k.
+
 ### Stickers
 
 Stickers are serialized as `*sent a sticker: name*` and appended to message content. A sticker-only message becomes just the sticker text, e.g. `*sent a sticker: catwave*`.

@@ -347,6 +347,7 @@ bot.events.messageCreate = async (message) => {
           streamMode: result.streamMode,
           streamDelimiter: result.streamDelimiter,
           memoryScope: result.memoryScope,
+          contextLimit: result.contextLimit,
         });
       }
     }
@@ -462,6 +463,7 @@ async function processEntityRetry(
     streamMode: result.streamMode,
     streamDelimiter: result.streamDelimiter,
     memoryScope: result.memoryScope,
+    contextLimit: result.contextLimit,
   }]);
 }
 

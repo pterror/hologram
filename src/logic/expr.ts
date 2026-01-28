@@ -558,6 +558,7 @@ const EDIT_SIGIL = "$edit ";
 const VIEW_SIGIL = "$view ";
 const STREAM_SIGIL = "$stream";
 const MEMORY_SIGIL = "$memory";
+const CONTEXT_SIGIL = "$context";
 
 /** Memory retrieval scope */
 export type MemoryScope = "none" | "channel" | "guild" | "global";
@@ -592,6 +593,10 @@ export interface ProcessedFact {
   isMemory: boolean;
   /** For $memory directives, the scope */
   memoryScope?: MemoryScope;
+  /** True if this fact is a $context directive */
+  isContext: boolean;
+  /** For $context directives, the character limit */
+  contextLimit?: number;
 }
 
 /** Parse expression, expect ':', return position after ':' */
@@ -629,6 +634,7 @@ export function parseFact(fact: string): ProcessedFact {
         isLockedFact: false,
         isStream: false,
         isMemory: false,
+        isContext: false,
       };
     } else {
       // $locked prefix - recursively parse the rest, then mark as locked
@@ -659,6 +665,7 @@ export function parseFact(fact: string): ProcessedFact {
         isLockedFact: false,
         isStream: false,
         isMemory: false,
+        isContext: false,
       };
     }
 
@@ -677,6 +684,7 @@ export function parseFact(fact: string): ProcessedFact {
         isLockedFact: false,
         isStream: false,
         isMemory: false,
+        isContext: false,
       };
     }
 
@@ -696,6 +704,7 @@ export function parseFact(fact: string): ProcessedFact {
         streamMode: streamResultCond.mode,
         streamDelimiter: streamResultCond.delimiter,
         isMemory: false,
+        isContext: false,
       };
     }
 
@@ -714,10 +723,30 @@ export function parseFact(fact: string): ProcessedFact {
         isStream: false,
         isMemory: true,
         memoryScope: memoryResultCond,
+        isContext: false,
       };
     }
 
-    return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false };
+    // Check if content is a $context directive
+    const contextResultCond = parseContextDirective(content);
+    if (contextResultCond !== null) {
+      return {
+        content,
+        conditional: true,
+        expression,
+        isRespond: false,
+        isRetry: false,
+        isAvatar: false,
+        isLockedDirective: false,
+        isLockedFact: false,
+        isStream: false,
+        isMemory: false,
+        isContext: true,
+        contextLimit: contextResultCond,
+      };
+    }
+
+    return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false };
   }
 
   // Check for unconditional $respond
@@ -734,6 +763,7 @@ export function parseFact(fact: string): ProcessedFact {
       isLockedFact: false,
       isStream: false,
       isMemory: false,
+      isContext: false,
     };
   }
 
@@ -751,6 +781,7 @@ export function parseFact(fact: string): ProcessedFact {
       isLockedFact: false,
       isStream: false,
       isMemory: false,
+      isContext: false,
     };
   }
 
@@ -768,6 +799,7 @@ export function parseFact(fact: string): ProcessedFact {
       isLockedFact: false,
       isStream: false,
       isMemory: false,
+      isContext: false,
     };
   }
 
@@ -786,6 +818,7 @@ export function parseFact(fact: string): ProcessedFact {
       streamMode: streamResult.mode,
       streamDelimiter: streamResult.delimiter,
       isMemory: false,
+      isContext: false,
     };
   }
 
@@ -803,10 +836,29 @@ export function parseFact(fact: string): ProcessedFact {
       isStream: false,
       isMemory: true,
       memoryScope: memoryResult,
+      isContext: false,
     };
   }
 
-  return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false };
+  // Check for unconditional $context
+  const contextResult = parseContextDirective(trimmed);
+  if (contextResult !== null) {
+    return {
+      content: trimmed,
+      conditional: false,
+      isRespond: false,
+      isRetry: false,
+      isAvatar: false,
+      isLockedDirective: false,
+      isLockedFact: false,
+      isStream: false,
+      isMemory: false,
+      isContext: true,
+      contextLimit: contextResult,
+    };
+  }
+
+  return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false };
 }
 
 /**
@@ -967,6 +1019,43 @@ function parseMemoryDirective(content: string): MemoryScope | null {
   return null;
 }
 
+/** Hard cap for context limit (200k characters) */
+const CONTEXT_HARD_CAP = 200_000;
+
+/**
+ * Parse a $context directive.
+ * Returns null if not a context directive, or the character limit.
+ *
+ * Syntax:
+ * - $context 8000 → 8000 characters
+ * - $context 8k → 8000 characters
+ * - $context 200k → 200000 characters (capped at CONTEXT_HARD_CAP)
+ */
+function parseContextDirective(content: string): number | null {
+  if (!content.startsWith(CONTEXT_SIGIL)) {
+    return null;
+  }
+  const rest = content.slice(CONTEXT_SIGIL.length).trim().toLowerCase();
+
+  if (rest === "") {
+    return null; // Need a value
+  }
+
+  // Parse number with optional 'k' suffix
+  const match = rest.match(/^(\d+(?:\.\d+)?)(k)?$/);
+  if (!match) {
+    return null;
+  }
+
+  let value = parseFloat(match[1]);
+  if (match[2] === "k") {
+    value *= 1000;
+  }
+
+  // Cap at hard maximum
+  return Math.min(Math.floor(value), CONTEXT_HARD_CAP);
+}
+
 export interface EvaluatedFacts {
   /** Facts that apply (excluding directives) */
   facts: string[];
@@ -988,6 +1077,8 @@ export interface EvaluatedFacts {
   streamDelimiter: string | null;
   /** Memory retrieval scope (default: "none" = no retrieval) */
   memoryScope: MemoryScope;
+  /** Context character limit if $context directive present */
+  contextLimit: number | null;
 }
 
 /**
@@ -1015,6 +1106,7 @@ export function evaluateFacts(
   let streamMode: "lines" | "full" | null = null;
   let streamDelimiter: string | null = null;
   let memoryScope: MemoryScope = "none";
+  let contextLimit: number | null = null;
 
   // Strip comments first
   const uncommented = stripComments(facts);
@@ -1075,10 +1167,16 @@ export function evaluateFacts(
       continue;
     }
 
+    // Handle $context directives - last one wins
+    if (parsed.isContext) {
+      contextLimit = parsed.contextLimit ?? null;
+      continue;
+    }
+
     results.push(parsed.content);
   }
 
-  return { facts: results, shouldRespond, respondSource, retryMs, avatarUrl, isLocked, lockedFacts, streamMode, streamDelimiter, memoryScope };
+  return { facts: results, shouldRespond, respondSource, retryMs, avatarUrl, isLocked, lockedFacts, streamMode, streamDelimiter, memoryScope, contextLimit };
 }
 
 // =============================================================================
