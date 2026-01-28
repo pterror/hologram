@@ -556,6 +556,7 @@ const AVATAR_SIGIL = "$avatar ";
 const LOCKED_SIGIL = "$locked";
 const EDIT_SIGIL = "$edit ";
 const VIEW_SIGIL = "$view ";
+const BLACKLIST_SIGIL = "$blacklist ";
 const STREAM_SIGIL = "$stream";
 const MEMORY_SIGIL = "$memory";
 const CONTEXT_SIGIL = "$context";
@@ -1380,6 +1381,8 @@ export interface EntityPermissions {
   editList: string[] | "everyone" | null;
   /** User IDs allowed to view, "everyone" for public, null for owner-only */
   viewList: string[] | "everyone" | null;
+  /** Users/IDs blocked from all interactions (usernames or Discord IDs) */
+  blacklist: string[];
 }
 
 /**
@@ -1392,6 +1395,7 @@ export function parsePermissionDirectives(facts: string[]): EntityPermissions {
   const lockedFacts = new Set<string>();
   let editList: string[] | "everyone" | null = null;
   let viewList: string[] | "everyone" | null = null;
+  const blacklist: string[] = [];
 
   for (const fact of facts) {
     const trimmed = fact.trim();
@@ -1423,9 +1427,20 @@ export function parsePermissionDirectives(facts: string[]): EntityPermissions {
       viewList = parseUserList(value);
       continue;
     }
+
+    // Check for $blacklist (accumulates multiple lines)
+    if (trimmed.startsWith(BLACKLIST_SIGIL)) {
+      const value = trimmed.slice(BLACKLIST_SIGIL.length).trim();
+      const parsed = parseUserList(value);
+      // Ignore $blacklist @everyone (nonsensical)
+      if (parsed !== "everyone") {
+        blacklist.push(...parsed);
+      }
+      continue;
+    }
   }
 
-  return { isLocked, lockedFacts, editList, viewList };
+  return { isLocked, lockedFacts, editList, viewList, blacklist };
 }
 
 /**
@@ -1439,4 +1454,33 @@ function parseUserList(value: string): string[] | "everyone" {
   }
   // Split by comma and trim each entry
   return value.split(",").map(s => s.trim()).filter(s => s.length > 0);
+}
+
+/**
+ * Check if a permission entry matches a user.
+ * Entries can be Discord IDs (17-19 digits) or usernames (case-insensitive).
+ */
+export function matchesUserEntry(entry: string, userId: string, username: string): boolean {
+  // Discord IDs are 17-19 digit snowflakes
+  if (/^\d{17,19}$/.test(entry)) {
+    return entry === userId;
+  }
+  // Usernames are case-insensitive
+  return entry.toLowerCase() === username.toLowerCase();
+}
+
+/**
+ * Check if a user is blacklisted from an entity.
+ * Owner is NEVER blacklisted.
+ */
+export function isUserBlacklisted(
+  permissions: EntityPermissions,
+  userId: string,
+  username: string,
+  ownerId: string | null
+): boolean {
+  // Owner is never blocked
+  if (ownerId && userId === ownerId) return false;
+
+  return permissions.blacklist.some(entry => matchesUserEntry(entry, userId, username));
 }

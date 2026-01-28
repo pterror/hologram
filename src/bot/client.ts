@@ -5,7 +5,7 @@ import { handleMessage, handleMessageStreaming, type EvaluatedEntity } from "../
 import { retrieveRelevantMemories, type MemoryScope } from "../db/memories";
 import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, trackWebhookMessage, getWebhookMessageEntity, getMessages, formatMessagesForContext, recordEvalError } from "../db/discord";
 import { getEntity, getEntityWithFacts, getSystemEntity, getFactsForEntity, type EntityWithFacts } from "../db/entities";
-import { evaluateFacts, createBaseContext, parsePermissionDirectives } from "../logic/expr";
+import { evaluateFacts, createBaseContext, parsePermissionDirectives, isUserBlacklisted } from "../logic/expr";
 import { executeWebhook, editWebhookMessage, setBot } from "./webhooks";
 import "./commands/commands"; // Register all commands
 import { ensureHelpEntities } from "./commands/commands";
@@ -261,8 +261,15 @@ bot.events.messageCreate = async (message) => {
       retryTimers.delete(key);
     }
 
-    // Build expression context for this entity
+    // Check if message author is blacklisted from this entity
     const facts = entity.facts.map(f => f.content);
+    const permissions = parsePermissionDirectives(facts);
+    if (isUserBlacklisted(permissions, authorId, authorName, entity.owned_by)) {
+      debug("User blacklisted from entity", { entity: entity.name, user: authorName });
+      continue;
+    }
+
+    // Build expression context for this entity
     // Check if this is the entity's own webhook message (self-triggered)
     const isSelf = !!message.webhookId &&
       entity.name.toLowerCase() === authorName.toLowerCase();

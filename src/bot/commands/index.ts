@@ -12,7 +12,7 @@ type Bot = any;
 type Interaction = any;
 import { info, warn, error } from "../../logger";
 import { searchEntities, searchEntitiesOwnedBy, getEntitiesWithFacts } from "../../db/entities";
-import { parsePermissionDirectives } from "../../logic/expr";
+import { parsePermissionDirectives, matchesUserEntry, isUserBlacklisted } from "../../logic/expr";
 import { getBoundEntityIds, type DiscordType } from "../../db/discord";
 
 // =============================================================================
@@ -245,8 +245,9 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
         if (!entityWithFacts) return false;
         const facts = entityWithFacts.facts.map(f => f.content);
         const permissions = parsePermissionDirectives(facts);
+        if (isUserBlacklisted(permissions, userId, username, entity.owned_by)) return false;
         if (permissions.editList === "everyone") return true;
-        if (permissions.editList?.some(u => u.toLowerCase() === username.toLowerCase())) return true;
+        if (permissions.editList?.some(u => matchesUserEntry(u, userId, username))) return true;
         return false;
       }).slice(0, 25);
     } else {
@@ -282,8 +283,9 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
         if (entityWithFacts.owned_by !== userId) {
           const facts = entityWithFacts.facts.map(f => f.content);
           const permissions = parsePermissionDirectives(facts);
+          if (isUserBlacklisted(permissions, userId, username, entityWithFacts.owned_by)) continue;
           if (permissions.editList !== "everyone" &&
-              !permissions.editList?.some(u => u.toLowerCase() === username.toLowerCase())) {
+              !permissions.editList?.some(u => matchesUserEntry(u, userId, username))) {
             continue;
           }
         }
@@ -303,8 +305,9 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
       if (!entityWithFacts) return false;
       const facts = entityWithFacts.facts.map(f => f.content);
       const permissions = parsePermissionDirectives(facts);
+      if (isUserBlacklisted(permissions, userId, username, entity.owned_by)) return false;
       if (permissions.editList === "everyone") return true;
-      if (permissions.editList?.some(u => u.toLowerCase() === username.toLowerCase())) return true;
+      if (permissions.editList?.some(u => matchesUserEntry(u, userId, username))) return true;
       return false;
     }).slice(0, 25);
   } else if (commandName === "view") {
@@ -318,10 +321,11 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
       if (!entityWithFacts) return false;
       const facts = entityWithFacts.facts.map(f => f.content);
       const permissions = parsePermissionDirectives(facts);
+      if (isUserBlacklisted(permissions, userId, username, entity.owned_by)) return false;
       // No $view directive = public by default
       if (permissions.viewList === null) return true;
       if (permissions.viewList === "everyone") return true;
-      if (permissions.viewList.some(u => u.toLowerCase() === username.toLowerCase())) return true;
+      if (permissions.viewList.some(u => matchesUserEntry(u, userId, username))) return true;
       return false;
     }).slice(0, 25);
   } else {

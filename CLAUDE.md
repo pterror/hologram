@@ -149,6 +149,26 @@ Discord channels/users/servers map to entities via `discord_entities`:
 - **Server binding**: Entity responds in all channels of that server
 - **User binding**: User speaks as that entity (persona)
 
+### Access Control
+
+Control who can interact with entities using permission directives:
+
+```
+$blacklist alice                   # Block username from all interactions
+$blacklist 123456789012345678      # Block by Discord ID
+$blacklist alice, 123456789, bob   # Mixed usernames and IDs
+$edit @everyone                    # Anyone can edit
+$edit alice, 123456789             # Specific users (username or ID)
+$view @everyone                    # Anyone can view
+$view alice, bob                   # Specific users only
+```
+
+**Behavior:**
+- Blacklist blocks view, edit, and entity responses in chat
+- Blacklist overrides whitelist (deny wins)
+- Owner is never blocked by blacklist
+- Default: edit=owner-only, view=everyone, blacklist=empty
+
 ## Commands
 
 | Command | Description |

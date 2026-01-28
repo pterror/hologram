@@ -31,7 +31,7 @@ import {
   getMessages,
   setChannelForgetTime,
 } from "../../db/discord";
-import { parsePermissionDirectives } from "../../logic/expr";
+import { parsePermissionDirectives, matchesUserEntry, isUserBlacklisted } from "../../logic/expr";
 import { formatEntityDisplay } from "../../ai/handler";
 
 // =============================================================================
@@ -40,8 +40,8 @@ import { formatEntityDisplay } from "../../ai/handler";
 
 /**
  * Check if a user can edit an entity.
- * Owner always can. Otherwise check $edit directive.
- * Default (no $edit directive) = owner-only.
+ * Owner always can. Blacklist blocks everyone except owner.
+ * Otherwise check $edit directive. Default = owner-only.
  */
 function canUserEdit(entity: EntityWithFacts, userId: string, username: string): boolean {
   // Owner always can
@@ -51,9 +51,12 @@ function canUserEdit(entity: EntityWithFacts, userId: string, username: string):
   const facts = entity.facts.map(f => f.content);
   const permissions = parsePermissionDirectives(facts);
 
-  // Check $edit directive (case-insensitive username match)
+  // Check blacklist first (deny overrides allow)
+  if (isUserBlacklisted(permissions, userId, username, entity.owned_by)) return false;
+
+  // Check $edit directive (supports both usernames and Discord IDs)
   if (permissions.editList === "everyone") return true;
-  if (permissions.editList && permissions.editList.some(u => u.toLowerCase() === username.toLowerCase())) return true;
+  if (permissions.editList && permissions.editList.some(u => matchesUserEntry(u, userId, username))) return true;
 
   // No $edit directive = owner only
   return false;
@@ -61,8 +64,8 @@ function canUserEdit(entity: EntityWithFacts, userId: string, username: string):
 
 /**
  * Check if a user can view an entity.
- * Owner always can. Otherwise check $view directive.
- * Default (no $view directive) = everyone can view (public by default).
+ * Owner always can. Blacklist blocks everyone except owner.
+ * Otherwise check $view directive. Default = everyone (public).
  */
 function canUserView(entity: EntityWithFacts, userId: string, username: string): boolean {
   // Owner always can
@@ -72,12 +75,15 @@ function canUserView(entity: EntityWithFacts, userId: string, username: string):
   const facts = entity.facts.map(f => f.content);
   const permissions = parsePermissionDirectives(facts);
 
+  // Check blacklist first (deny overrides allow)
+  if (isUserBlacklisted(permissions, userId, username, entity.owned_by)) return false;
+
   // If no $view directive, default to public (everyone can view)
   if (permissions.viewList === null) return true;
 
-  // Check $view directive (case-insensitive username match)
+  // Check $view directive (supports both usernames and Discord IDs)
   if (permissions.viewList === "everyone") return true;
-  if (permissions.viewList.some(u => u.toLowerCase() === username.toLowerCase())) return true;
+  if (permissions.viewList.some(u => matchesUserEntry(u, userId, username))) return true;
 
   return false;
 }
@@ -984,6 +990,13 @@ const HELP_ENTITY_FACTS: Record<string, string[]> = {
     "• Owner always has full access",
     "• `/transfer <entity> <user>` - Transfer ownership",
     "---",
+    "**Blacklist** - Block specific users",
+    "• `$blacklist username` - Block by username",
+    "• `$blacklist 123456789012345678` - Block by Discord ID",
+    "• `$blacklist user1, 123456789, user2` - Mixed",
+    "• Blocked users cannot view, edit, or receive responses",
+    "• Owner is never blocked",
+    "---",
     "**LLM Lock** - Prevent AI modifications",
     "• `$locked` - Lock entire entity",
     "• `$locked has silver hair` - Lock specific fact",
@@ -991,11 +1004,13 @@ const HELP_ENTITY_FACTS: Record<string, string[]> = {
     "---",
     "**User Access** - Control who can edit/view",
     "• `$edit @everyone` - Anyone can edit",
-    "• `$edit alice, bob` - Specific usernames",
+    "• `$edit alice, bob` - Usernames (case-insensitive)",
+    "• `$edit 123456789012345678` - Discord IDs",
     "• `$view @everyone` - Anyone can view",
-    "• `$view alice, bob` - Specific usernames",
+    "• `$view alice, 123456789` - Mixed usernames and IDs",
     "---",
     "**Defaults:**",
+    "• Blacklist: empty (nobody blocked)",
     "• Edit: owner only",
     "• View: everyone (public)",
     "• LLM: not locked",
