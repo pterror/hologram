@@ -14,6 +14,7 @@ import { expandEntityRefs, buildSystemPrompt } from "./prompt";
 import { createTools } from "./tools";
 import {
   stripNamePrefixFromStream,
+  namePrefixSource,
   NAME_BOUNDARY,
 } from "./parsing";
 
@@ -525,9 +526,9 @@ async function* streamMultiEntityNamePrefix(
     entityMap.set(entity.name.toLowerCase(), entity);
   }
 
-  // Build regex for "Name:" at line start (case-insensitive)
+  // Build regex for "Name:" at line start (case-insensitive, handles bold/italic)
   const names = entities.map(e => e.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const namePrefixPattern = new RegExp(`^(${names.join("|")}):\\s*`, "im");
+  const namePrefixPattern = new RegExp(`^${namePrefixSource(`(${names.join("|")})`)}\\s*`, "im");
   // Also build XML tag pattern for fallback detection
   const xmlOpenPattern = new RegExp(`<(${names.join("|")})>`, "i");
 

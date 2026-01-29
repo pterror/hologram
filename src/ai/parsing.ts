@@ -18,11 +18,22 @@ export interface EntityResponse {
 // =============================================================================
 
 /**
+ * Build regex source for matching an entity name prefix with optional bold/italic
+ * markdown wrapping and colon. Handles: Name:, *Name:*, *Name*:, **Name:**, **Name**:
+ * @param escapedName regex-escaped entity name (may include capture groups)
+ */
+export function namePrefixSource(escapedName: string): string {
+  return `\\*{0,2}${escapedName}(?::\\*{0,2}|\\*{1,2}:)`;
+}
+
+/**
  * Strip "Name:" prefix from single-entity responses at every line start.
+ * Handles optional bold/italic markdown wrapping around the name.
  * Case-insensitive, multiline (handles multiple lines like "Alice: hi\nAlice: bye").
  */
 export function stripNamePrefix(text: string, entityName: string): string {
-  const pattern = new RegExp(`^${entityName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:\\s*`, "gim");
+  const escaped = entityName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^${namePrefixSource(escaped)}\\s*`, "gim");
   return text.replace(pattern, "");
 }
 
@@ -47,7 +58,9 @@ export async function* stripNamePrefixFromStream(
   let skipSpaces = false;
   let isFirst = true;
   let pendingNewline = false;
-  const prefixLower = entityName.toLowerCase() + ":";
+  const escaped = entityName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const prefixRegex = new RegExp(`^${namePrefixSource(escaped)}`, "i");
+  const maxPrefixLen = entityName.length + 5; // longest: **Name:**
 
   for await (const delta of textStream) {
     buffer += delta;
@@ -64,10 +77,9 @@ export async function* stripNamePrefixFromStream(
       }
 
       if (atLineStart) {
-        // Not enough data to determine if this is a prefix
-        if (buffer.length < prefixLower.length) break;
-        if (buffer.slice(0, prefixLower.length).toLowerCase() === prefixLower) {
-          // Name: boundary detected
+        const prefixMatch = buffer.match(prefixRegex);
+        if (prefixMatch) {
+          // Name: boundary detected (possibly with bold/italic markers)
           if (isFirst) {
             isFirst = false;
             pendingNewline = false;
@@ -80,11 +92,13 @@ export async function* stripNamePrefixFromStream(
             output += "\n";
             pendingNewline = false;
           }
-          buffer = buffer.slice(prefixLower.length);
+          buffer = buffer.slice(prefixMatch[0].length);
           atLineStart = false;
           skipSpaces = true;
           continue;
         }
+        // Not enough data to rule out a prefix
+        if (buffer.length < maxPrefixLen) break;
         // Not a Name: prefix — output pending newline
         if (pendingNewline) {
           output += "\n";
@@ -189,9 +203,9 @@ export function parseNamePrefixResponse(
 ): EntityResponse[] | undefined {
   if (entities.length <= 1) return undefined;
 
-  // Build regex matching any entity name at line start
+  // Build regex matching any entity name at line start (with optional bold/italic)
   const names = entities.map(e => e.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const pattern = new RegExp(`^(${names.join("|")}):\\s*`, "gim");
+  const pattern = new RegExp(`^${namePrefixSource(`(${names.join("|")})`)}\\s*`, "gim");
 
   // Find all name prefix positions (both match start and content start)
   const matches: Array<{ name: string; matchIndex: number; contentStart: number }> = [];
