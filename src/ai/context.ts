@@ -4,6 +4,19 @@ import type { EntityWithFacts } from "../db/entities";
 // Types
 // =============================================================================
 
+export interface MessageContext {
+  channelId: string;
+  guildId?: string;
+  userId: string;
+  username: string;
+  content: string;
+  isMentioned: boolean;
+  /** Pre-evaluated responding entities (facts already processed) */
+  respondingEntities?: EvaluatedEntity[];
+  /** Retrieved memories per entity (entity id -> memories) */
+  entityMemories?: Map<number, Array<{ content: string }>>;
+}
+
 /** Entity with pre-evaluated facts (directives processed and removed) */
 export interface EvaluatedEntity {
   id: number;
