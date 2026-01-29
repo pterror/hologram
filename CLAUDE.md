@@ -23,8 +23,13 @@ src/
 │   └── discord.ts        # Discord ID mapping + message history
 ├── ai/
 │   ├── models.ts         # Provider abstraction (provider:model spec)
-│   ├── embeddings.ts     # Local embeddings (planned)
-│   └── handler.ts        # LLM message handler with tool calls
+│   ├── context.ts        # EvaluatedEntity, MessageContext, formatting utils
+│   ├── handler.ts        # handleMessage() + re-exports
+│   ├── parsing.ts        # Response parsing (XML + Name prefix), name stripping
+│   ├── prompt.ts         # expandEntityRefs(), buildSystemPrompt()
+│   ├── streaming.ts      # handleMessageStreaming(), stream generators
+│   ├── tools.ts          # createTools() factory + $locked permission checks
+│   └── embeddings.ts     # Local embeddings (planned)
 ├── logic/
 │   └── expr.ts           # $if expression evaluator + $respond control
 └── bot/
