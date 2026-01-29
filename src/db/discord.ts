@@ -287,14 +287,34 @@ export function addMessage(
   channelId: string,
   authorId: string,
   authorName: string,
-  content: string
+  content: string,
+  discordMessageId?: string
 ): Message {
   const db = getDb();
   return db.prepare(`
-    INSERT INTO messages (channel_id, author_id, author_name, content)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO messages (channel_id, author_id, author_name, content, discord_message_id)
+    VALUES (?, ?, ?, ?, ?)
     RETURNING *
-  `).get(channelId, authorId, authorName, content) as Message;
+  `).get(channelId, authorId, authorName, content, discordMessageId ?? null) as Message;
+}
+
+export function updateMessageByDiscordId(
+  discordMessageId: string,
+  newContent: string
+): boolean {
+  const db = getDb();
+  const result = db.prepare(`
+    UPDATE messages SET content = ? WHERE discord_message_id = ?
+  `).run(newContent, discordMessageId);
+  return result.changes > 0;
+}
+
+export function deleteMessageByDiscordId(discordMessageId: string): boolean {
+  const db = getDb();
+  const result = db.prepare(`
+    DELETE FROM messages WHERE discord_message_id = ?
+  `).run(discordMessageId);
+  return result.changes > 0;
 }
 
 export function getMessages(channelId: string, limit = 50): Message[] {

@@ -62,7 +62,7 @@ entities         -- id, name, owned_by, created_at
 facts            -- id, entity_id, content, created_at, updated_at
 discord_entities -- discord_id, discord_type, entity_id, scope_guild_id, scope_channel_id
 fact_embeddings  -- (planned) vector search
-messages         -- channel_id, user_id, author_name, content, created_at
+messages         -- channel_id, user_id, author_name, content, discord_message_id, created_at
 welcomed_users   -- discord_id, welcomed_at (onboarding DM tracking)
 webhook_messages -- message_id, entity_id, entity_name (for reply detection)
 eval_errors      -- entity_id, owner_id, error_message, condition (deduped error notifications)

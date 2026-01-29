@@ -4,7 +4,7 @@ import { registerCommands, handleInteraction } from "./commands";
 import { handleMessage, handleMessageStreaming, InferenceError, type EvaluatedEntity } from "../ai/handler";
 import { isModelAllowed } from "../ai/models";
 import { retrieveRelevantMemories, type MemoryScope } from "../db/memories";
-import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, trackWebhookMessage, getWebhookMessageEntity, getMessages, formatMessagesForContext, recordEvalError } from "../db/discord";
+import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, updateMessageByDiscordId, deleteMessageByDiscordId, trackWebhookMessage, getWebhookMessageEntity, getMessages, formatMessagesForContext, recordEvalError } from "../db/discord";
 import { getEntity, getEntityWithFacts, getSystemEntity, getFactsForEntity, type EntityWithFacts } from "../db/entities";
 import { evaluateFacts, createBaseContext, parsePermissionDirectives, isUserBlacklisted } from "../logic/expr";
 import { executeWebhook, editWebhookMessage, setBot } from "./webhooks";
@@ -246,7 +246,7 @@ bot.events.messageCreate = async (message) => {
   });
 
   // Store message in history (before response decision so context builds up)
-  addMessage(channelId, authorId, authorName, content);
+  addMessage(channelId, authorId, authorName, content, message.id.toString());
 
   // Get ALL channel entities (supports multiple characters)
   const channelEntityIds = resolveDiscordEntities(channelId, "channel", guildId, channelId);
@@ -519,7 +519,7 @@ async function processEntityRetry(
   }]);
 }
 
-/** Helper to send a message (webhook or regular) and optionally track it */
+/** Helper to send a message (webhook or regular) and immediately track it */
 async function sendStreamMessage(
   channelId: string,
   content: string,
@@ -529,6 +529,8 @@ async function sendStreamMessage(
     // Try webhook first
     const ids = await executeWebhook(channelId, content, entity.name, entity.avatarUrl ?? undefined);
     if (ids && ids[0]) {
+      // Track immediately to prevent race condition with messageCreate
+      trackOwnWebhookMessage(ids[0], entity.id, entity.name);
       return ids[0];
     }
     // Fall back to regular message with name prefix
@@ -604,8 +606,11 @@ async function handleStreamingResponse(
 ): Promise<void> {
   const allMessageIds: string[] = [];
 
-  // Track current message per entity (for editing)
+  // Track current message per entity (for editing in full mode)
   const entityMessages = new Map<string, { messageId: string; content: string }>();
+  // Track entities that already sent messages via char_line/char_line_delta/char_line_end
+  // so char_end doesn't duplicate them
+  const charLinesSent = new Set<string>();
   // Single message for full mode
   let fullMessage: { messageId: string; content: string } | null = null;
   // Current line message for "lines full" mode
@@ -689,6 +694,7 @@ async function handleStreamingResponse(
         // Multi-character: prepare for new character
         entityMessages.delete(event.name);
         charLineMessages.delete(event.name);
+        charLinesSent.delete(event.name);
         break;
       }
 
@@ -698,7 +704,10 @@ async function handleStreamingResponse(
         if (charEntity) {
           // New message per chunk
           const msgId = await sendStreamMessage(channelId, event.content, charEntity);
-          if (msgId) allMessageIds.push(msgId);
+          if (msgId) {
+            allMessageIds.push(msgId);
+            charLinesSent.add(event.name);
+          }
         }
         break;
       }
@@ -722,6 +731,7 @@ async function handleStreamingResponse(
             if (msgId) {
               charLineMessages.set(event.name, { messageId: msgId, content: event.content });
               allMessageIds.push(msgId);
+              charLinesSent.add(event.name);
             }
           }
         }
@@ -738,7 +748,10 @@ async function handleStreamingResponse(
           } else {
             // Line was too short for delta, send final content
             const msgId = await sendStreamMessage(channelId, event.content, charEntity);
-            if (msgId) allMessageIds.push(msgId);
+            if (msgId) {
+              allMessageIds.push(msgId);
+              charLinesSent.add(event.name);
+            }
           }
           charLineMessages.delete(event.name);
         }
@@ -770,14 +783,15 @@ async function handleStreamingResponse(
         if (charEntity) {
           const existing = entityMessages.get(event.name);
           if (existing) {
-            // Final edit with complete content
+            // Final edit with complete content (full mode)
             await editStreamMessage(channelId, existing.messageId, event.content, charEntity);
-          } else if (event.content) {
-            // No message created yet, create one
+          } else if (event.content && !charLinesSent.has(event.name)) {
+            // No message created yet via any path, create one
             const msgId = await sendStreamMessage(channelId, event.content, charEntity);
             if (msgId) allMessageIds.push(msgId);
           }
         }
+        charLinesSent.delete(event.name);
         break;
       }
 
@@ -1099,6 +1113,30 @@ async function notifyUserOfError(userId: string, entityName: string, errorMsg: s
 
   debug("Sent error DM", { userId, entityName });
 }
+
+bot.events.messageUpdate = async (message) => {
+  // Ignore own messages and messages with no content (embed-only updates)
+  if (botUserId && message.author?.id === botUserId) return;
+  if (!message.content) return;
+
+  const discordMessageId = message.id.toString();
+
+  // Skip own webhook messages
+  if (isOwnWebhookMessage(discordMessageId)) return;
+
+  const updated = updateMessageByDiscordId(discordMessageId, message.content);
+  if (updated) {
+    debug("Message updated", { messageId: discordMessageId, content: message.content.slice(0, 50) });
+  }
+};
+
+bot.events.messageDelete = async (payload) => {
+  const discordMessageId = payload.id.toString();
+  const deleted = deleteMessageByDiscordId(discordMessageId);
+  if (deleted) {
+    debug("Message deleted from history", { messageId: discordMessageId });
+  }
+};
 
 bot.events.interactionCreate = async (interaction) => {
   await handleInteraction(bot, interaction);

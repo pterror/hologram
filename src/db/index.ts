@@ -180,6 +180,7 @@ function initSchema(db: Database) {
   // Migrations
   migrateCreatedByToOwnedBy(db);
   migrateDiscordEntitiesConstraint(db);
+  migrateMessagesDiscordId(db);
 }
 
 /**
@@ -195,6 +196,17 @@ function migrateCreatedByToOwnedBy(db: Database) {
   if (hasOldColumn && !hasNewColumn) {
     db.exec(`ALTER TABLE entities RENAME COLUMN created_by TO owned_by`);
   }
+}
+
+/**
+ * Add discord_message_id column to messages table for edit/delete tracking.
+ */
+function migrateMessagesDiscordId(db: Database) {
+  const columns = db.prepare(`PRAGMA table_info(messages)`).all() as Array<{ name: string }>;
+  if (columns.some(c => c.name === "discord_message_id")) return;
+
+  db.exec(`ALTER TABLE messages ADD COLUMN discord_message_id TEXT`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_discord_id ON messages(discord_message_id)`);
 }
 
 /**

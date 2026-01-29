@@ -790,24 +790,27 @@ export async function* handleMessageStreaming(
       stopWhen: stepCountIs(5),
     });
 
+    // Wrap textStream to accumulate full text (avoids ReadableStream locked
+    // error when accessing result.text after consuming textStream)
+    let accumulatedText = "";
+    const trackedStream = (async function* () {
+      for await (const chunk of result.textStream) {
+        accumulatedText += chunk;
+        yield chunk;
+      }
+    })();
+
     // Use different streaming logic based on single vs multiple entities
     // In freeform mode, treat multi-entity like single (no XML parsing)
     const isFreeform = entities.some(e => e.isFreeform);
     if (entities.length === 1 || isFreeform) {
-      yield* streamSingleEntity(result.textStream, streamMode, delimiter, entities[0]?.name);
+      yield* streamSingleEntity(trackedStream, streamMode, delimiter, entities[0]?.name);
     } else {
-      yield* streamMultiEntityNamePrefix(result.textStream, entities, streamMode, delimiter);
+      yield* streamMultiEntityNamePrefix(trackedStream, entities, streamMode, delimiter);
     }
 
-    // Yield done event with full text
-    const fullText = await result.text;
-    yield { type: "done", fullText };
-
-    // Process tool calls
-    const toolCalls = await result.toolCalls;
-    for (const call of toolCalls) {
-      debug("Tool call (streaming)", { tool: call.toolName });
-    }
+    // Yield done event with accumulated text
+    yield { type: "done", fullText: accumulatedText };
 
   } catch (err) {
     error("LLM streaming error", err);
