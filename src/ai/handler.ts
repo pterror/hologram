@@ -4,9 +4,6 @@ import { debug, error } from "../logger";
 import { getEntityWithFacts, type EntityWithFacts } from "../db/entities";
 import { resolveDiscordEntity, getMessages } from "../db/discord";
 import {
-  formatEntityDisplay,
-  formatEvaluatedEntity,
-  formatRawEntity,
   buildMessageHistory,
   DEFAULT_CONTEXT_LIMIT,
   type EvaluatedEntity,
@@ -15,13 +12,6 @@ import {
 import { expandEntityRefs, buildSystemPrompt } from "./prompt";
 import { createTools } from "./tools";
 import { stripNamePrefix, parseMultiEntityResponse, parseNamePrefixResponse, type EntityResponse } from "./parsing";
-
-// Re-exports for consumers
-export { formatEntityDisplay, formatEvaluatedEntity, formatRawEntity, buildMessageHistory, type EvaluatedEntity };
-export { type MessageContext };
-export { InferenceError };
-export { type EntityResponse } from "./parsing";
-export { type StreamingContext, type StreamEvent, handleMessageStreaming } from "./streaming";
 
 // =============================================================================
 // Constants

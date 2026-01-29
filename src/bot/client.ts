@@ -1,7 +1,10 @@
 import { createBot, Intents } from "@discordeno/bot";
 import { info, debug, warn, error } from "../logger";
 import { registerCommands, handleInteraction } from "./commands";
-import { handleMessage, handleMessageStreaming, InferenceError, type EvaluatedEntity } from "../ai/handler";
+import { handleMessage } from "../ai/handler";
+import { handleMessageStreaming } from "../ai/streaming";
+import { InferenceError } from "../ai/models";
+import type { EvaluatedEntity } from "../ai/context";
 import { isModelAllowed } from "../ai/models";
 import { retrieveRelevantMemories, type MemoryScope } from "../db/memories";
 import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, updateMessageByDiscordId, deleteMessageByDiscordId, trackWebhookMessage, getWebhookMessageEntity, getMessages, formatMessagesForContext, recordEvalError } from "../db/discord";
