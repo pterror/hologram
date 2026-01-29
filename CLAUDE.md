@@ -6,7 +6,7 @@ Discord bot for collaborative worldbuilding and roleplay, built on an entity-fac
 
 - **Runtime**: Bun (native SQLite, TypeScript-first)
 - **Discord**: Discordeno (Bun-native)
-- **LLM**: AI SDK v5 with provider-agnostic `provider:model` spec (default: `google:gemini-3-flash-preview`)
+- **LLM**: AI SDK v6 with provider-agnostic `provider:model` spec (default: `google:gemini-3-flash-preview`)
 - **Database**: bun:sqlite (8 tables)
 - **Linting**: oxlint
 - **Type checking**: tsgo
