@@ -41,7 +41,7 @@ export default defineConfig({
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/pterror/hologram' }
+      { icon: 'github', link: 'https://github.com/exo-place/hologram' }
     ],
 
     search: {
@@ -49,7 +49,7 @@ export default defineConfig({
     },
 
     editLink: {
-      pattern: 'https://github.com/pterror/hologram/edit/master/docs/:path',
+      pattern: 'https://github.com/exo-place/hologram/edit/master/docs/:path',
       text: 'Edit this page on GitHub'
     },
 

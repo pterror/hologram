@@ -11,7 +11,7 @@ hero:
       link: /guide/
     - theme: alt
       text: View on GitHub
-      link: https://github.com/pterror/hologram
+      link: https://github.com/exo-place/hologram
 
 features:
   - icon: 🎭
