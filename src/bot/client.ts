@@ -574,7 +574,7 @@ async function handleStreamingResponse(
   channelId: string,
   entities: EvaluatedEntity[],
   streamMode: "lines" | "full",
-  delimiter: string | undefined,
+  delimiter: string[] | undefined,
   ctx: {
     channelId: string;
     guildId?: string;

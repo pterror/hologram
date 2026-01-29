@@ -591,8 +591,8 @@ export interface ProcessedFact {
   isStream: boolean;
   /** For $stream directives, the mode */
   streamMode?: "lines" | "full";
-  /** For $stream directives with custom delimiter (default: newline) */
-  streamDelimiter?: string;
+  /** For $stream directives with custom delimiters (default: newline) */
+  streamDelimiter?: string[];
   /** True if this fact is a $memory directive */
   isMemory: boolean;
   /** For $memory directives, the scope */
@@ -1015,7 +1015,7 @@ function parseLockedDirective(content: string): { isDirective: true } | { isDire
 
 interface StreamDirectiveResult {
   mode: "lines" | "full";
-  delimiter?: string;
+  delimiter?: string[];
 }
 
 /**
@@ -1031,8 +1031,10 @@ interface StreamDirectiveResult {
  * Syntax:
  * - $stream → new message per newline, sent complete
  * - $stream "delim" → new message per delimiter, sent complete
+ * - $stream "a" "b" "c" → new message per any of these delimiters, sent complete
  * - $stream full → single message, edited progressively
  * - $stream full "delim" → new message per delimiter, each edited progressively
+ * - $stream full "a" "b" → new message per any delimiter, each edited progressively
  */
 function parseStreamDirective(content: string): StreamDirectiveResult | null {
   if (!content.startsWith(STREAM_SIGIL)) {
@@ -1040,12 +1042,12 @@ function parseStreamDirective(content: string): StreamDirectiveResult | null {
   }
   let rest = content.slice(STREAM_SIGIL.length).trim();
 
-  // Check for quoted delimiter at the end
-  let delimiter: string | undefined;
-  const quoteMatch = rest.match(/["']([^"']+)["']$/);
-  if (quoteMatch) {
-    delimiter = quoteMatch[1];
-    rest = rest.slice(0, quoteMatch.index).trim().toLowerCase();
+  // Extract all quoted delimiters
+  let delimiter: string[] | undefined;
+  const quoteMatches = [...rest.matchAll(/["']([^"']+)["']/g)];
+  if (quoteMatches.length > 0) {
+    delimiter = quoteMatches.map(m => m[1]);
+    rest = rest.replace(/["']([^"']+)["']/g, "").trim().toLowerCase();
   } else {
     rest = rest.toLowerCase();
   }
@@ -1150,8 +1152,8 @@ export interface EvaluatedFacts {
   lockedFacts: Set<string>;
   /** Stream mode if $stream directive present */
   streamMode: "lines" | "full" | null;
-  /** Custom delimiter for streaming (default: newline) */
-  streamDelimiter: string | null;
+  /** Custom delimiters for streaming (default: newline) */
+  streamDelimiter: string[] | null;
   /** Memory retrieval scope (default: "none" = no retrieval) */
   memoryScope: MemoryScope;
   /** Context character limit if $context directive present */
@@ -1183,7 +1185,7 @@ export function evaluateFacts(
   let isLocked = false;
   const lockedFacts = new Set<string>();
   let streamMode: "lines" | "full" | null = null;
-  let streamDelimiter: string | null = null;
+  let streamDelimiter: string[] | null = null;
   let memoryScope: MemoryScope = "none";
   let contextLimit: number | null = null;
   let isFreeform = false;

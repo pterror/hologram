@@ -106,6 +106,7 @@ Streaming sends LLM responses progressively as they're generated:
 $stream                            # New message per newline, sent complete
 $stream full                       # Single message, edited progressively
 $stream "kitten:"                  # New message per custom delimiter, sent complete
+$stream "---" "***"               # Split on any of multiple delimiters
 $stream full "\n"                  # New message per line, each edited progressively
 $stream full "---"                 # New message per delimiter, each edited progressively
 $if mentioned: $stream             # Conditional streaming
@@ -116,7 +117,7 @@ $if mentioned: $stream             # Conditional streaming
 - `full` (no delimiter): One message, continuously edited with accumulated content
 - `full` (with delimiter): New message per chunk, each edited progressively as it streams
 
-**Custom delimiters:** Use `$stream "delimiter"` to split on custom text instead of newlines. E.g., `$stream "kitten:"` sends a new message each time the LLM outputs "kitten:".
+**Custom delimiters:** Use `$stream "delimiter"` to split on custom text instead of newlines. Multiple delimiters can be specified: `$stream "a" "b" "c"` splits on any of them. E.g., `$stream "kitten:"` sends a new message each time the LLM outputs "kitten:".
 
 **Multi-character streaming:** When streaming with multiple characters bound to a channel, the system uses heuristic XML parsing to detect `<CharName>...</CharName>` tags and streams each character's response separately.
 

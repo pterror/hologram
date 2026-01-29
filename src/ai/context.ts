@@ -14,8 +14,8 @@ export interface EvaluatedEntity {
   avatarUrl: string | null;
   /** Stream mode from $stream directive, if present */
   streamMode: "lines" | "full" | null;
-  /** Custom delimiter for streaming (default: newline) */
-  streamDelimiter: string | null;
+  /** Custom delimiters for streaming (default: newline) */
+  streamDelimiter: string[] | null;
   /** Memory retrieval scope from $memory directive (default: "none") */
   memoryScope: "none" | "channel" | "guild" | "global";
   /** Context character limit from $context directive, if present */

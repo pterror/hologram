@@ -58,7 +58,7 @@ export interface EntityResponse {
   content: string;
   avatarUrl?: string;
   streamMode?: "lines" | "full" | null;
-  streamDelimiter?: string | null;
+  streamDelimiter?: string[] | null;
 }
 
 export interface ResponseResult {
@@ -528,8 +528,8 @@ export interface StreamingContext extends MessageContext {
   entities: EvaluatedEntity[];
   /** Stream mode */
   streamMode: "lines" | "full";
-  /** Custom delimiter (default: newline for lines mode, none for full mode) */
-  delimiter?: string;
+  /** Custom delimiters (default: newline for lines mode, none for full mode) */
+  delimiter?: string[];
 }
 
 /** Stream event types */
@@ -637,6 +637,41 @@ export async function* handleMessageStreaming(
 }
 
 /**
+ * Find the first occurrence of any delimiter in a buffer.
+ * Returns the index and length of the matched delimiter, or { index: -1, length: 0 } if none found.
+ */
+function findFirstDelimiter(buffer: string, delimiters: string[]): { index: number; length: number } {
+  let bestIndex = -1;
+  let bestLength = 0;
+  for (const delim of delimiters) {
+    const idx = buffer.indexOf(delim);
+    if (idx !== -1 && (bestIndex === -1 || idx < bestIndex)) {
+      bestIndex = idx;
+      bestLength = delim.length;
+    }
+  }
+  return { index: bestIndex, length: bestLength };
+}
+
+/**
+ * Split a string on any of multiple delimiters (first match wins at each position).
+ */
+function splitOnDelimiters(content: string, delimiters: string[]): string[] {
+  const results: string[] = [];
+  let remaining = content;
+  while (remaining.length > 0) {
+    const { index, length } = findFirstDelimiter(remaining, delimiters);
+    if (index === -1) {
+      results.push(remaining);
+      break;
+    }
+    results.push(remaining.slice(0, index));
+    remaining = remaining.slice(index + length);
+  }
+  return results;
+}
+
+/**
  * Stream events for a single entity.
  *
  * Modes:
@@ -648,7 +683,7 @@ export async function* handleMessageStreaming(
 async function* streamSingleEntity(
   textStream: AsyncIterable<string>,
   streamMode: "lines" | "full",
-  delimiter: string | undefined
+  delimiter: string[] | undefined
 ): AsyncGenerator<StreamEvent, void, unknown> {
   let buffer = "";
   let fullContent = "";
@@ -666,10 +701,10 @@ async function* streamSingleEntity(
       yield { type: "delta", content: delta, fullContent };
     } else if (streamMode === "full" && hasDelimiter) {
       // Full mode with delimiter: new message per chunk, each edited progressively
-      let delimIndex: number;
-      while ((delimIndex = buffer.indexOf(delimiter)) !== -1) {
-        const chunk = buffer.slice(0, delimIndex);
-        buffer = buffer.slice(delimIndex + delimiter.length);
+      let match: { index: number; length: number };
+      while ((match = findFirstDelimiter(buffer, delimiter)).index !== -1) {
+        const chunk = buffer.slice(0, match.index);
+        buffer = buffer.slice(match.index + match.length);
 
         // Complete current line
         lineContent += chunk;
@@ -699,11 +734,11 @@ async function* streamSingleEntity(
       }
     } else {
       // Lines mode: split on delimiter, emit complete chunks
-      const effectiveDelim = delimiter ?? "\n";
-      let delimIndex: number;
-      while ((delimIndex = buffer.indexOf(effectiveDelim)) !== -1) {
-        const chunk = buffer.slice(0, delimIndex).trim();
-        buffer = buffer.slice(delimIndex + effectiveDelim.length);
+      const effectiveDelims = delimiter ?? ["\n"];
+      let match: { index: number; length: number };
+      while ((match = findFirstDelimiter(buffer, effectiveDelims)).index !== -1) {
+        const chunk = buffer.slice(0, match.index).trim();
+        buffer = buffer.slice(match.index + match.length);
 
         if (chunk && chunk !== "<none/>") {
           yield { type: "line", content: chunk };
@@ -745,7 +780,7 @@ async function* streamMultiEntity(
   textStream: AsyncIterable<string>,
   entities: EvaluatedEntity[],
   streamMode: "lines" | "full",
-  delimiter: string | undefined
+  delimiter: string[] | undefined
 ): AsyncGenerator<StreamEvent, void, unknown> {
   let buffer = "";
   let currentChar: { name: string; entityId: number; avatarUrl?: string; content: string; lineContent: string; lineStarted: boolean } | null = null;
@@ -808,8 +843,8 @@ async function* streamMultiEntity(
             currentChar.content += content;
             if (streamMode === "lines") {
               // Emit any remaining chunks
-              const effectiveDelim = delimiter ?? "\n";
-              const chunks = content.split(effectiveDelim);
+              const effectiveDelims = delimiter ?? ["\n"];
+              const chunks = splitOnDelimiters(content, effectiveDelims);
               for (const chunk of chunks) {
                 const trimmed = chunk.trim();
                 if (trimmed) {
@@ -838,12 +873,13 @@ async function* streamMultiEntity(
           // No closing tag yet - emit content progressively
           if (streamMode === "lines") {
             // Lines mode: emit complete chunks
-            const effectiveDelim = delimiter ?? "\n";
-            let delimIndex: number;
-            while ((delimIndex = buffer.indexOf(effectiveDelim)) !== -1) {
-              const chunk = buffer.slice(0, delimIndex);
-              buffer = buffer.slice(delimIndex + effectiveDelim.length);
-              currentChar.content += chunk + effectiveDelim;
+            const effectiveDelims = delimiter ?? ["\n"];
+            let delimMatch: { index: number; length: number };
+            while ((delimMatch = findFirstDelimiter(buffer, effectiveDelims)).index !== -1) {
+              const chunk = buffer.slice(0, delimMatch.index);
+              const matchedDelim = buffer.slice(delimMatch.index, delimMatch.index + delimMatch.length);
+              buffer = buffer.slice(delimMatch.index + delimMatch.length);
+              currentChar.content += chunk + matchedDelim;
 
               const trimmed = chunk.trim();
               if (trimmed) {
@@ -852,11 +888,12 @@ async function* streamMultiEntity(
             }
           } else if (streamMode === "full" && hasDelimiter) {
             // Full mode with delimiter: emit deltas within each line
-            let delimIndex: number;
-            while ((delimIndex = buffer.indexOf(delimiter)) !== -1) {
-              const chunk = buffer.slice(0, delimIndex);
-              buffer = buffer.slice(delimIndex + delimiter.length);
-              currentChar.content += chunk + delimiter;
+            let delimMatch: { index: number; length: number };
+            while ((delimMatch = findFirstDelimiter(buffer, delimiter)).index !== -1) {
+              const chunk = buffer.slice(0, delimMatch.index);
+              const matchedDelim = buffer.slice(delimMatch.index, delimMatch.index + delimMatch.length);
+              buffer = buffer.slice(delimMatch.index + delimMatch.length);
+              currentChar.content += chunk + matchedDelim;
 
               // Complete current line
               currentChar.lineContent += chunk;
