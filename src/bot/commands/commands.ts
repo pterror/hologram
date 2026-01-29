@@ -34,8 +34,8 @@ import {
   getMessages,
   setChannelForgetTime,
 } from "../../db/discord";
-import { parsePermissionDirectives, matchesUserEntry, isUserBlacklisted } from "../../logic/expr";
-import { formatEntityDisplay, formatRawEntity, buildMessageHistory } from "../../ai/context";
+import { parsePermissionDirectives, matchesUserEntry, isUserBlacklisted, evaluateFacts, createBaseContext } from "../../logic/expr";
+import { formatEntityDisplay, formatEvaluatedEntity, buildMessageHistory } from "../../ai/context";
 
 // =============================================================================
 // Text Elision Helper
@@ -944,21 +944,43 @@ async function handleInfoPrompt(ctx: CommandContext, options: Record<string, unk
   const targetEntity = await resolveTargetEntity(ctx, entityInput, "prompt");
   if (!targetEntity) return;
 
-  // Build system prompt using shared formatter
-  const contextParts: string[] = [formatRawEntity(targetEntity)];
+  // Evaluate facts through expr.ts with a mock context (no triggers active)
+  const contextParts: string[] = [formatEvaluatedEntityFromRaw(targetEntity)];
 
   // Add user entity if bound
   const userEntityId = resolveDiscordEntity(ctx.userId, "user", ctx.guildId, ctx.channelId);
   if (userEntityId) {
     const userEntity = getEntityWithFacts(userEntityId);
     if (userEntity) {
-      contextParts.push(formatRawEntity(userEntity));
+      contextParts.push(formatEvaluatedEntityFromRaw(userEntity));
     }
   }
 
   const systemPrompt = elideText(contextParts.join("\n\n"));
   const output = `**System prompt for ${targetEntity.name}:**\n\`\`\`\n${systemPrompt}\n\`\`\``;
   await respond(ctx.bot, ctx.interaction, output, true);
+}
+
+/** Evaluate an entity's facts with a mock context and format for display */
+function formatEvaluatedEntityFromRaw(entity: EntityWithFacts): string {
+  const rawFacts = entity.facts.map(f => f.content);
+  const mockContext = createBaseContext({
+    facts: rawFacts,
+    has_fact: (pattern: string) => rawFacts.some(f => new RegExp(pattern, "i").test(f)),
+    name: entity.name,
+  });
+  const evaluated = evaluateFacts(rawFacts, mockContext);
+  return formatEvaluatedEntity({
+    id: entity.id,
+    name: entity.name,
+    facts: evaluated.facts,
+    avatarUrl: evaluated.avatarUrl,
+    streamMode: evaluated.streamMode,
+    streamDelimiter: evaluated.streamDelimiter,
+    memoryScope: evaluated.memoryScope,
+    contextLimit: evaluated.contextLimit,
+    isFreeform: evaluated.isFreeform,
+  });
 }
 
 async function handleInfoHistory(ctx: CommandContext, options: Record<string, unknown>) {
