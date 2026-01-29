@@ -26,7 +26,7 @@ Conditionally include a fact or trigger a directive. The expression is evaluated
 ```
 $if time.is_night: glows faintly
 $if mentioned: $respond
-$if random() < 0.1 && dt_ms > 30000: $respond
+$if random() < 0.1 && response_ms > 30000: $respond
 $if content.includes("hello"): $respond
 ```
 
@@ -50,10 +50,10 @@ Delay evaluation and re-check later. Useful for batching rapid messages or creat
 
 ```
 $retry 3000                         # Re-evaluate in 3 seconds
-$if elapsed_ms > 2000: $respond     # Then respond if enough time passed
+$if retry_ms > 2000: $respond     # Then respond if enough time passed
 ```
 
-When `$retry` fires, evaluation stops immediately. After the delay, facts are re-evaluated with updated `elapsed_ms`.
+When `$retry` fires, evaluation stops immediately. After the delay, facts are re-evaluated with updated `retry_ms`.
 
 ## Metadata
 
@@ -171,7 +171,7 @@ The directive system was built incrementally, which raised concerns about cohere
 - "Batch rapid messages into one response"
 - "Create thinking/typing delays"
 
-Without `$retry`, rate limiting (`$if dt_ms > X`) only works reactively. `$retry` adds proactive delayed responses.
+Without `$retry`, rate limiting (`$if response_ms > X`) only works reactively. `$retry` adds proactive delayed responses.
 
 **What would be bandaids:**
 

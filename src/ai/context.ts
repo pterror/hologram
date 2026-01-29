@@ -1,4 +1,5 @@
 import type { EntityWithFacts } from "../db/entities";
+import type { ExprContext } from "../logic/expr";
 
 // =============================================================================
 // Types
@@ -39,6 +40,8 @@ export interface EvaluatedEntity {
   modelSpec: string | null;
   /** Strip patterns from $strip directive. null = no directive (use default), [] = explicit no-strip */
   stripPatterns: string[] | null;
+  /** Expression context used during fact evaluation (carried to macro expansion) */
+  exprContext?: ExprContext;
 }
 
 // =============================================================================

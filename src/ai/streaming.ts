@@ -108,11 +108,11 @@ export async function* handleMessageStreaming(
 ): AsyncGenerator<StreamEvent, void, unknown> {
   const { channelId, guildId, entities, streamMode, delimiter } = ctx;
 
-  // Expand {{entity:ID}} refs in facts and collect referenced entities
+  // Expand {{entity:ID}} refs and other macros in facts, collect referenced entities
   const other: EntityWithFacts[] = [];
   const seenIds = new Set(entities.map(e => e.id));
   for (const entity of entities) {
-    other.push(...expandEntityRefs(entity, seenIds));
+    other.push(...expandEntityRefs(entity, seenIds, entity.exprContext));
   }
 
   // Add user entity if bound

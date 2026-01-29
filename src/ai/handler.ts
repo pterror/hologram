@@ -43,10 +43,10 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
   const evaluated: EvaluatedEntity[] = respondingEntities ?? [];
   const other: EntityWithFacts[] = [];
 
-  // Expand {{entity:ID}} refs in facts and collect referenced entities
+  // Expand {{entity:ID}} refs and other macros in facts, collect referenced entities
   const seenIds = new Set(evaluated.map(e => e.id));
   for (const entity of evaluated) {
-    other.push(...expandEntityRefs(entity, seenIds));
+    other.push(...expandEntityRefs(entity, seenIds, entity.exprContext));
   }
 
   // Add user entity if bound

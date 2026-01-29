@@ -33,9 +33,11 @@ export interface ExprContext {
     is_night: boolean;
   };
   /** Milliseconds since last response in channel */
-  dt_ms: number;
-  /** Milliseconds since triggering message */
-  elapsed_ms: number;
+  response_ms: number;
+  /** Milliseconds since triggering message (for $retry re-evaluation) */
+  retry_ms: number;
+  /** Milliseconds since any message in channel */
+  idle_ms: number;
   /** Whether the bot was @mentioned */
   mentioned: boolean;
   /** Whether the message is a reply to the bot */
@@ -60,6 +62,19 @@ export interface ExprContext {
   chars: string[];
   /** Get the last N messages from the channel. Format: %a=author, %m=message (default "%a: %m") */
   messages: (n?: number, format?: string) => string;
+  /** Channel metadata */
+  channel: {
+    id: string;
+    name: string;
+    description: string;
+    mention: string;
+  };
+  /** Server metadata */
+  server: {
+    id: string;
+    name: string;
+    description: string;
+  };
   /** Additional context-specific variables */
   [key: string]: unknown;
 }
@@ -438,8 +453,9 @@ const EXPR_CONTEXT_REFERENCE: ExprContext = {
   has_fact: () => false,
   roll: () => 0,
   time: { hour: 0, is_day: false, is_night: false },
-  dt_ms: 0,
-  elapsed_ms: 0,
+  response_ms: 0,
+  retry_ms: 0,
+  idle_ms: 0,
   mentioned: false,
   replied: false,
   replied_to: "",
@@ -452,6 +468,8 @@ const EXPR_CONTEXT_REFERENCE: ExprContext = {
   chars: [],
   messages: () => "",
   interaction_type: "",
+  channel: { id: "", name: "", description: "", mention: "" },
+  server: { id: "", name: "", description: "" },
 };
 const ALLOWED_GLOBALS = new Set(Object.keys(EXPR_CONTEXT_REFERENCE));
 
@@ -531,6 +549,39 @@ export function evalExpr(expr: string, context: ExprContext): boolean {
   } catch (err) {
     if (err instanceof ExprError) throw err;
     throw new ExprError(`Failed to evaluate expression "${expr}": ${err}`);
+  }
+}
+
+// Separate cache for macro expressions (returns raw value, not boolean)
+const macroExprCache = new Map<string, (ctx: ExprContext) => unknown>();
+
+function compileMacroExpr(expr: string): (ctx: ExprContext) => unknown {
+  let fn = macroExprCache.get(expr);
+  if (fn) return fn;
+
+  const tokens = tokenize(expr);
+  const parser = new Parser(tokens);
+  const ast = parser.parse();
+  const code = generateCode(ast);
+
+  fn = new Function("ctx", `return (${code})`) as (ctx: ExprContext) => unknown;
+  macroExprCache.set(expr, fn);
+  return fn;
+}
+
+/**
+ * Evaluate an expression and return its string value (for macro expansion).
+ * Returns "" for null/undefined results.
+ */
+export function evalMacroValue(expr: string, context: ExprContext): string {
+  try {
+    const fn = compileMacroExpr(expr);
+    const result = fn(context);
+    if (result == null) return "";
+    return String(result);
+  } catch (err) {
+    if (err instanceof ExprError) throw err;
+    throw new ExprError(`Failed to evaluate macro "${expr}": ${err}`);
   }
 }
 
@@ -1553,8 +1604,9 @@ export interface BaseContextOptions {
   has_fact: (pattern: string) => boolean;
   /** Function to get the last N messages from the channel. Format: %a=author, %m=message */
   messages?: (n?: number, format?: string) => string;
-  dt_ms?: number;
-  elapsed_ms?: number;
+  response_ms?: number;
+  retry_ms?: number;
+  idle_ms?: number;
   mentioned?: boolean;
   replied?: boolean;
   /** Name of entity that was replied to (for webhook replies) */
@@ -1567,6 +1619,10 @@ export interface BaseContextOptions {
   name?: string;
   /** Names of all characters bound to channel */
   chars?: string[];
+  /** Channel metadata */
+  channel?: { id: string; name: string; description: string; mention: string };
+  /** Server metadata */
+  server?: { id: string; name: string; description: string };
 }
 
 /**
@@ -1628,8 +1684,9 @@ export function createBaseContext(options: BaseContextOptions): ExprContext {
       is_day: hour >= 6 && hour < 18,
       is_night: hour < 6 || hour >= 18,
     }),
-    dt_ms: options.dt_ms ?? 0,
-    elapsed_ms: options.elapsed_ms ?? 0,
+    response_ms: options.response_ms ?? 0,
+    retry_ms: options.retry_ms ?? 0,
+    idle_ms: options.idle_ms ?? 0,
     mentioned: options.mentioned ?? false,
     replied: options.replied ?? false,
     replied_to: options.replied_to ?? "",
@@ -1642,6 +1699,8 @@ export function createBaseContext(options: BaseContextOptions): ExprContext {
     name: options.name ?? "",
     chars: options.chars ?? [],
     messages,
+    channel: Object.assign(Object.create(null), options.channel ?? { id: "", name: "", description: "", mention: "" }),
+    server: Object.assign(Object.create(null), options.server ?? { id: "", name: "", description: "" }),
   };
 }
 

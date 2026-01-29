@@ -224,8 +224,8 @@ $if time.is_night: eyes glow faintly
 
 # Response control
 $if mentioned: $respond
-$if dt_ms >= 30000 && random() < 0.1: $respond
-$if elapsed_ms < 1000: $respond false
+$if response_ms >= 30000 && random() < 0.1: $respond
+$if retry_ms < 1000: $respond false
 ```
 
 ### Why JS Expressions?
@@ -267,8 +267,8 @@ interface ExprContext {
 
   // Time
   time: { hour: number; is_day: boolean; is_night: boolean };
-  dt_ms: number;       // ms since last response in channel
-  elapsed_ms: number;  // ms since triggering message
+  response_ms: number;       // ms since last response in channel
+  retry_ms: number;  // ms since triggering message
 
   // Message context
   mentioned: boolean;
@@ -317,7 +317,7 @@ $if mentioned: $respond
 # Respond to mentions OR randomly, but not too fast
 $if mentioned: $respond
 $if random() < 0.1: $respond
-$if elapsed_ms < 1000: $respond false
+$if retry_ms < 1000: $respond false
 
 # Respect mute
 $if has_fact("muted"): $respond false
@@ -329,12 +329,12 @@ The `$retry <ms>` directive schedules a re-evaluation after the specified delay.
 
 ```
 # Wait 5 seconds before responding
-$if elapsed_ms < 5000: $respond false
-$if elapsed_ms < 5000: $retry 5000
+$if retry_ms < 5000: $respond false
+$if retry_ms < 5000: $retry 5000
 
 # Throttle: don't respond if we responded recently, but retry later
-$if dt_ms < 30000: $respond false
-$if dt_ms < 30000: $retry 30000
+$if response_ms < 30000: $respond false
+$if response_ms < 30000: $retry 30000
 ```
 
 When `$retry` fires, evaluation stops immediately and the system schedules a re-evaluation.
@@ -351,10 +351,10 @@ throttle_ms: 30000
 # New
 $if mentioned: $respond
 $if random() < 0.1: $respond
-$if elapsed_ms < 5000: $respond false
-$if elapsed_ms < 5000: $retry 5000
-$if dt_ms < 30000: $respond false
-$if dt_ms < 30000: $retry 30000
+$if retry_ms < 5000: $respond false
+$if retry_ms < 5000: $retry 5000
+$if response_ms < 30000: $respond false
+$if response_ms < 30000: $retry 30000
 ```
 
 ### Comments
@@ -379,7 +379,7 @@ plays #1 hits
 4. If should respond (and no `$respond false`):
    - Call LLM with collected facts
 
-Delay is handled via `elapsed_ms` - re-evaluate periodically until condition passes or times out.
+Delay is handled via `retry_ms` - re-evaluate periodically until condition passes or times out.
 
 ## Progressive Complexity
 
@@ -398,7 +398,7 @@ Simple things should be simple. Complex things should be possible.
   has no tail
   $if mentioned: $respond
   $if content.match(/aria|merchant/i): $respond
-  $if random() < 0.1 && dt_ms > 30000: $respond
+  $if random() < 0.1 && response_ms > 30000: $respond
 ```
 
 **Why?** New users shouldn't face a wall of configuration. Start simple, add complexity as needed. The same system handles both cases.

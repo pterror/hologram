@@ -50,7 +50,7 @@ $if mentioned: $respond               # Respond when @mentioned
 $if replied: $respond                 # Respond to replies
 $if random() < 0.1: $respond          # 10% chance
 $if content.includes("hello"): $respond  # Keyword trigger
-$if dt_ms > 30000: $respond           # Rate limit (30s cooldown)
+$if response_ms > 30000: $respond     # Rate limit (30s cooldown)
 ```
 
 ### Context Variables
@@ -63,7 +63,8 @@ $if dt_ms > 30000: $respond           # Rate limit (30s cooldown)
 | `is_self` | Message from own webhook |
 | `content` | Message content |
 | `author` | Message author name |
-| `dt_ms` | Ms since last response |
+| `response_ms` | Ms since last response |
+| `idle_ms` | Ms since any message in channel |
 | `time.is_night` | Between 6pm-6am |
 | `self.*` | Entity's own fact values |
 

@@ -35,6 +35,7 @@ Special patterns that expand when facts are processed:
 | <code v-pre>{{entity:ID}}</code> | Entity name with ID (e.g., "Aria [#12]") |
 | <code v-pre>{{char}}</code> | Current entity's name |
 | <code v-pre>{{user}}</code> | Literal "user" |
+| <code v-pre>{{expression}}</code> | Any valid expression result |
 
 These are useful for writing generic facts that adapt to context:
 
@@ -42,9 +43,13 @@ These are useful for writing generic facts that adapt to context:
 {{char}} loves adventure
 refers to the player as {{user}}
 is friends with {{entity:5}}
+is currently in {{channel.name}}
+has {{self.health}} health points
 ```
 
 For a character named "Aria", the first fact would expand to "Aria loves adventure".
+
+Any valid expression works inside <code v-pre>{{}}</code> — including `self.*`, `channel.*`, `server.*`, and function calls. If the expression errors, the original <code v-pre>{{}}</code> text is kept.
 
 ## Response Control
 

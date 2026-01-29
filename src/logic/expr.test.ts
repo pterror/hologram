@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   compileExpr,
   evalExpr,
+  evalMacroValue,
   parseFact,
   evaluateFacts,
   parseSelfContext,
@@ -63,8 +64,9 @@ function makeContext(overrides: Partial<ExprContext> = {}): ExprContext {
       is_day: true,
       is_night: false,
     }),
-    dt_ms: 0,
-    elapsed_ms: 0,
+    response_ms: 0,
+    retry_ms: 0,
+    idle_ms: 0,
     mentioned: false,
     replied: false,
     replied_to: "",
@@ -76,6 +78,8 @@ function makeContext(overrides: Partial<ExprContext> = {}): ExprContext {
     name: "",
     chars: [],
     messages,
+    channel: Object.assign(Object.create(null), { id: "", name: "", description: "", mention: "" }),
+    server: Object.assign(Object.create(null), { id: "", name: "", description: "" }),
     ...overrides,
   };
 }
@@ -261,10 +265,10 @@ describe("parser", () => {
 
 describe("identifier whitelist", () => {
   test("allows known globals", () => {
-    const ctx = makeContext({ mentioned: true, dt_ms: 100 });
+    const ctx = makeContext({ mentioned: true, response_ms: 100 });
     expect(evalExpr("mentioned", ctx)).toBe(true);
-    expect(evalExpr("dt_ms > 50", ctx)).toBe(true);
-    expect(evalExpr("elapsed_ms >= 0", ctx)).toBe(true);
+    expect(evalExpr("response_ms > 50", ctx)).toBe(true);
+    expect(evalExpr("retry_ms >= 0", ctx)).toBe(true);
   });
 
   test("rejects unknown identifiers", () => {
@@ -864,16 +868,16 @@ describe("complex expression edge cases", () => {
   });
 
   test("chained comparisons", () => {
-    const ctx = makeContext({ dt_ms: 5000 });
-    expect(evalExpr("dt_ms > 1000 && dt_ms < 10000", ctx)).toBe(true);
-    expect(evalExpr("dt_ms >= 5000 && dt_ms <= 5000", ctx)).toBe(true);
+    const ctx = makeContext({ response_ms: 5000 });
+    expect(evalExpr("response_ms > 1000 && response_ms < 10000", ctx)).toBe(true);
+    expect(evalExpr("response_ms >= 5000 && response_ms <= 5000", ctx)).toBe(true);
   });
 
   test("arithmetic in conditions", () => {
-    const ctx = makeContext({ dt_ms: 30000 });
-    expect(evalExpr("dt_ms / 1000 > 20", ctx)).toBe(true);
-    expect(evalExpr("dt_ms % 10000 == 0", ctx)).toBe(true);
-    expect(evalExpr("(dt_ms / 1000) * 2 == 60", ctx)).toBe(true);
+    const ctx = makeContext({ response_ms: 30000 });
+    expect(evalExpr("response_ms / 1000 > 20", ctx)).toBe(true);
+    expect(evalExpr("response_ms % 10000 == 0", ctx)).toBe(true);
+    expect(evalExpr("(response_ms / 1000) * 2 == 60", ctx)).toBe(true);
   });
 
   test("string methods with arguments", () => {
@@ -1058,8 +1062,8 @@ describe("$locked in evaluateFacts", () => {
   });
 
   test("$locked $if with complex condition", () => {
-    const facts = ["$locked $if dt_ms > 1000 && !is_self: rate limited response"];
-    const ctx = makeContext({ dt_ms: 5000, is_self: false });
+    const facts = ["$locked $if response_ms > 1000 && !is_self: rate limited response"];
+    const ctx = makeContext({ response_ms: 5000, is_self: false });
     const result = evaluateFacts(facts, ctx);
     expect(result.facts).toContain("rate limited response");
     expect(result.lockedFacts.has("rate limited response")).toBe(true);
@@ -1113,10 +1117,10 @@ describe("error messages", () => {
 
 describe("numeric edge cases", () => {
   test("zero", () => {
-    const ctx = makeContext({ dt_ms: 0 });
-    expect(evalExpr("dt_ms == 0", ctx)).toBe(true);
-    expect(evalExpr("dt_ms > 0", ctx)).toBe(false);
-    expect(evalExpr("dt_ms >= 0", ctx)).toBe(true);
+    const ctx = makeContext({ response_ms: 0 });
+    expect(evalExpr("response_ms == 0", ctx)).toBe(true);
+    expect(evalExpr("response_ms > 0", ctx)).toBe(false);
+    expect(evalExpr("response_ms >= 0", ctx)).toBe(true);
   });
 
   test("negative numbers", () => {
@@ -1127,9 +1131,9 @@ describe("numeric edge cases", () => {
   });
 
   test("large numbers", () => {
-    const ctx = makeContext({ dt_ms: 86400000 }); // 24 hours in ms
-    expect(evalExpr("dt_ms > 60000", ctx)).toBe(true);
-    expect(evalExpr("dt_ms / 1000 / 60 / 60 == 24", ctx)).toBe(true);
+    const ctx = makeContext({ response_ms: 86400000 }); // 24 hours in ms
+    expect(evalExpr("response_ms > 60000", ctx)).toBe(true);
+    expect(evalExpr("response_ms / 1000 / 60 / 60 == 24", ctx)).toBe(true);
   });
 
   test("decimal precision", () => {
@@ -1360,6 +1364,87 @@ describe("messages() function", () => {
     });
     expect(ctx.author).toBe("TheAuthor");
     expect(evalExpr('author == "TheAuthor"', ctx)).toBe(true);
+  });
+});
+
+// =============================================================================
+// New Context Variables
+// =============================================================================
+
+describe("new context variables", () => {
+  test("idle_ms works in expressions", () => {
+    const ctx = makeContext({ idle_ms: 5000 });
+    expect(evalExpr("idle_ms > 3000", ctx)).toBe(true);
+    expect(evalExpr("idle_ms < 10000", ctx)).toBe(true);
+    expect(evalExpr("idle_ms == 5000", ctx)).toBe(true);
+  });
+
+  test("channel.* variables work in expressions", () => {
+    const channel = Object.assign(Object.create(null), {
+      id: "123456",
+      name: "general",
+      description: "Main chat channel",
+      mention: "<#123456>",
+    });
+    const ctx = makeContext({ channel });
+    expect(evalExpr('channel.name == "general"', ctx)).toBe(true);
+    expect(evalExpr('channel.description.includes("Main")', ctx)).toBe(true);
+    expect(evalExpr('channel.id == "123456"', ctx)).toBe(true);
+  });
+
+  test("server.* variables work in expressions", () => {
+    const server = Object.assign(Object.create(null), {
+      id: "789",
+      name: "My Server",
+      description: "A cool server",
+    });
+    const ctx = makeContext({ server });
+    expect(evalExpr('server.name == "My Server"', ctx)).toBe(true);
+    expect(evalExpr('server.description.includes("cool")', ctx)).toBe(true);
+  });
+});
+
+// =============================================================================
+// evalMacroValue
+// =============================================================================
+
+describe("evalMacroValue", () => {
+  test("returns string value of expression", () => {
+    const ctx = makeContext({ name: "Aria" });
+    expect(evalMacroValue("name", ctx)).toBe("Aria");
+  });
+
+  test("returns numeric value as string", () => {
+    const ctx = makeContext({ response_ms: 5000 });
+    expect(evalMacroValue("response_ms", ctx)).toBe("5000");
+  });
+
+  test("returns empty string for undefined member", () => {
+    const ctx = makeContext();
+    expect(evalMacroValue("self.nonexistent", ctx)).toBe("");
+  });
+
+  test("evaluates complex expressions", () => {
+    const self = Object.create(null);
+    self.health = 75;
+    const ctx = makeContext({ self });
+    expect(evalMacroValue("self.health", ctx)).toBe("75");
+  });
+
+  test("evaluates channel.name", () => {
+    const channel = Object.assign(Object.create(null), {
+      id: "123",
+      name: "roleplay",
+      description: "",
+      mention: "<#123>",
+    });
+    const ctx = makeContext({ channel });
+    expect(evalMacroValue("channel.name", ctx)).toBe("roleplay");
+  });
+
+  test("throws ExprError on invalid expression", () => {
+    const ctx = makeContext();
+    expect(() => evalMacroValue("invalid_var", ctx)).toThrow(ExprError);
   });
 });
 

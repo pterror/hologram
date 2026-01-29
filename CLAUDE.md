@@ -58,7 +58,7 @@ Facts:
   - $if mentioned: $respond
 ```
 
-**Macros:** `{{entity:ID}}` expands to entity name, `{{char}}` expands to current entity name, `{{user}}` expands to literal "user".
+**Macros:** `{{entity:ID}}` expands to entity name, `{{char}}` expands to current entity name, `{{user}}` expands to literal "user". Any expression works: `{{channel.name}}`, `{{self.health}}`, etc.
 
 ### Database (8 tables)
 
@@ -98,7 +98,7 @@ $respond                           # Always respond
 $respond false                     # Never respond
 $if mentioned: $respond            # Respond when @mentioned
 $if random() < 0.1: $respond       # 10% chance to respond
-$if dt_ms > 30000: $respond        # Rate limit: 30s between responses
+$if response_ms > 30000: $respond  # Rate limit: 30s between responses
 $if content.includes("hello"): $respond  # String matching (note quotes)
 $if messages(10).includes("help"): $respond  # Check last 10 messages
 ```
@@ -159,7 +159,7 @@ $if mentioned: $freeform           # Conditional freeform
 
 With `$freeform`, the LLM can write naturally with multiple characters interacting in the same response. The response is sent as a single message (using the first entity's webhook identity) rather than being split per character.
 
-**Context variables:** `mentioned`, `replied`, `is_forward`, `is_self`, `content`, `author`, `dt_ms`, `elapsed_ms`, `time.is_night`, `self.*`
+**Context variables:** `mentioned`, `replied`, `is_forward`, `is_self`, `content`, `author`, `response_ms`, `retry_ms`, `idle_ms`, `time.is_night`, `self.*`, `channel.*`, `server.*`
 
 ### Context Window
 

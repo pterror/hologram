@@ -149,7 +149,7 @@ Each character's response streams independently to their own message.
 Prevent spam by checking time since last response:
 
 ```
-$if dt_ms > 30000: $respond
+$if response_ms > 30000: $respond
 ```
 
 The character won't respond more than once per 30 seconds.
@@ -160,7 +160,7 @@ Use `$retry` to wait before evaluating (useful for batching messages):
 
 ```
 $retry 5000
-$if elapsed_ms > 4000: $respond
+$if retry_ms > 4000: $respond
 ```
 
 Wait ~5 seconds after a message before responding. If a new message arrives, the timer resets.
@@ -182,7 +182,7 @@ is grumpy but fair
 responds to questions about items and prices
 $if mentioned: $respond
 $if content.match(/shop|buy|sell|price/i): $respond
-$if random() < 0.05 && dt_ms > 60000: $respond
+$if random() < 0.05 && response_ms > 60000: $respond
 ```
 
 ## Example: Narrator
@@ -200,7 +200,7 @@ is a narrator
 describes the scene and atmosphere
 speaks in third person
 only interjects when something interesting happens
-$if random() < 0.05 && dt_ms > 120000: $respond
+$if random() < 0.05 && response_ms > 120000: $respond
 ```
 
 ## Checking Status

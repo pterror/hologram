@@ -63,6 +63,7 @@ export const bot = createBot({
     guild: {
       id: true,
       name: true,
+      description: true,
     },
     webhook: {
       id: true,
@@ -73,6 +74,8 @@ export const bot = createBot({
       id: true,
       type: true,
       parentId: true,
+      name: true,
+      topic: true,
     },
     messageReference: {
       messageId: true,
@@ -91,8 +94,59 @@ setBot(bot);
 
 let botUserId: bigint | null = null;
 
-// Track last response time per channel (for dt_ms in expressions)
+// Track last response time per channel (for response_ms in expressions)
 const lastResponseTime = new Map<string, number>();
+
+// Track last message time per channel (for idle_ms in expressions)
+const lastMessageTime = new Map<string, number>();
+
+// Channel/guild metadata cache with 5-min TTL
+interface ChannelMeta { id: string; name: string; description: string; mention: string; fetchedAt: number }
+interface GuildMeta { id: string; name: string; description: string; fetchedAt: number }
+const channelMetaCache = new Map<string, ChannelMeta>();
+const guildMetaCache = new Map<string, GuildMeta>();
+const META_TTL_MS = 5 * 60 * 1000;
+
+async function getChannelMetadata(channelId: string): Promise<{ id: string; name: string; description: string; mention: string }> {
+  const cached = channelMetaCache.get(channelId);
+  if (cached && Date.now() - cached.fetchedAt < META_TTL_MS) {
+    return cached;
+  }
+  try {
+    const ch = await bot.helpers.getChannel(BigInt(channelId));
+    const meta: ChannelMeta = {
+      id: channelId,
+      name: (ch as any).name ?? "",
+      description: (ch as any).topic ?? "",
+      mention: `<#${channelId}>`,
+      fetchedAt: Date.now(),
+    };
+    channelMetaCache.set(channelId, meta);
+    return meta;
+  } catch {
+    return { id: channelId, name: "", description: "", mention: `<#${channelId}>` };
+  }
+}
+
+async function getGuildMetadata(guildId: string): Promise<{ id: string; name: string; description: string }> {
+  const cached = guildMetaCache.get(guildId);
+  if (cached && Date.now() - cached.fetchedAt < META_TTL_MS) {
+    return cached;
+  }
+  try {
+    const g = await bot.helpers.getGuild(BigInt(guildId));
+    const meta: GuildMeta = {
+      id: guildId,
+      name: (g as any).name ?? "",
+      description: (g as any).description ?? "",
+      fetchedAt: Date.now(),
+    };
+    guildMetaCache.set(guildId, meta);
+    return meta;
+  } catch {
+    return { id: guildId, name: "", description: "" };
+  }
+}
 
 // Track consecutive self-response chain depth per channel (resets on real user message)
 const responseChainDepth = new Map<string, number>();
@@ -280,6 +334,17 @@ bot.events.messageCreate = async (message) => {
   const retryEntities: { entity: EntityWithFacts; retryMs: number }[] = [];
   const lastResponse = lastResponseTime.get(channelId) ?? 0;
 
+  // Compute idle_ms (time since any message in channel)
+  const lastMsg = lastMessageTime.get(channelId) ?? 0;
+  const idleMs = lastMsg > 0 ? messageTime - lastMsg : Infinity;
+  lastMessageTime.set(channelId, messageTime);
+
+  // Fetch channel/guild metadata (cached)
+  const channelMeta = await getChannelMetadata(channelId);
+  const guildMeta = guildId
+    ? await getGuildMetadata(guildId)
+    : { id: "", name: "", description: "" };
+
   for (const entity of channelEntities) {
     // Cancel any pending retry for this entity
     const key = retryKey(channelId, entity.id);
@@ -308,8 +373,9 @@ bot.events.messageCreate = async (message) => {
         return facts.some(f => regex.test(f));
       },
       messages: (n = 1, format?: string) => formatMessagesForContext(getMessages(channelId, n), format),
-      dt_ms: lastResponse > 0 ? messageTime - lastResponse : Infinity,
-      elapsed_ms: 0,
+      response_ms: lastResponse > 0 ? messageTime - lastResponse : Infinity,
+      retry_ms: 0,
+      idle_ms: idleMs,
       mentioned: isMentioned ?? false,
       replied: isReplied,
       replied_to: repliedToWebhookEntity?.entityName ?? "",
@@ -317,6 +383,8 @@ bot.events.messageCreate = async (message) => {
       is_self: isSelf,
       name: entity.name,
       chars: channelEntities.map(e => e.name),
+      channel: channelMeta,
+      server: guildMeta,
     });
 
     let result;
@@ -389,6 +457,7 @@ bot.events.messageCreate = async (message) => {
           isFreeform: result.isFreeform,
           modelSpec: result.modelSpec,
           stripPatterns: result.stripPatterns,
+          exprContext: ctx,
         });
       }
     }
@@ -431,6 +500,16 @@ async function processEntityRetry(
   const lastResponse = lastResponseTime.get(channelId) ?? 0;
   const now = Date.now();
 
+  // Compute idle_ms for retry context
+  const lastMsg = lastMessageTime.get(channelId) ?? 0;
+  const retryIdleMs = lastMsg > 0 ? now - lastMsg : Infinity;
+
+  // Fetch channel/guild metadata (cached)
+  const channelMeta = await getChannelMetadata(channelId);
+  const guildMeta = guildId
+    ? await getGuildMetadata(guildId)
+    : { id: "", name: "", description: "" };
+
   const ctx = createBaseContext({
     facts,
     has_fact: (pattern: string) => {
@@ -438,8 +517,9 @@ async function processEntityRetry(
       return facts.some(f => regex.test(f));
     },
     messages: (n = 1, format?: string) => formatMessagesForContext(getMessages(channelId, n), format),
-    dt_ms: lastResponse > 0 ? now - lastResponse : Infinity,
-    elapsed_ms: now - messageTime,
+    response_ms: lastResponse > 0 ? now - lastResponse : Infinity,
+    retry_ms: now - messageTime,
+    idle_ms: retryIdleMs,
     mentioned: false, // Retry is never from a mention
     replied: false,
     replied_to: "",
@@ -447,6 +527,8 @@ async function processEntityRetry(
     is_self: false, // Retry is never self-triggered
     name: entity.name,
     chars: allChannelEntities.map(e => e.name),
+    channel: channelMeta,
+    server: guildMeta,
   });
 
   let result;
@@ -508,6 +590,7 @@ async function processEntityRetry(
     isFreeform: result.isFreeform,
     modelSpec: result.modelSpec,
     stripPatterns: result.stripPatterns,
+    exprContext: ctx,
   }]);
 }
 

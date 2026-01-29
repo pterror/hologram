@@ -46,8 +46,9 @@ $if content.includes(hello): $respond
 | `is_self` | boolean | Message is from this entity's own webhook |
 | `content` | string | Message content (alias for `messages(1, "%m")`) |
 | `author` | string | Message author name (alias for `messages(1, "%a")`) |
-| `dt_ms` | number | Milliseconds since last response |
-| `elapsed_ms` | number | Milliseconds since message (for retries) |
+| `response_ms` | number | Milliseconds since last response |
+| `retry_ms` | number | Milliseconds since triggering message (for retries) |
+| `idle_ms` | number | Milliseconds since any message in channel |
 | `random()` | function | Float [0,1), or int with `random(max)` [1,max] / `random(min,max)` [min,max] |
 | `has_fact(pattern)` | function | Check if entity has matching fact |
 | `mentioned_in_dialogue(name)` | function | Check if name appears in quoted dialogue |
@@ -55,6 +56,13 @@ $if content.includes(hello): $respond
 | `time.hour` | number | Current hour (0-23) |
 | `time.is_day` | boolean | 6am-6pm |
 | `time.is_night` | boolean | 6pm-6am |
+| `channel.id` | string | Channel snowflake ID |
+| `channel.name` | string | Channel name |
+| `channel.description` | string | Channel topic |
+| `channel.mention` | string | Channel mention (e.g. `<#123>`) |
+| `server.id` | string | Server snowflake ID |
+| `server.name` | string | Server name |
+| `server.description` | string | Server description |
 | `self.*` | varies | Entity's own `key: value` facts |
 
 ### Examples
@@ -86,7 +94,7 @@ $if time.is_night: $respond
 
 Minimum 30 seconds between responses:
 ```
-$if dt_ms > 30000: $respond
+$if response_ms > 30000: $respond
 ```
 
 ## Default Behavior
@@ -128,7 +136,7 @@ This is useful for batching messages or creating "thinking" delays.
 Example - wait 3 seconds then respond if no new messages:
 ```
 $retry 3000
-$if elapsed_ms > 2000: $respond
+$if retry_ms > 2000: $respond
 ```
 
 ## Examples
@@ -153,14 +161,14 @@ $if random() < 0.05: $respond
 
 Respond to everything, but only once per minute:
 ```
-$if dt_ms > 60000: $respond
+$if response_ms > 60000: $respond
 ```
 
 ### Quiet observer
 
 Small chance to respond, with minimum spacing:
 ```
-$if random() < 0.05 && dt_ms > 120000: $respond
+$if random() < 0.05 && response_ms > 120000: $respond
 ```
 
 ### Night owl
