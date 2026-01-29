@@ -564,6 +564,7 @@ const MEMORY_SIGIL = "$memory";
 const CONTEXT_SIGIL = "$context";
 const FREEFORM_SIGIL = "$freeform";
 const MODEL_SIGIL = "$model ";
+const STRIP_SIGIL = "$strip";
 
 /** Memory retrieval scope */
 export type MemoryScope = "none" | "channel" | "guild" | "global";
@@ -610,6 +611,10 @@ export interface ProcessedFact {
   isModel: boolean;
   /** For $model directives, the model spec (e.g. "google:gemini-2.0-flash") */
   modelSpec?: string;
+  /** True if this fact is a $strip directive */
+  isStrip: boolean;
+  /** For $strip directives, the patterns to strip */
+  stripPatterns?: string[];
 }
 
 /** Parse expression, expect ':', return position after ':' */
@@ -651,6 +656,7 @@ export function parseFact(fact: string): ProcessedFact {
         isFreeform: false,
         isPermission: false,
         isModel: false,
+        isStrip: false,
       };
     } else {
       // $locked prefix - recursively parse the rest, then mark as locked
@@ -685,6 +691,7 @@ export function parseFact(fact: string): ProcessedFact {
         isFreeform: false,
         isPermission: false,
         isModel: false,
+        isStrip: false,
       };
     }
 
@@ -707,6 +714,7 @@ export function parseFact(fact: string): ProcessedFact {
         isFreeform: false,
         isPermission: false,
         isModel: false,
+        isStrip: false,
       };
     }
 
@@ -730,6 +738,7 @@ export function parseFact(fact: string): ProcessedFact {
         isFreeform: false,
         isPermission: false,
         isModel: false,
+        isStrip: false,
       };
     }
 
@@ -752,6 +761,7 @@ export function parseFact(fact: string): ProcessedFact {
         isFreeform: false,
         isPermission: false,
         isModel: false,
+        isStrip: false,
       };
     }
 
@@ -774,6 +784,7 @@ export function parseFact(fact: string): ProcessedFact {
         isFreeform: false,
         isPermission: false,
         isModel: false,
+        isStrip: false,
       };
     }
 
@@ -794,6 +805,7 @@ export function parseFact(fact: string): ProcessedFact {
         isFreeform: true,
         isPermission: false,
         isModel: false,
+        isStrip: false,
       };
     }
 
@@ -816,15 +828,39 @@ export function parseFact(fact: string): ProcessedFact {
         isPermission: false,
         isModel: true,
         modelSpec: modelResultCond,
+        isStrip: false,
+      };
+    }
+
+    // Check if content is a $strip directive
+    const stripResultCond = parseStripDirective(content);
+    if (stripResultCond !== null) {
+      return {
+        content,
+        conditional: true,
+        expression,
+        isRespond: false,
+        isRetry: false,
+        isAvatar: false,
+        isLockedDirective: false,
+        isLockedFact: false,
+        isStream: false,
+        isMemory: false,
+        isContext: false,
+        isFreeform: false,
+        isPermission: false,
+        isModel: false,
+        isStrip: true,
+        stripPatterns: stripResultCond,
       };
     }
 
     // Check if content is a permission directive ($edit, $view, $blacklist)
     if (content.startsWith(EDIT_SIGIL) || content.startsWith(VIEW_SIGIL) || content.startsWith(BLACKLIST_SIGIL)) {
-      return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isPermission: true, isModel: false };
+      return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isPermission: true, isModel: false, isStrip: false };
     }
 
-    return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isPermission: false, isModel: false };
+    return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isPermission: false, isModel: false, isStrip: false };
   }
 
   // Check for unconditional $respond
@@ -845,6 +881,7 @@ export function parseFact(fact: string): ProcessedFact {
       isFreeform: false,
       isPermission: false,
       isModel: false,
+      isStrip: false,
     };
   }
 
@@ -866,6 +903,7 @@ export function parseFact(fact: string): ProcessedFact {
       isFreeform: false,
       isPermission: false,
       isModel: false,
+      isStrip: false,
     };
   }
 
@@ -887,6 +925,7 @@ export function parseFact(fact: string): ProcessedFact {
       isFreeform: false,
       isPermission: false,
       isModel: false,
+      isStrip: false,
     };
   }
 
@@ -909,6 +948,7 @@ export function parseFact(fact: string): ProcessedFact {
       isFreeform: false,
       isPermission: false,
       isModel: false,
+      isStrip: false,
     };
   }
 
@@ -930,6 +970,7 @@ export function parseFact(fact: string): ProcessedFact {
       isFreeform: false,
       isPermission: false,
       isModel: false,
+      isStrip: false,
     };
   }
 
@@ -951,6 +992,7 @@ export function parseFact(fact: string): ProcessedFact {
       isFreeform: false,
       isPermission: false,
       isModel: false,
+      isStrip: false,
     };
   }
 
@@ -970,6 +1012,7 @@ export function parseFact(fact: string): ProcessedFact {
         isFreeform: true,
         isPermission: false,
         isModel: false,
+        isStrip: false,
       };
   }
 
@@ -991,15 +1034,38 @@ export function parseFact(fact: string): ProcessedFact {
       isPermission: false,
       isModel: true,
       modelSpec: modelResult,
+      isStrip: false,
+    };
+  }
+
+  // Check for unconditional $strip
+  const stripResult = parseStripDirective(trimmed);
+  if (stripResult !== null) {
+    return {
+      content: trimmed,
+      conditional: false,
+      isRespond: false,
+      isRetry: false,
+      isAvatar: false,
+      isLockedDirective: false,
+      isLockedFact: false,
+      isStream: false,
+      isMemory: false,
+      isContext: false,
+      isFreeform: false,
+      isPermission: false,
+      isModel: false,
+      isStrip: true,
+      stripPatterns: stripResult,
     };
   }
 
   // Check for permission directives ($edit, $view, $blacklist)
   if (trimmed.startsWith(EDIT_SIGIL) || trimmed.startsWith(VIEW_SIGIL) || trimmed.startsWith(BLACKLIST_SIGIL)) {
-    return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isPermission: true, isModel: false };
+    return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isPermission: true, isModel: false, isStrip: false };
   }
 
-  return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isPermission: false, isModel: false };
+  return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isPermission: false, isModel: false, isStrip: false };
 }
 
 /**
@@ -1145,6 +1211,50 @@ function parseModelDirective(content: string): string | null {
 }
 
 /**
+ * Parse a $strip directive.
+ * Returns null if not a strip directive, or the array of patterns to strip.
+ *
+ * Syntax:
+ * - $strip → explicit no-strip (empty array, disables default stripping)
+ * - $strip "</blockquote>" → strip this pattern
+ * - $strip "a" "b" "c" → strip any of these patterns
+ *
+ * Supports escape sequences: \n, \t, \\
+ */
+function parseStripDirective(content: string): string[] | null {
+  if (!content.startsWith(STRIP_SIGIL)) {
+    return null;
+  }
+  const rest = content.slice(STRIP_SIGIL.length);
+  // Must be bare $strip or $strip followed by space
+  if (rest !== "" && !rest.startsWith(" ")) {
+    return null;
+  }
+  const trimmed = rest.trim();
+
+  // Bare $strip → explicit empty (disable stripping)
+  if (trimmed === "") {
+    return [];
+  }
+
+  // Extract all quoted patterns
+  const patterns: string[] = [];
+  const quoteMatches = [...trimmed.matchAll(/["']([^"']+)["']/g)];
+  if (quoteMatches.length === 0) {
+    return null; // Has content but no quoted strings → invalid
+  }
+  for (const m of quoteMatches) {
+    // Unescape sequences
+    const unescaped = m[1]
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, "\t")
+      .replace(/\\\\/g, "\\");
+    patterns.push(unescaped);
+  }
+  return patterns;
+}
+
+/**
  * Parse a $memory directive.
  * Returns null if not a memory directive, or the scope.
  *
@@ -1240,6 +1350,8 @@ export interface EvaluatedFacts {
   isFreeform: boolean;
   /** Model spec from $model directive (e.g. "google:gemini-2.0-flash"), last wins */
   modelSpec: string | null;
+  /** Strip patterns from $strip directive. null = no directive (use default), [] = explicit no-strip */
+  stripPatterns: string[] | null;
 }
 
 /**
@@ -1270,6 +1382,7 @@ export function evaluateFacts(
   let contextLimit: number | null = null;
   let isFreeform = false;
   let modelSpec: string | null = null;
+  let stripPatterns: string[] | null = null;
 
   // Strip comments first
   const uncommented = stripComments(facts);
@@ -1348,6 +1461,12 @@ export function evaluateFacts(
       continue;
     }
 
+    // Handle $strip directives - last one wins, strip from LLM context
+    if (parsed.isStrip) {
+      stripPatterns = parsed.stripPatterns ?? [];
+      continue;
+    }
+
     // Handle permission directives ($edit, $view, $blacklist) - strip from LLM context
     if (parsed.isPermission) {
       continue;
@@ -1356,7 +1475,7 @@ export function evaluateFacts(
     results.push(parsed.content);
   }
 
-  return { facts: results, shouldRespond, respondSource, retryMs, avatarUrl, isLocked, lockedFacts, streamMode, streamDelimiter, memoryScope, contextLimit, isFreeform, modelSpec };
+  return { facts: results, shouldRespond, respondSource, retryMs, avatarUrl, isLocked, lockedFacts, streamMode, streamDelimiter, memoryScope, contextLimit, isFreeform, modelSpec, stripPatterns };
 }
 
 // =============================================================================

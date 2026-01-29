@@ -176,8 +176,20 @@ Default is 16k characters. Supports `k` suffix (e.g., `16k` = 16,000). Hard cap 
 
 ### Message Preprocessing
 
-Incoming Discord messages are preprocessed before storage and LLM context:
-- **Blockquote stripping:** Trailing `</blockquote>` tags without matching opening `<blockquote>` are removed (Discord quote formatting artifacts)
+Strip specified strings from message history before sending to LLM using `$strip`:
+
+```
+$strip "</blockquote>"             # Strip this pattern from context
+$strip "</blockquote>" "<br>"      # Strip multiple patterns
+$strip                             # Explicitly disable stripping (even on default models)
+$if mentioned: $strip "</blockquote>"  # Conditional stripping
+```
+
+**Default behavior:** When no `$strip` directive is present, `</blockquote>` is automatically stripped for `gemini-2.5-flash-preview` models only. All other models default to no stripping. Use bare `$strip` to explicitly disable this default.
+
+Supports escape sequences in patterns: `\n`, `\t`, `\\`.
+
+Other preprocessing:
 - **Sticker serialization:** Stickers become `*sent a sticker: name*` appended to message content
 
 ### Stickers

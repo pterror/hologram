@@ -4,6 +4,7 @@ import { debug, error } from "../logger";
 import { getEntityWithFacts, type EntityWithFacts } from "../db/entities";
 import { resolveDiscordEntity, getMessages } from "../db/discord";
 import {
+  applyStripPatterns,
   buildMessageHistory,
   DEFAULT_CONTEXT_LIMIT,
   type EvaluatedEntity,
@@ -73,7 +74,19 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
 
   // Build prompts
   const systemPrompt = buildSystemPrompt(evaluated, other, ctx.entityMemories);
-  const userMessage = buildMessageHistory(history, contextLimit);
+  let userMessage = buildMessageHistory(history, contextLimit);
+
+  // Apply strip patterns to message history
+  const entityStripPatterns = evaluated[0]?.stripPatterns;
+  const modelSpec_ = evaluated[0]?.modelSpec ?? DEFAULT_MODEL;
+  const effectiveStripPatterns = entityStripPatterns !== null
+    ? entityStripPatterns
+    : modelSpec_.includes("gemini-2.5-flash-preview")
+      ? ["</blockquote>"]
+      : [];
+  if (effectiveStripPatterns.length > 0) {
+    userMessage = applyStripPatterns(userMessage, effectiveStripPatterns);
+  }
 
   debug("Calling LLM", {
     respondingEntities: evaluated.map(e => e.name),

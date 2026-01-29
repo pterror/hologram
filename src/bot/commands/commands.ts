@@ -979,6 +979,7 @@ function formatEvaluatedEntityFromRaw(entity: EntityWithFacts): string {
     contextLimit: evaluated.contextLimit,
     isFreeform: evaluated.isFreeform,
     modelSpec: evaluated.modelSpec,
+    stripPatterns: evaluated.stripPatterns,
   });
 }
 

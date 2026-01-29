@@ -37,11 +37,22 @@ export interface EvaluatedEntity {
   isFreeform: boolean;
   /** Model spec from $model directive (e.g. "google:gemini-2.0-flash") */
   modelSpec: string | null;
+  /** Strip patterns from $strip directive. null = no directive (use default), [] = explicit no-strip */
+  stripPatterns: string[] | null;
 }
 
 // =============================================================================
 // Constants
 // =============================================================================
+
+/** Apply strip patterns to text, removing all occurrences of each pattern */
+export function applyStripPatterns(text: string, patterns: string[]): string {
+  let result = text;
+  for (const pattern of patterns) {
+    result = result.replaceAll(pattern, "");
+  }
+  return result;
+}
 
 /** Default maximum characters of message history to include in context */
 export const DEFAULT_CONTEXT_LIMIT = 16_000;
