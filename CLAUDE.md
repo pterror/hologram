@@ -224,16 +224,25 @@ You are {{ entities[0].name }}.
 
 ### Context Window
 
-Control how much message history is included in LLM context:
+Control how much message history is included in LLM context using expression predicates. The expression is evaluated per-message from newest to oldest; when it returns false (after at least one message), accumulation stops.
 
 ```
-$context 16k                       # 16,000 characters of history (default)
-$context 8000                      # 8,000 characters
-$context 1000k                     # 1,000,000 characters (hard cap)
-$if mentioned: $context 32k        # Conditional context size
+$context 16k                                           # Backwards compat: chars < 16000
+$context chars < 16000                                 # Same as above, explicit
+$context (chars < 4000 || count < 20) && age_h < 12   # Complex filter
+$context count < 50                                    # Last 50 messages
+$if mentioned: $context chars < 32000                  # Conditional context size
 ```
 
-Default is 16k characters. Supports `k` suffix (e.g., `16k` = 16,000). Hard cap is 1M.
+**Context variables:**
+- `chars` — cumulative characters including current message
+- `count` — messages accumulated so far (0-indexed)
+- `age` — current message age in milliseconds
+- `age_h` / `age_m` / `age_s` — age in hours / minutes / seconds
+
+**Default** (no `$context` directive): `(chars < 4000 || count < 20) && age_h < 12 || count < 5`
+
+Numeric syntax (`16k`, `8000`) is backwards-compatible and converts to `chars < N`. Hard cap is 1M for numeric values.
 
 ### Message Preprocessing
 

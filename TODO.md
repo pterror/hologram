@@ -15,7 +15,7 @@ Current: 717 tests across `src/logic/expr.test.ts`, `src/logic/expr.security.tes
 - Safe regex validation (148 tests): safe patterns accepted, capturing groups/nested quantifiers/backreferences/lookahead rejected, safety invariant exhaustive, integration with expr evaluator (match/search/replace/split), matchAll blocked, real-world ReDoS patterns
 - Accepted risks (documented): quadratic regex bounded by Discord message length, array mutation contained to context, no runtime timeout (mitigated by static analysis), unrestricted safe string methods
 - Self context parsing
-- Fact parsing and evaluation ($if, $respond, $retry, $locked, $avatar, $stream, $model, $context, $strip)
+- Fact parsing and evaluation ($if, $respond, $retry, $locked, $avatar, $stream, $model, $context expression predicates, $strip)
 - Permission directives ($edit, $view, $use, $blacklist, $locked, role ID matching)
 - Roll20 dice (kh, kl, dh, dl, exploding, success counting)
 - Utility functions (formatDuration, parseOffset)
@@ -45,7 +45,7 @@ See `docs/postmortem/2026-01-26-ux-critique.md` for full analysis.
 
 - [ ] Strip prompt scaffolding - remove `<defs>` XML tags and unnecessary structure from system prompt
 - [ ] Silent failure elimination - when no entities are bound, explain why nothing happened instead of silently returning
-- [ ] Dynamic token allocation - adapt context window based on conversation rather than hardcoded 16k char default
+- [x] Dynamic token allocation - `$context` now supports expression predicates (`chars`, `count`, `age_h`, etc.) with default `(chars < 4000 || count < 20) && age_h < 12 || count < 5`
 
 ### Multi-Character
 

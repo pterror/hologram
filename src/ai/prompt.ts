@@ -4,11 +4,11 @@ import {
 } from "../db/entities";
 import {
   formatEntityDisplay,
-  DEFAULT_CONTEXT_LIMIT,
+  DEFAULT_CONTEXT_EXPR,
   type EvaluatedEntity,
 } from "./context";
 import { getMessages, getWebhookMessageEntity, parseMessageData, normalizeStickers, resolveDiscordEntity } from "../db/discord";
-import { evalMacroValue, formatDuration, rollDice, type ExprContext } from "../logic/expr";
+import { evalMacroValue, formatDuration, rollDice, compileContextExpr, type ExprContext } from "../logic/expr";
 import { DEFAULT_MODEL } from "./models";
 import { DEFAULT_TEMPLATE, renderStructuredTemplate } from "./template";
 import {
@@ -29,7 +29,7 @@ const TRIM_SENTINEL = "\x00TRIM\x00";
 /** Metadata for convenience macro expansion */
 export interface MacroMeta {
   modelSpec: string | null;
-  contextLimit: number | null;
+  contextExpr: string | null;
   respondingNames: string[];
 }
 
@@ -187,7 +187,7 @@ export function expandEntityRefs(
       }
 
       if (lower === "maxprompt") {
-        return String(evalMeta?.contextLimit ?? DEFAULT_CONTEXT_LIMIT);
+        return evalMeta?.contextExpr ?? DEFAULT_CONTEXT_EXPR;
       }
 
       if (lower === "charifnotgroup") {
@@ -246,7 +246,7 @@ const MESSAGE_FETCH_LIMIT = 100;
  * @param entityMemories - Retrieved memories per entity
  * @param template - Custom template source (null = use DEFAULT_TEMPLATE)
  * @param channelId - Channel to fetch history from
- * @param contextLimit - Maximum characters of history to include
+ * @param contextExpr - Context expression for message filtering (e.g. "chars < 16000")
  * @param stripPatterns - Patterns to strip from message content
  */
 export function buildPromptAndMessages(
@@ -255,7 +255,7 @@ export function buildPromptAndMessages(
   entityMemories: Map<number, Array<{ content: string }>> | undefined,
   template: string | null,
   channelId: string,
-  contextLimit: number,
+  contextExpr: string,
   stripPatterns: string[],
 ): { systemPrompt: string; messages: StructuredMessage[] } {
   // Fetch history from DB (DESC order, newest first)
@@ -263,7 +263,11 @@ export function buildPromptAndMessages(
 
   const isSingleEntity = respondingEntities.length <= 1;
 
-  // Build history objects trimmed to char limit (process newest-first)
+  // Compile context expression for per-message filtering
+  const contextFilter = compileContextExpr(contextExpr);
+  const now = Date.now();
+
+  // Build history objects filtered by context expression (process newest-first)
   interface HistoryEntry {
     author: string;
     content: string;
@@ -283,10 +287,21 @@ export function buildPromptAndMessages(
     const isEntity = !!m.discord_message_id && !!getWebhookMessageEntity(m.discord_message_id);
     const role = isEntity ? "assistant" as const : "user" as const;
 
-    // Calculate char length for context limit
+    // Calculate char length for context expression
     const formattedContent = (isEntity && isSingleEntity) ? m.content : `${m.author_name}: ${m.content}`;
     const len = formattedContent.length + 1; // +1 for newline
-    if (totalChars + len > contextLimit && history.length > 0) break;
+    const msgAge = now - new Date(m.created_at).getTime();
+
+    // Evaluate context expression — stop when it returns false (after at least one message)
+    const shouldInclude = contextFilter({
+      chars: totalChars + len,
+      count: history.length,
+      age: msgAge,
+      age_h: msgAge / 3_600_000,
+      age_m: msgAge / 60_000,
+      age_s: msgAge / 1000,
+    });
+    if (!shouldInclude && history.length > 0) break;
 
     // Apply strip patterns to raw content
     let content = m.content;
@@ -393,7 +408,7 @@ export interface PreparedPromptContext {
   systemPrompt: string;
   messages: StructuredMessage[];
   other: EntityWithFacts[];
-  contextLimit: number;
+  contextExpr: string;
   effectiveStripPatterns: string[];
 }
 
@@ -420,7 +435,7 @@ export function preparePromptContext(
   for (const entity of entities) {
     other.push(...expandEntityRefs(entity, seenIds, entity.exprContext, {
       modelSpec: entity.modelSpec,
-      contextLimit: entity.contextLimit,
+      contextExpr: entity.contextExpr,
       respondingNames,
     }));
   }
@@ -435,8 +450,8 @@ export function preparePromptContext(
     }
   }
 
-  // Determine context limit from entities (first non-null wins)
-  const contextLimit = entities.find(e => e.contextLimit !== null)?.contextLimit ?? DEFAULT_CONTEXT_LIMIT;
+  // Determine context expression from entities (first non-null wins)
+  const contextExpr = entities.find(e => e.contextExpr !== null)?.contextExpr ?? DEFAULT_CONTEXT_EXPR;
 
   // Determine effective strip patterns
   const entityStripPatterns = entities[0]?.stripPatterns;
@@ -450,8 +465,8 @@ export function preparePromptContext(
   // Build prompts and messages via template engine
   const template = entities[0]?.template ?? null;
   const { systemPrompt, messages } = buildPromptAndMessages(
-    entities, other, entityMemories, template, channelId, contextLimit, effectiveStripPatterns,
+    entities, other, entityMemories, template, channelId, contextExpr, effectiveStripPatterns,
   );
 
-  return { systemPrompt, messages, other, contextLimit, effectiveStripPatterns };
+  return { systemPrompt, messages, other, contextExpr, effectiveStripPatterns };
 }

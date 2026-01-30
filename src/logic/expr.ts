@@ -837,8 +837,8 @@ export interface ProcessedFact {
   memoryScope?: MemoryScope;
   /** True if this fact is a $context directive */
   isContext: boolean;
-  /** For $context directives, the character limit */
-  contextLimit?: number;
+  /** For $context directives, the expression string (e.g. "chars < 16000") */
+  contextExpr?: string;
   /** True if this fact is a $freeform directive */
   isFreeform: boolean;
   /** True if this fact is a permission directive ($edit, $view, $blacklist) */
@@ -1016,7 +1016,7 @@ export function parseFact(fact: string): ProcessedFact {
         isStream: false,
         isMemory: false,
         isContext: true,
-        contextLimit: contextResultCond,
+        contextExpr: contextResultCond,
         isFreeform: false,
         isPermission: false,
         isModel: false,
@@ -1224,7 +1224,7 @@ export function parseFact(fact: string): ProcessedFact {
       isStream: false,
       isMemory: false,
       isContext: true,
-      contextLimit: contextResult,
+      contextExpr: contextResult,
       isFreeform: false,
       isPermission: false,
       isModel: false,
@@ -1527,36 +1527,83 @@ function parseMemoryDirective(content: string): MemoryScope | null {
 
 /**
  * Parse a $context directive.
- * Returns null if not a context directive, or the character limit.
+ * Returns null if not a context directive, or the context expression string.
  *
  * Syntax:
- * - $context 8000 → 8000 characters
- * - $context 8k → 8000 characters
- * - $context 200k → 200000 characters (capped at MAX_CONTEXT_CHAR_LIMIT)
+ * - $context 8000 → "chars < 8000" (backwards compat)
+ * - $context 8k → "chars < 8000" (backwards compat)
+ * - $context chars < 16000 → "chars < 16000"
+ * - $context (chars < 4000 || count < 20) && age_h < 12 → expression
  */
-function parseContextDirective(content: string): number | null {
+function parseContextDirective(content: string): string | null {
   if (!content.startsWith(CONTEXT_SIGIL)) {
     return null;
   }
-  const rest = content.slice(CONTEXT_SIGIL.length).trim().toLowerCase();
+  const rest = content.slice(CONTEXT_SIGIL.length).trim();
 
   if (rest === "") {
     return null; // Need a value
   }
 
-  // Parse number with optional 'k' suffix
-  const match = rest.match(/^(\d+(?:\.\d+)?)(k)?$/);
-  if (!match) {
-    return null;
+  // Backwards compat: parse number with optional 'k' suffix → convert to "chars < N"
+  const numMatch = rest.toLowerCase().match(/^(\d+(?:\.\d+)?)(k)?$/);
+  if (numMatch) {
+    let value = parseFloat(numMatch[1]);
+    if (numMatch[2] === "k") {
+      value *= 1000;
+    }
+    const limit = Math.min(Math.floor(value), MAX_CONTEXT_CHAR_LIMIT);
+    return `chars < ${limit}`;
   }
 
-  let value = parseFloat(match[1]);
-  if (match[2] === "k") {
-    value *= 1000;
+  // Otherwise treat as expression
+  return rest;
+}
+
+// =============================================================================
+// Context Expression Compiler
+// =============================================================================
+
+/** Variables available in $context expressions */
+export interface ContextExprVars {
+  /** Cumulative characters including current message */
+  chars: number;
+  /** Number of messages accumulated so far (0-indexed) */
+  count: number;
+  /** Current message age in milliseconds */
+  age: number;
+  /** Current message age in hours */
+  age_h: number;
+  /** Current message age in minutes */
+  age_m: number;
+  /** Current message age in seconds */
+  age_s: number;
+}
+
+const CONTEXT_EXPR_PARAMS = ["chars", "count", "age", "age_h", "age_m", "age_s"] as const;
+const CONTEXT_ALLOWED_IDENTS = new Set<string>([...CONTEXT_EXPR_PARAMS, "true", "false", "Infinity", "NaN"]);
+
+/**
+ * Compile a $context expression into a reusable predicate.
+ * Returns a function that evaluates the expression with the given variables.
+ * The expression should return truthy to include the message.
+ */
+export function compileContextExpr(expr: string): (vars: ContextExprVars) => boolean {
+  // Validate identifiers: only allow context-specific variables
+  const identPattern = /[a-zA-Z_][a-zA-Z0-9_]*/g;
+  let m;
+  while ((m = identPattern.exec(expr)) !== null) {
+    if (!CONTEXT_ALLOWED_IDENTS.has(m[0])) {
+      throw new Error(`Unknown identifier in $context expression: "${m[0]}". Allowed: ${CONTEXT_EXPR_PARAMS.join(", ")}`);
+    }
   }
 
-  // Cap at hard maximum
-  return Math.min(Math.floor(value), MAX_CONTEXT_CHAR_LIMIT);
+  try {
+    const fn = new Function(...CONTEXT_EXPR_PARAMS, `"use strict"; return !!(${expr})`);
+    return (vars) => fn(vars.chars, vars.count, vars.age, vars.age_h, vars.age_m, vars.age_s) as boolean;
+  } catch (e) {
+    throw new Error(`Invalid $context expression: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 export interface EvaluatedFacts {
@@ -1580,8 +1627,8 @@ export interface EvaluatedFacts {
   streamDelimiter: string[] | null;
   /** Memory retrieval scope (default: "none" = no retrieval) */
   memoryScope: MemoryScope;
-  /** Context character limit if $context directive present */
-  contextLimit: number | null;
+  /** Context expression if $context directive present (e.g. "chars < 16000") */
+  contextExpr: string | null;
   /** True if $freeform directive present (multi-char responses not split) */
   isFreeform: boolean;
   /** Model spec from $model directive (e.g. "google:gemini-2.0-flash"), last wins */
@@ -1615,7 +1662,7 @@ export function evaluateFacts(
   let streamMode: "lines" | "full" | null = null;
   let streamDelimiter: string[] | null = null;
   let memoryScope: MemoryScope = "none";
-  let contextLimit: number | null = null;
+  let contextExpr: string | null = null;
   let isFreeform = false;
   let modelSpec: string | null = null;
   let stripPatterns: string[] | null = null;
@@ -1681,7 +1728,7 @@ export function evaluateFacts(
 
     // Handle $context directives - last one wins
     if (parsed.isContext) {
-      contextLimit = parsed.contextLimit ?? null;
+      contextExpr = parsed.contextExpr ?? null;
       continue;
     }
 
@@ -1711,7 +1758,7 @@ export function evaluateFacts(
     results.push(parsed.content);
   }
 
-  return { facts: results, shouldRespond, respondSource, retryMs, avatarUrl, isLocked, lockedFacts, streamMode, streamDelimiter, memoryScope, contextLimit, isFreeform, modelSpec, stripPatterns };
+  return { facts: results, shouldRespond, respondSource, retryMs, avatarUrl, isLocked, lockedFacts, streamMode, streamDelimiter, memoryScope, contextExpr, isFreeform, modelSpec, stripPatterns };
 }
 
 // =============================================================================

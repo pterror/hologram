@@ -31,8 +31,8 @@ export interface EvaluatedEntity {
   streamDelimiter: string[] | null;
   /** Memory retrieval scope from $memory directive (default: "none") */
   memoryScope: "none" | "channel" | "guild" | "global";
-  /** Context character limit from $context directive, if present */
-  contextLimit: number | null;
+  /** Context expression from $context directive (e.g. "chars < 16000"), if present */
+  contextExpr: string | null;
   /** Freeform multi-char responses (no XML parsing) from $freeform directive */
   isFreeform: boolean;
   /** Model spec from $model directive (e.g. "google:gemini-2.0-flash") */
@@ -58,8 +58,8 @@ export function applyStripPatterns(text: string, patterns: string[]): string {
   return result;
 }
 
-/** Default maximum characters of message history to include in context */
-export const DEFAULT_CONTEXT_LIMIT = 16_000;
+/** Default context expression when no $context directive is present */
+export const DEFAULT_CONTEXT_EXPR = "(chars < 4000 || count < 20) && age_h < 12 || count < 5";
 
 /** Hard cap on context size (~250k tokens) */
 export const MAX_CONTEXT_CHAR_LIMIT = 1_000_000;
@@ -77,37 +77,6 @@ export function formatEntityDisplay(name: string, id: number): string {
 export function formatEvaluatedEntity(entity: EvaluatedEntity): string {
   const factLines = entity.facts.join("\n");
   return `<defs for="${entity.name}" id="${entity.id}">\n${factLines}\n</defs>`;
-}
-
-/**
- * Build message history up to a character limit.
- * Messages should be in DESC order (newest first) from the database.
- * Returns formatted string in chronological order (oldest first).
- *
- * Used by /debug history command.
- */
-export function buildMessageHistory(
-  messages: Array<{ author_name: string; content: string }>,
-  charLimit = DEFAULT_CONTEXT_LIMIT
-): string {
-  const lines: string[] = [];
-  let totalChars = 0;
-
-  // Process newest to oldest, accumulating until we hit the limit
-  for (const m of messages) {
-    const line = `${m.author_name}: ${m.content}`;
-    const lineLen = line.length + 1; // +1 for newline
-
-    if (totalChars + lineLen > charLimit && lines.length > 0) {
-      break; // Would exceed limit, stop (but always include at least one message)
-    }
-
-    lines.push(line);
-    totalChars += lineLen;
-  }
-
-  // Reverse to chronological order (oldest first)
-  return lines.reverse().join("\n");
 }
 
 // =============================================================================

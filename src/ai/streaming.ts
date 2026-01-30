@@ -104,14 +104,14 @@ export async function* handleMessageStreaming(
   const { channelId, guildId, entities, streamMode, delimiter } = ctx;
 
   // Prepare prompt context (expand refs, resolve user entity, build prompt)
-  const { systemPrompt, messages: llmMessages, contextLimit } = preparePromptContext(
+  const { systemPrompt, messages: llmMessages, contextExpr } = preparePromptContext(
     entities, channelId, guildId, ctx.userId, ctx.entityMemories,
   );
 
   debug("Calling LLM (streaming)", {
     entities: entities.map(e => e.name),
     streamMode,
-    contextLimit,
+    contextExpr,
     messageCount: llmMessages.length,
     hasMemories: !!ctx.entityMemories?.size,
   });

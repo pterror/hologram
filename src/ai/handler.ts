@@ -34,7 +34,7 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
   const evaluated: EvaluatedEntity[] = respondingEntities ?? [];
 
   // Prepare prompt context (expand refs, resolve user entity, build prompt)
-  const { systemPrompt, messages: llmMessages, other, contextLimit } = preparePromptContext(
+  const { systemPrompt, messages: llmMessages, other, contextExpr } = preparePromptContext(
     evaluated, channelId, guildId, userId, ctx.entityMemories,
   );
 
@@ -48,7 +48,7 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
   debug("Calling LLM", {
     respondingEntities: evaluated.map(e => e.name),
     otherEntities: other.map(e => e.name),
-    contextLimit,
+    contextExpr,
     systemPrompt,
     messageCount: llmMessages.length,
   });
