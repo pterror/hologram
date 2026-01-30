@@ -8,12 +8,12 @@
 
 ### Test Coverage
 
-Current: 188 tests in `src/logic/expr.test.ts`. Covers:
+Current: 209 tests in `src/logic/expr.test.ts`. Covers:
 - Expression evaluator (tokenizer, parser, operators, precedence)
 - Security (identifier whitelist, injection prevention, prototype access)
 - Self context parsing
 - Fact parsing and evaluation ($if, $respond, $retry, $locked, $avatar, $stream, $model, $context, $strip)
-- Permission directives ($edit, $view, $blacklist, $locked)
+- Permission directives ($edit, $view, $use, $blacklist, $locked, role ID matching)
 - Roll20 dice (kh, kl, dh, dl, exploding, success counting)
 - Utility functions (formatDuration, parseOffset)
 - New ExprContext functions (duration, date_str, time_str, isodate, isotime, weekday, group)
