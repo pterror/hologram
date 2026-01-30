@@ -196,12 +196,18 @@ Override the default system prompt formatting per entity using custom templates 
 - `_msg(role, opts?)` — function that emits structured message markers. See "Structured Output Protocol" below.
 - `_single_entity` — boolean, true when exactly one entity is responding (used by default template)
 
-**Full prompt control:** When a template uses `_msg()`, its output is parsed into a structured system prompt + message array sent to the LLM. Without `_msg()`, the entire output is the system prompt and only the latest message is sent as user content. The built-in default template uses `_msg()` to produce proper role-based chat messages.
+**Two-layer system prompt:** The LLM receives two distinct system instruction channels:
+1. **Dedicated system parameter** — rendered from `SYSTEM_PROMPT_TEMPLATE`, passed as the AI SDK `system` field. Provides framing context.
+2. **System-role messages** — system-role entries in the messages array from the main template. Carry entity definitions, memories, and response instructions.
 
-**Structured output protocol (`_msg()`):** Call `_msg(role, opts?)` in templates to emit structured chat messages. `role` must be `"system"`, `"user"`, or `"assistant"`. Optional `opts` can include `{author, author_id}`. Content before the first `_msg()` call becomes the system prompt. Content between calls becomes individual messages.
+`/debug prompt` shows both layers separated by `---`.
+
+**Full prompt control:** When a template uses `_msg()`, its output is parsed into a flat list of messages (system, user, assistant). Content before the first `_msg()` call becomes a system-role message. Without `_msg()`, the entire output is a single system-role message and only the latest message is sent as user content. The built-in default template uses `_msg()` to produce proper role-based chat messages.
+
+**Structured output protocol (`_msg()`):** Call `_msg(role, opts?)` in templates to emit structured chat messages. `role` must be `"system"`, `"user"`, or `"assistant"`. Optional `opts` can include `{author, author_id}`. Content before the first `_msg()` call becomes a system-role message. Content between calls becomes individual messages.
 
 ```
-{# System prompt content goes here #}
+{# Entity definitions become a system-role message #}
 You are {{ entities[0].name }}.
 
 {# Then emit structured messages #}
