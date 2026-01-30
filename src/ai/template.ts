@@ -457,11 +457,7 @@ Not everyone needs to respond to every message. Only respond as those who would 
 {%- endif -%}
 {%- for msg in history -%}
 {{ _msg(msg.role, {author: msg.author, author_id: msg.author_id}) }}
-{%- if msg.role == "assistant" and _single_entity -%}
-{{ msg.content }}
-{%- else -%}
 {{ msg.author }}: {{ msg.content }}
-{%- endif -%}
 {%- endfor -%}`;
 
 export function renderStructuredTemplate(

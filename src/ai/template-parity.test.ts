@@ -216,7 +216,7 @@ describe("DEFAULT_TEMPLATE: messages", () => {
     expect(output.messages[0].role).toBe("user");
     expect(norm(output.messages[0].content)).toBe("Alice: Hello!");
     expect(output.messages[1].role).toBe("assistant");
-    expect(norm(output.messages[1].content)).toBe("*waves* Hi there!");
+    expect(norm(output.messages[1].content)).toBe("Aria: *waves* Hi there!");
     expect(output.messages[2].role).toBe("user");
     expect(norm(output.messages[2].content)).toBe("Alice: Nice weather");
   });
@@ -232,7 +232,7 @@ describe("DEFAULT_TEMPLATE: messages", () => {
 
     // Template emits assistant first — buildPromptAndMessages handles (continued) prefix
     expect(output.messages[0].role).toBe("assistant");
-    expect(norm(output.messages[0].content)).toBe("I'm here!");
+    expect(norm(output.messages[0].content)).toBe("Aria: I'm here!");
   });
 
   test("multi-entity, messages include author prefix", () => {
