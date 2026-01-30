@@ -30,6 +30,8 @@ The <code v-pre>{{entity:N}}</code> syntax references another entity by ID. The 
 
 Special patterns that expand when facts are processed:
 
+### Core Macros
+
 | Macro | Expands To |
 |-------|------------|
 | <code v-pre>{{entity:ID}}</code> | Entity name with ID (e.g., "Aria [#12]") |
@@ -37,7 +39,55 @@ Special patterns that expand when facts are processed:
 | <code v-pre>{{user}}</code> | Literal "user" |
 | <code v-pre>{{expression}}</code> | Any valid expression result |
 
-These are useful for writing generic facts that adapt to context:
+### Date/Time Macros
+
+| Macro | Expands To |
+|-------|------------|
+| <code v-pre>{{date}}</code> | Current date (e.g., "Thu Jan 30 2026") |
+| <code v-pre>{{time}}</code> | Current time (e.g., "6:00:00 PM") |
+| <code v-pre>{{weekday}}</code> | Day of week (e.g., "Thursday") |
+| <code v-pre>{{isodate}}</code> | ISO date (e.g., "2026-01-30") |
+| <code v-pre>{{isotime}}</code> | ISO time (e.g., "18:00") |
+
+### Context Macros
+
+| Macro | Expands To |
+|-------|------------|
+| <code v-pre>{{group}}</code> | All bound character names (comma-separated) |
+| <code v-pre>{{model}}</code> | Current LLM model spec |
+| <code v-pre>{{maxPrompt}}</code> | Context character limit |
+| <code v-pre>{{idle_duration}}</code> | Human-readable idle time (e.g., "5 minutes") |
+| <code v-pre>{{charIfNotGroup}}</code> | Entity name if solo, empty if group |
+| <code v-pre>{{notChar}}</code> | All bound chars except current entity |
+| <code v-pre>{{groupNotMuted}}</code> | Names of responding entities only |
+
+### Message History Macros
+
+| Macro | Expands To |
+|-------|------------|
+| <code v-pre>{{lastMessage}}</code> | Last message (author: content) |
+| <code v-pre>{{lastUserMessage}}</code> | Last human message |
+| <code v-pre>{{lastCharMessage}}</code> | Last entity/bot message |
+
+### Parameterized Macros
+
+| Macro | Expands To |
+|-------|------------|
+| <code v-pre>{{random: A,B,C}}</code> | Random item from comma-separated list |
+| <code v-pre>{{roll: 2d6+3}}</code> | Dice roll (roll20 syntax: kh, kl, dh, dl, !, >=) |
+| <code v-pre>{{newline}}</code> | Single newline |
+| <code v-pre>{{newline::N}}</code> | N newlines |
+| <code v-pre>{{space}}</code> | Single space |
+| <code v-pre>{{space::N}}</code> | N spaces |
+
+### Utility Macros
+
+| Macro | Expands To |
+|-------|------------|
+| <code v-pre>{{noop}}</code> | Empty string (useful in conditionals) |
+| <code v-pre>{{trim}}</code> | Trims whitespace from the fact |
+
+### Examples
 
 ```
 {{char}} loves adventure
@@ -45,6 +95,10 @@ refers to the player as {{user}}
 is friends with {{entity:5}}
 is currently in {{channel.name}}
 has {{self.health}} health points
+the current date is {{date}}
+group members: {{group}}
+{{random: happy, sad, excited, pensive}} mood today
+rolled a {{roll: 1d20}} for initiative
 ```
 
 For a character named "Aria", the first fact would expand to "Aria loves adventure".

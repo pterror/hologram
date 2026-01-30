@@ -8,6 +8,9 @@ import {
   parseSelfContext,
   createBaseContext,
   ExprError,
+  rollDice,
+  formatDuration,
+  parseOffset,
   type ExprContext,
 } from "./expr";
 
@@ -54,6 +57,7 @@ function makeContext(overrides: Partial<ExprContext> = {}): ExprContext {
     if (fmt === "%a") return authorOverride ?? "";
     return authorOverride && contentOverride ? `${authorOverride}: ${contentOverride}` : contentOverride ?? "";
   });
+  const chars = overrides.chars ?? [];
   return {
     self: Object.create(null),
     random: () => 0,
@@ -76,8 +80,21 @@ function makeContext(overrides: Partial<ExprContext> = {}): ExprContext {
     content: messages(1, "%m"),
     author: messages(1, "%a"),
     name: "",
-    chars: [],
+    chars,
     messages,
+    group: overrides.group ?? chars.join(", "),
+    duration: (ms: number) => formatDuration(ms),
+    date_str: () => new Date().toLocaleDateString("en-US", { weekday: "short", year: "numeric", month: "short", day: "numeric" }),
+    time_str: () => new Date().toLocaleTimeString("en-US"),
+    isodate: () => {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    },
+    isotime: () => {
+      const now = new Date();
+      return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    },
+    weekday: () => new Date().toLocaleDateString("en-US", { weekday: "long" }),
     channel: Object.assign(Object.create(null), { id: "", name: "", description: "", mention: "" }),
     server: Object.assign(Object.create(null), { id: "", name: "", description: "" }),
     ...overrides,
@@ -1445,6 +1462,385 @@ describe("evalMacroValue", () => {
   test("throws ExprError on invalid expression", () => {
     const ctx = makeContext();
     expect(() => evalMacroValue("invalid_var", ctx)).toThrow(ExprError);
+  });
+});
+
+// =============================================================================
+// Roll20 Dice
+// =============================================================================
+
+describe("roll20 dice", () => {
+  test("basic roll", () => {
+    for (let i = 0; i < 100; i++) {
+      const result = rollDice("2d6");
+      expect(result).toBeGreaterThanOrEqual(2);
+      expect(result).toBeLessThanOrEqual(12);
+    }
+  });
+
+  test("keep highest", () => {
+    for (let i = 0; i < 100; i++) {
+      const result = rollDice("4d6kh3");
+      expect(result).toBeGreaterThanOrEqual(3);
+      expect(result).toBeLessThanOrEqual(18);
+    }
+  });
+
+  test("keep lowest", () => {
+    for (let i = 0; i < 100; i++) {
+      const result = rollDice("4d6kl1");
+      expect(result).toBeGreaterThanOrEqual(1);
+      expect(result).toBeLessThanOrEqual(6);
+    }
+  });
+
+  test("drop highest", () => {
+    for (let i = 0; i < 100; i++) {
+      const result = rollDice("4d6dh1");
+      expect(result).toBeGreaterThanOrEqual(3);
+      expect(result).toBeLessThanOrEqual(18);
+    }
+  });
+
+  test("drop lowest", () => {
+    for (let i = 0; i < 100; i++) {
+      const result = rollDice("4d6dl1");
+      expect(result).toBeGreaterThanOrEqual(3);
+      expect(result).toBeLessThanOrEqual(18);
+    }
+  });
+
+  test("exploding dice", () => {
+    for (let i = 0; i < 100; i++) {
+      const result = rollDice("1d6!");
+      expect(result).toBeGreaterThanOrEqual(1);
+      // Can exceed 6 due to explosions
+    }
+  });
+
+  test("success counting >=", () => {
+    for (let i = 0; i < 100; i++) {
+      const result = rollDice("8d6>=5");
+      expect(result).toBeGreaterThanOrEqual(0);
+      expect(result).toBeLessThanOrEqual(8);
+    }
+  });
+
+  test("success counting >", () => {
+    for (let i = 0; i < 100; i++) {
+      const result = rollDice("4d6>4");
+      expect(result).toBeGreaterThanOrEqual(0);
+      expect(result).toBeLessThanOrEqual(4);
+    }
+  });
+
+  test("success counting <=", () => {
+    for (let i = 0; i < 100; i++) {
+      const result = rollDice("4d6<=2");
+      expect(result).toBeGreaterThanOrEqual(0);
+      expect(result).toBeLessThanOrEqual(4);
+    }
+  });
+
+  test("success counting <", () => {
+    for (let i = 0; i < 100; i++) {
+      const result = rollDice("4d6<3");
+      expect(result).toBeGreaterThanOrEqual(0);
+      expect(result).toBeLessThanOrEqual(4);
+    }
+  });
+
+  test("modifier", () => {
+    for (let i = 0; i < 100; i++) {
+      const result = rollDice("1d20+5");
+      expect(result).toBeGreaterThanOrEqual(6);
+      expect(result).toBeLessThanOrEqual(25);
+    }
+  });
+
+  test("negative modifier", () => {
+    for (let i = 0; i < 100; i++) {
+      const result = rollDice("1d20-5");
+      expect(result).toBeGreaterThanOrEqual(-4);
+      expect(result).toBeLessThanOrEqual(15);
+    }
+  });
+
+  test("invalid expression throws", () => {
+    expect(() => rollDice("invalid")).toThrow("Invalid dice expression");
+    expect(() => rollDice("d6")).toThrow("Invalid dice expression");
+    expect(() => rollDice("")).toThrow("Invalid dice expression");
+  });
+});
+
+// =============================================================================
+// formatDuration
+// =============================================================================
+
+describe("formatDuration", () => {
+  test("zero returns just now", () => {
+    expect(formatDuration(0)).toBe("just now");
+  });
+
+  test("1 second", () => {
+    expect(formatDuration(1000)).toBe("1 second");
+  });
+
+  test("multiple seconds", () => {
+    expect(formatDuration(5000)).toBe("5 seconds");
+  });
+
+  test("1 minute", () => {
+    expect(formatDuration(60000)).toBe("1 minute");
+  });
+
+  test("1 hour", () => {
+    expect(formatDuration(3600000)).toBe("1 hour");
+  });
+
+  test("1 hour 30 minutes", () => {
+    expect(formatDuration(5400000)).toBe("1 hour 30 minutes");
+  });
+
+  test("1 minute 30 seconds", () => {
+    expect(formatDuration(90000)).toBe("1 minute 30 seconds");
+  });
+
+  test("1 day", () => {
+    expect(formatDuration(86400000)).toBe("1 day");
+  });
+
+  test("1 week", () => {
+    expect(formatDuration(604800000)).toBe("1 week");
+  });
+
+  test("2 weeks 3 days", () => {
+    expect(formatDuration(604800000 * 2 + 86400000 * 3)).toBe("2 weeks 3 days");
+  });
+
+  test("Infinity returns a long time", () => {
+    expect(formatDuration(Infinity)).toBe("a long time");
+  });
+
+  test("picks at most 2 units", () => {
+    // 1 week, 2 days, 3 hours - should only show first 2
+    const ms = 604800000 + 2 * 86400000 + 3 * 3600000;
+    expect(formatDuration(ms)).toBe("1 week 2 days");
+  });
+});
+
+// =============================================================================
+// parseOffset
+// =============================================================================
+
+describe("parseOffset", () => {
+  test("1d", () => {
+    const result = parseOffset("1d");
+    expect(result.ms).toBe(86400000);
+    expect(result.years).toBe(0);
+    expect(result.months).toBe(0);
+  });
+
+  test("3y2mo", () => {
+    const result = parseOffset("3y2mo");
+    expect(result.years).toBe(3);
+    expect(result.months).toBe(2);
+    expect(result.ms).toBe(0);
+  });
+
+  test("1h30m", () => {
+    const result = parseOffset("1h30m");
+    expect(result.ms).toBe(5400000);
+  });
+
+  test("negative offset", () => {
+    const result = parseOffset("-1w");
+    expect(result.ms).toBe(-604800000);
+  });
+
+  test("verbose units", () => {
+    const result = parseOffset("3 years");
+    expect(result.years).toBe(3);
+  });
+
+  test("verbose months", () => {
+    const result = parseOffset("2 months");
+    expect(result.months).toBe(2);
+  });
+
+  test("seconds", () => {
+    const result = parseOffset("30s");
+    expect(result.ms).toBe(30000);
+  });
+
+  test("combined ms units", () => {
+    const result = parseOffset("1w2d");
+    expect(result.ms).toBe(604800000 + 2 * 86400000);
+  });
+});
+
+// =============================================================================
+// New ExprContext Functions
+// =============================================================================
+
+describe("new ExprContext functions", () => {
+  test("duration formats ms as human-readable", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    expect(ctx.duration(5400000)).toBe("1 hour 30 minutes");
+    expect(ctx.duration(0)).toBe("just now");
+    expect(ctx.duration(Infinity)).toBe("a long time");
+  });
+
+  test("date_str returns non-empty string", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    expect(ctx.date_str()).toBeTruthy();
+    expect(typeof ctx.date_str()).toBe("string");
+  });
+
+  test("time_str returns non-empty string", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    expect(ctx.time_str()).toBeTruthy();
+    expect(typeof ctx.time_str()).toBe("string");
+  });
+
+  test("isodate returns YYYY-MM-DD format", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    expect(ctx.isodate()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  test("isotime returns HH:MM format", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    expect(ctx.isotime()).toMatch(/^\d{2}:\d{2}$/);
+  });
+
+  test("weekday returns a valid day name", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    expect(days).toContain(ctx.weekday());
+  });
+
+  test("date functions accept offset", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    // Should not throw with offset
+    expect(typeof ctx.date_str("1d")).toBe("string");
+    expect(typeof ctx.time_str("-1h")).toBe("string");
+    expect(ctx.isodate("1y")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(ctx.isotime("30m")).toMatch(/^\d{2}:\d{2}$/);
+    expect(typeof ctx.weekday("1d")).toBe("string");
+  });
+
+  test("group returns comma-separated chars", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      chars: ["Alice", "Bob", "Carol"],
+    });
+    expect(ctx.group).toBe("Alice, Bob, Carol");
+  });
+
+  test("group is empty when no chars", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      chars: [],
+    });
+    expect(ctx.group).toBe("");
+  });
+
+  test("group works in expressions", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      chars: ["Alice", "Bob"],
+    });
+    expect(evalExpr('group.includes("Alice")', ctx)).toBe(true);
+    expect(evalExpr('group.includes("Bob")', ctx)).toBe(true);
+    expect(evalExpr('group.includes("Carol")', ctx)).toBe(false);
+  });
+
+  test("duration works in expressions", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    expect(evalExpr('duration(60000) == "1 minute"', ctx)).toBe(true);
+  });
+
+  test("isodate works in expressions", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    const result = evalMacroValue("isodate()", ctx);
+    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  test("weekday works in expressions", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    const result = evalMacroValue("weekday()", ctx);
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    expect(days).toContain(result);
+  });
+});
+
+// =============================================================================
+// messages() with filter
+// =============================================================================
+
+describe("messages() with filter", () => {
+  test("filter parameter is passed through", () => {
+    let lastFilter: string | undefined;
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      messages: (n = 1, fmt?: string, filter?: string) => {
+        lastFilter = filter;
+        return "test";
+      },
+    });
+    ctx.messages(1, "%m", "user");
+    expect(lastFilter).toBe("user");
+
+    ctx.messages(1, "%m", "char");
+    expect(lastFilter).toBe("char");
+  });
+
+  test("messages without filter works normally", () => {
+    let lastFilter: string | undefined;
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      messages: (n = 1, fmt?: string, filter?: string) => {
+        lastFilter = filter;
+        return "test";
+      },
+    });
+    ctx.messages(1, "%m");
+    expect(lastFilter).toBeUndefined();
   });
 });
 

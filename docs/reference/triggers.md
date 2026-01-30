@@ -51,8 +51,16 @@ $if content.includes(hello): $respond
 | `idle_ms` | number | Milliseconds since any message in channel |
 | `random()` | function | Float [0,1), or int with `random(max)` [1,max] / `random(min,max)` [min,max] |
 | `has_fact(pattern)` | function | Check if entity has matching fact |
+| `roll(dice)` | function | Dice roll (roll20 syntax: `"2d6+3"`, `"4d6kh3"`, `"1d6!"`, `"8d6>=5"`) |
 | `mentioned_in_dialogue(name)` | function | Check if name appears in quoted dialogue |
-| `messages(n, format)` | function | Last n messages. Format: `%a`=author, `%m`=message (default `"%a: %m"`) |
+| `messages(n, format, filter)` | function | Last n messages. Format: `%a`=author, `%m`=message. Filter: `"user"`, `"char"`, or name |
+| `duration(ms)` | function | Human-readable duration (e.g. `duration(idle_ms)` → "5 minutes") |
+| `date_str(offset?)` | function | Date string (e.g. "Thu Jan 30 2026"). Optional offset: `"1d"`, `"-1w"` |
+| `time_str(offset?)` | function | Time string (e.g. "6:00 PM"). Optional offset |
+| `isodate(offset?)` | function | ISO date (e.g. "2026-01-30"). Optional offset |
+| `isotime(offset?)` | function | ISO time (e.g. "18:00"). Optional offset |
+| `weekday(offset?)` | function | Day name (e.g. "Thursday"). Optional offset |
+| `group` | string | All bound character names, comma-separated |
 | `time.hour` | number | Current hour (0-23) |
 | `time.is_day` | boolean | 6am-6pm |
 | `time.is_night` | boolean | 6pm-6am |

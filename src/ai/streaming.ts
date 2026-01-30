@@ -111,8 +111,13 @@ export async function* handleMessageStreaming(
   // Expand {{entity:ID}} refs and other macros in facts, collect referenced entities
   const other: EntityWithFacts[] = [];
   const seenIds = new Set(entities.map(e => e.id));
+  const respondingNames = entities.map(e => e.name);
   for (const entity of entities) {
-    other.push(...expandEntityRefs(entity, seenIds, entity.exprContext));
+    other.push(...expandEntityRefs(entity, seenIds, entity.exprContext, {
+      modelSpec: entity.modelSpec,
+      contextLimit: entity.contextLimit,
+      respondingNames,
+    }));
   }
 
   // Add user entity if bound

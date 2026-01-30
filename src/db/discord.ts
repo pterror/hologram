@@ -280,6 +280,7 @@ export interface Message {
   author_id: string;
   author_name: string;
   content: string;
+  discord_message_id: string | null;
   created_at: string;
 }
 
@@ -336,6 +337,53 @@ export function getMessages(channelId: string, limit = 50): Message[] {
     ORDER BY created_at DESC
     LIMIT ?
   `).all(channelId, limit) as Message[];
+}
+
+/**
+ * Get filtered messages from a channel.
+ * @param filter - "char" for webhook/entity messages, "user" for non-webhook messages,
+ *   or any other string for case-insensitive author name match.
+ */
+export function getFilteredMessages(
+  channelId: string,
+  limit: number,
+  filter: string
+): Message[] {
+  const db = getDb();
+  const forgetTime = getChannelForgetTime(channelId);
+
+  const timeClause = forgetTime ? ` AND m.created_at > ?` : "";
+  const timeParams = forgetTime ? [forgetTime] : [];
+
+  if (filter === "char") {
+    // Only messages that have a corresponding webhook_messages entry
+    return db.prepare(`
+      SELECT m.* FROM messages m
+      INNER JOIN webhook_messages wm ON wm.message_id = m.discord_message_id
+      WHERE m.channel_id = ?${timeClause}
+      ORDER BY m.created_at DESC
+      LIMIT ?
+    `).all(channelId, ...timeParams, limit) as Message[];
+  }
+
+  if (filter === "user") {
+    // Only messages that do NOT have a webhook_messages entry
+    return db.prepare(`
+      SELECT m.* FROM messages m
+      LEFT JOIN webhook_messages wm ON wm.message_id = m.discord_message_id
+      WHERE m.channel_id = ? AND wm.message_id IS NULL${timeClause}
+      ORDER BY m.created_at DESC
+      LIMIT ?
+    `).all(channelId, ...timeParams, limit) as Message[];
+  }
+
+  // Filter by author name (case-insensitive)
+  return db.prepare(`
+    SELECT * FROM messages
+    WHERE channel_id = ? AND author_name = ? COLLATE NOCASE${timeClause}
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(channelId, filter, ...timeParams, limit) as Message[];
 }
 
 export function clearMessages(channelId: string): number {

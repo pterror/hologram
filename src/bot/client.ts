@@ -7,7 +7,7 @@ import { InferenceError } from "../ai/models";
 import type { EvaluatedEntity } from "../ai/context";
 import { isModelAllowed } from "../ai/models";
 import { retrieveRelevantMemories, type MemoryScope } from "../db/memories";
-import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, updateMessageByDiscordId, deleteMessageByDiscordId, trackWebhookMessage, getWebhookMessageEntity, getMessages, formatMessagesForContext, recordEvalError } from "../db/discord";
+import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, updateMessageByDiscordId, deleteMessageByDiscordId, trackWebhookMessage, getWebhookMessageEntity, getMessages, getFilteredMessages, formatMessagesForContext, recordEvalError } from "../db/discord";
 import { getEntity, getEntityWithFacts, getSystemEntity, getFactsForEntity, type EntityWithFacts } from "../db/entities";
 import { evaluateFacts, createBaseContext, parsePermissionDirectives, isUserBlacklisted } from "../logic/expr";
 import { executeWebhook, editWebhookMessage, setBot } from "./webhooks";
@@ -372,7 +372,10 @@ bot.events.messageCreate = async (message) => {
         const regex = new RegExp(pattern, "i");
         return facts.some(f => regex.test(f));
       },
-      messages: (n = 1, format?: string) => formatMessagesForContext(getMessages(channelId, n), format),
+      messages: (n = 1, format?: string, filter?: string) =>
+        filter
+          ? formatMessagesForContext(getFilteredMessages(channelId, n, filter), format)
+          : formatMessagesForContext(getMessages(channelId, n), format),
       response_ms: lastResponse > 0 ? messageTime - lastResponse : Infinity,
       retry_ms: 0,
       idle_ms: idleMs,
@@ -516,7 +519,10 @@ async function processEntityRetry(
       const regex = new RegExp(pattern, "i");
       return facts.some(f => regex.test(f));
     },
-    messages: (n = 1, format?: string) => formatMessagesForContext(getMessages(channelId, n), format),
+    messages: (n = 1, format?: string, filter?: string) =>
+      filter
+        ? formatMessagesForContext(getFilteredMessages(channelId, n, filter), format)
+        : formatMessagesForContext(getMessages(channelId, n), format),
     response_ms: lastResponse > 0 ? now - lastResponse : Infinity,
     retry_ms: now - messageTime,
     idle_ms: retryIdleMs,

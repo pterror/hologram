@@ -60,8 +60,22 @@ export interface ExprContext {
   name: string;
   /** Names of all characters bound to channel */
   chars: string[];
-  /** Get the last N messages from the channel. Format: %a=author, %m=message (default "%a: %m") */
-  messages: (n?: number, format?: string) => string;
+  /** Get the last N messages from the channel. Format: %a=author, %m=message (default "%a: %m"). Filter: "user", "char", or name. */
+  messages: (n?: number, format?: string, filter?: string) => string;
+  /** Comma-separated names of all characters bound to channel */
+  group: string;
+  /** Format a duration in ms as human-readable string */
+  duration: (ms: number) => string;
+  /** Date string, e.g. "Thu Jan 30 2026", with optional offset */
+  date_str: (offset?: string) => string;
+  /** Time string, e.g. "6:00 PM", with optional offset */
+  time_str: (offset?: string) => string;
+  /** ISO date "2026-01-30", with optional offset */
+  isodate: (offset?: string) => string;
+  /** ISO time "18:00", with optional offset */
+  isotime: (offset?: string) => string;
+  /** Weekday name "Thursday", with optional offset */
+  weekday: (offset?: string) => string;
   /** Channel metadata */
   channel: {
     id: string;
@@ -467,6 +481,13 @@ const EXPR_CONTEXT_REFERENCE: ExprContext = {
   name: "",
   chars: [],
   messages: () => "",
+  group: "",
+  duration: () => "",
+  date_str: () => "",
+  time_str: () => "",
+  isodate: () => "",
+  isotime: () => "",
+  weekday: () => "",
   interaction_type: "",
   channel: { id: "", name: "", description: "", mention: "" },
   server: { id: "", name: "", description: "" },
@@ -1602,8 +1623,8 @@ export interface BaseContextOptions {
   facts?: string[];
   /** Function to check if entity has a fact matching pattern */
   has_fact: (pattern: string) => boolean;
-  /** Function to get the last N messages from the channel. Format: %a=author, %m=message */
-  messages?: (n?: number, format?: string) => string;
+  /** Function to get the last N messages from the channel. Format: %a=author, %m=message. Filter: "user", "char", or name. */
+  messages?: (n?: number, format?: string, filter?: string) => string;
   response_ms?: number;
   retry_ms?: number;
   idle_ms?: number;
@@ -1619,6 +1640,8 @@ export interface BaseContextOptions {
   name?: string;
   /** Names of all characters bound to channel */
   chars?: string[];
+  /** Explicit group string override (defaults to chars joined) */
+  group?: string;
   /** Channel metadata */
   channel?: { id: string; name: string; description: string; mention: string };
   /** Server metadata */
@@ -1669,6 +1692,7 @@ export function createBaseContext(options: BaseContextOptions): ExprContext {
   const now = new Date();
   const hour = now.getHours();
   const messages = options.messages ?? (() => "");
+  const chars = options.chars ?? [];
 
   return {
     self: parseSelfContext(options.facts ?? []),
@@ -1697,32 +1721,205 @@ export function createBaseContext(options: BaseContextOptions): ExprContext {
     author: messages(1, "%a"),
     interaction_type: options.interaction_type,
     name: options.name ?? "",
-    chars: options.chars ?? [],
+    chars,
     messages,
+    group: options.group ?? chars.join(", "),
+    duration: (ms: number) => formatDuration(ms),
+    date_str: (offset?: string) => {
+      const d = offset ? applyOffset(now, offset) : now;
+      return d.toLocaleDateString("en-US", { weekday: "short", year: "numeric", month: "short", day: "numeric" });
+    },
+    time_str: (offset?: string) => {
+      const d = offset ? applyOffset(now, offset) : now;
+      return d.toLocaleTimeString("en-US");
+    },
+    isodate: (offset?: string) => {
+      const d = offset ? applyOffset(now, offset) : now;
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    },
+    isotime: (offset?: string) => {
+      const d = offset ? applyOffset(now, offset) : now;
+      return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    },
+    weekday: (offset?: string) => {
+      const d = offset ? applyOffset(now, offset) : now;
+      return d.toLocaleDateString("en-US", { weekday: "long" });
+    },
     channel: Object.assign(Object.create(null), options.channel ?? { id: "", name: "", description: "", mention: "" }),
     server: Object.assign(Object.create(null), options.server ?? { id: "", name: "", description: "" }),
   };
 }
 
 /**
- * Simple dice roller: "2d6+3" -> random result
+ * Roll20-style dice roller.
+ *
+ * Supported syntax:
+ * - Basic: 2d6, 1d20+5, 3d8-2
+ * - Keep highest/lowest: 4d6kh3, 4d6kl1
+ * - Drop highest/lowest: 4d6dh1, 4d6dl1
+ * - Exploding: 1d6! (reroll and add on max, cap at 100)
+ * - Success counting: 8d6>=5 (count dice >= 5)
  */
-function rollDice(expr: string): number {
-  const match = expr.match(/^(\d+)d(\d+)([+-]\d+)?$/);
+export function rollDice(expr: string): number {
+  const match = expr.match(
+    /^(\d+)d(\d+)(kh\d+|kl\d+|dh\d+|dl\d+|!)?([+-]\d+)?(>=\d+|<=\d+|>\d+|<\d+)?$/
+  );
   if (!match) {
     throw new ExprError(`Invalid dice expression: ${expr}`);
   }
 
   const count = parseInt(match[1]);
   const sides = parseInt(match[2]);
-  const modifier = match[3] ? parseInt(match[3]) : 0;
+  const keepDrop = match[3] ?? "";
+  const modifier = match[4] ? parseInt(match[4]) : 0;
+  const successExpr = match[5] ?? "";
 
-  let total = modifier;
+  // Roll dice
+  const dice: number[] = [];
+  const isExploding = keepDrop === "!";
+
   for (let i = 0; i < count; i++) {
-    total += Math.floor(Math.random() * sides) + 1;
+    let roll = Math.floor(Math.random() * sides) + 1;
+    if (isExploding) {
+      let total = roll;
+      let explosions = 0;
+      while (roll === sides && explosions < 100) {
+        roll = Math.floor(Math.random() * sides) + 1;
+        total += roll;
+        explosions++;
+      }
+      dice.push(total);
+    } else {
+      dice.push(roll);
+    }
   }
 
+  // Apply keep/drop modifiers
+  let filtered = dice.slice();
+  if (keepDrop && !isExploding) {
+    const n = parseInt(keepDrop.slice(2));
+    const sorted = dice.slice().sort((a, b) => a - b);
+    if (keepDrop.startsWith("kh")) {
+      filtered = sorted.slice(-n);
+    } else if (keepDrop.startsWith("kl")) {
+      filtered = sorted.slice(0, n);
+    } else if (keepDrop.startsWith("dh")) {
+      filtered = sorted.slice(0, sorted.length - n);
+    } else if (keepDrop.startsWith("dl")) {
+      filtered = sorted.slice(n);
+    }
+  }
+
+  // Success counting
+  if (successExpr) {
+    const op = successExpr.match(/^(>=|<=|>|<)(\d+)$/)!;
+    const threshold = parseInt(op[2]);
+    let successes = 0;
+    for (const d of filtered) {
+      if (
+        (op[1] === ">=" && d >= threshold) ||
+        (op[1] === "<=" && d <= threshold) ||
+        (op[1] === ">" && d > threshold) ||
+        (op[1] === "<" && d < threshold)
+      ) {
+        successes++;
+      }
+    }
+    return successes;
+  }
+
+  // Sum + modifier
+  let total = modifier;
+  for (const d of filtered) {
+    total += d;
+  }
   return total;
+}
+
+// =============================================================================
+// Duration & Offset Utilities
+// =============================================================================
+
+/**
+ * Format a duration in milliseconds as a human-readable string.
+ * Picks up to 2 largest non-zero units from: weeks, days, hours, minutes, seconds.
+ */
+export function formatDuration(ms: number): string {
+  if (ms === 0) return "just now";
+  if (!isFinite(ms)) return "a long time";
+
+  const absMs = Math.abs(ms);
+  const units: [string, number][] = [
+    ["week", Math.floor(absMs / 604800000)],
+    ["day", Math.floor((absMs % 604800000) / 86400000)],
+    ["hour", Math.floor((absMs % 86400000) / 3600000)],
+    ["minute", Math.floor((absMs % 3600000) / 60000)],
+    ["second", Math.floor((absMs % 60000) / 1000)],
+  ];
+
+  const parts: string[] = [];
+  for (const [name, value] of units) {
+    if (value > 0) {
+      parts.push(`${value} ${name}${value !== 1 ? "s" : ""}`);
+      if (parts.length === 2) break;
+    }
+  }
+
+  return parts.length > 0 ? parts.join(" ") : "just now";
+}
+
+/** Unit multipliers in milliseconds */
+const UNIT_MS: Record<string, number> = {
+  w: 604800000, week: 604800000, weeks: 604800000,
+  d: 86400000, day: 86400000, days: 86400000,
+  h: 3600000, hour: 3600000, hours: 3600000,
+  m: 60000, min: 60000, mins: 60000, minute: 60000, minutes: 60000,
+  s: 1000, sec: 1000, secs: 1000, second: 1000, seconds: 1000,
+};
+
+/**
+ * Parse an offset string into years, months, and milliseconds.
+ * Supports: "3y2mo", "1d", "-1w", "3 years 2 months", "30s", "1h30m"
+ */
+export function parseOffset(offset: string): { years: number; months: number; ms: number } {
+  const trimmed = offset.trim();
+  const negative = trimmed.startsWith("-");
+  const abs = negative ? trimmed.slice(1) : trimmed;
+
+  let years = 0;
+  let months = 0;
+  let ms = 0;
+
+  // Match number+unit pairs (e.g. "3y", "2 months", "30s")
+  const pattern = /(\d+)\s*(y(?:ears?)?|mo(?:nths?)?|w(?:eeks?)?|d(?:ays?)?|h(?:ours?)?|m(?:in(?:utes?|s)?)?|s(?:ec(?:onds?|s)?)?)\s*/gi;
+  let match;
+  while ((match = pattern.exec(abs)) !== null) {
+    const value = parseInt(match[1]);
+    const unit = match[2].toLowerCase();
+    if (unit === "y" || unit === "year" || unit === "years") {
+      years += value;
+    } else if (unit === "mo" || unit === "month" || unit === "months") {
+      months += value;
+    } else {
+      const mult = UNIT_MS[unit];
+      if (mult) ms += value * mult;
+    }
+  }
+
+  const sign = negative ? -1 : 1;
+  return { years: years * sign, months: months * sign, ms: ms * sign };
+}
+
+/**
+ * Apply an offset string to a date.
+ */
+function applyOffset(date: Date, offset: string): Date {
+  const { years, months, ms } = parseOffset(offset);
+  const result = new Date(date.getTime());
+  if (years) result.setFullYear(result.getFullYear() + years);
+  if (months) result.setMonth(result.getMonth() + months);
+  if (ms) result.setTime(result.getTime() + ms);
+  return result;
 }
 
 // =============================================================================

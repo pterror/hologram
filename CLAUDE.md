@@ -40,6 +40,8 @@ src/
 
 docs/
 ├── README.md             # User documentation
+├── reference/            # Fact patterns, triggers reference
+├── guide/                # Migration guides (SillyTavern)
 └── archive/              # Old docs from previous architecture
 ```
 
@@ -59,6 +61,8 @@ Facts:
 ```
 
 **Macros:** `{{entity:ID}}` expands to entity name, `{{char}}` expands to current entity name, `{{user}}` expands to literal "user". Any expression works: `{{channel.name}}`, `{{self.health}}`, etc.
+
+**Convenience macros:** `{{date}}`, `{{time}}`, `{{weekday}}`, `{{isodate}}`, `{{isotime}}`, `{{group}}`, `{{model}}`, `{{maxPrompt}}`, `{{idle_duration}}`, `{{lastMessage}}`, `{{lastUserMessage}}`, `{{lastCharMessage}}`, `{{charIfNotGroup}}`, `{{notChar}}`, `{{groupNotMuted}}`, `{{random: A,B,C}}`, `{{roll: 2d6}}`, `{{newline}}`, `{{space}}`, `{{noop}}`, `{{trim}}`
 
 ### Database (8 tables)
 
@@ -159,7 +163,7 @@ $if mentioned: $freeform           # Conditional freeform
 
 With `$freeform`, the LLM can write naturally with multiple characters interacting in the same response. The response is sent as a single message (using the first entity's webhook identity) rather than being split per character.
 
-**Context variables:** `mentioned`, `replied`, `is_forward`, `is_self`, `content`, `author`, `response_ms`, `retry_ms`, `idle_ms`, `time.is_night`, `self.*`, `channel.*`, `server.*`
+**Context variables:** `mentioned`, `replied`, `is_forward`, `is_self`, `content`, `author`, `response_ms`, `retry_ms`, `idle_ms`, `time.is_night`, `self.*`, `channel.*`, `server.*`, `group`, `name`, `chars`
 
 ### Context Window
 
@@ -196,9 +200,13 @@ Other preprocessing:
 
 Stickers are serialized as `*sent a sticker: name*` and appended to message content. A sticker-only message becomes just the sticker text, e.g. `*sent a sticker: catwave*`.
 
-**Functions:** `random(n)`, `has_fact(pattern)`, `roll(dice)`, `mentioned_in_dialogue(name)`, `messages(n, format)`
+**Functions:** `random(n)`, `has_fact(pattern)`, `roll(dice)`, `mentioned_in_dialogue(name)`, `messages(n, format, filter)`, `duration(ms)`, `date_str(offset?)`, `time_str(offset?)`, `isodate(offset?)`, `isotime(offset?)`, `weekday(offset?)`
 
-The `messages(n, format)` function returns the last N messages (default 1). Format string uses `%a` for author and `%m` for message (default `"%a: %m"`). The `content` and `author` variables are aliases for `messages(1, "%m")` and `messages(1, "%a")`.
+The `messages(n, format, filter)` function returns the last N messages (default 1). Format string uses `%a` for author and `%m` for message (default `"%a: %m"`). Filter: `"user"` for human messages, `"char"` for entity messages, or an author name. The `content` and `author` variables are aliases for `messages(1, "%m")` and `messages(1, "%a")`.
+
+The `roll(dice)` function supports roll20-style syntax: basic (`2d6+3`), keep highest/lowest (`4d6kh3`, `4d6kl1`), drop highest/lowest (`4d6dh1`, `4d6dl1`), exploding (`1d6!`), and success counting (`8d6>=5`).
+
+Date/time functions accept optional offset strings: `"1d"`, `"-1w"`, `"3y2mo"`, `"1h30m"`, `"3 years 2 months"`.
 
 ### Bindings
 
