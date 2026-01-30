@@ -750,6 +750,8 @@ async function handleStreamingResponse(
         // Single entity lines full mode: finalize current line
         if (entity && currentLineMessage) {
           await editStreamMessage(channelId, currentLineMessage.messageId, event.content, entity);
+          // Update DB — messageUpdate skips own messages
+          updateMessageByDiscordId(currentLineMessage.messageId, event.content);
         } else if (entity && !currentLineMessage) {
           // Line was too short for delta, send final content
           const msgId = await sendStreamMessage(channelId, event.content, entity);
@@ -831,6 +833,8 @@ async function handleStreamingResponse(
           const existing = charLineMessages.get(event.name);
           if (existing) {
             await editStreamMessage(channelId, existing.messageId, event.content, charEntity);
+            // Update DB — messageUpdate skips own messages
+            updateMessageByDiscordId(existing.messageId, event.content);
           } else {
             // Line was too short for delta, send final content
             const msgId = await sendStreamMessage(channelId, event.content, charEntity);
@@ -871,6 +875,8 @@ async function handleStreamingResponse(
           if (existing) {
             // Final edit with complete content (full mode)
             await editStreamMessage(channelId, existing.messageId, event.content, charEntity);
+            // Update DB — messageUpdate skips own messages
+            updateMessageByDiscordId(existing.messageId, event.content);
           } else if (event.content && !charLinesSent.has(event.name)) {
             // No message created yet via any path, create one
             const msgId = await sendStreamMessage(channelId, event.content, charEntity);
@@ -882,6 +888,10 @@ async function handleStreamingResponse(
       }
 
       case "done": {
+        // Update single-entity full mode message with final content
+        if (fullMessage) {
+          updateMessageByDiscordId(fullMessage.messageId, fullMessage.content);
+        }
         debug("Streaming complete", { fullTextLength: event.fullText.length });
         break;
       }
