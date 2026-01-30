@@ -22,7 +22,8 @@ Full Nunjucks template syntax:
 {{ expr }}                                    — expression output
 {% if expr %}...{% elif expr %}...{% else %}...{% endif %}
 {% for var in expr %}...{% else %}...{% endfor %}
-{% block name %}...{% endblock %}             — named blocks (rendered inline)
+{% extends "entity-name" %}                  — template inheritance (loads another entity's template)
+{% block name %}...{% endblock %}             — named blocks (rendered inline, or overrides parent blocks)
 {{ value | filter }}                          — pipe filters
 {%- tag -%}                                  — whitespace control
 {# comment #}
@@ -88,7 +89,9 @@ All standard expression context variables are available (see `ExprContext`), plu
 | `memories` | `Record<number, string[]>` | Entity ID to memory strings |
 | `entity_names` | `string` | Comma-separated names of responding entities |
 | `freeform` | `boolean` | True if any entity has `$freeform` |
-| `history` | `Array<{author, content, author_id, created_at}>` | Structured message history (chronological) |
+| `history` | `Array<{author, content, author_id, created_at, is_bot, role, embeds, stickers, attachments}>` | Structured message history (chronological) |
+| `_msg` | `function(role, opts?)` | Emit structured message markers (see below) |
+| `_single_entity` | `boolean` | True when exactly one entity is responding |
 
 ### Structured Messages
 
@@ -100,13 +103,63 @@ The `history` variable provides the raw message history as structured objects:
 | `content` | `string` | Message content |
 | `author_id` | `string` | Discord user ID of the author |
 | `created_at` | `string` | ISO timestamp of the message |
+| `is_bot` | `boolean` | Whether the author is a Discord bot |
+| `role` | `"user" \| "assistant"` | `"assistant"` for entity messages, `"user"` for human messages |
+| `embeds` | `Array<{title?, description?, fields?}>` | Discord embed data |
+| `stickers` | `Array<{id, name, format_type}>` | Sticker data (format_type: 1=PNG, 2=APNG, 3=Lottie, 4=GIF) |
+| `attachments` | `Array<{filename, url, content_type?}>` | File attachments |
+
+### Structured Output Protocol (`_msg()`)
+
+Templates can emit structured chat messages using the `_msg()` function. This produces a proper system prompt + message array sent to the LLM, instead of a single system prompt.
+
+```
+{# Content before the first _msg() becomes the system prompt #}
+You are {{ entities[0].name }}.
+{{ entities[0].facts | join("\n") }}
+
+{# Emit structured messages with roles #}
+{% for msg in history %}
+{{ _msg(msg.role, {author: msg.author, author_id: msg.author_id}) }}
+{{ msg.author }}: {{ msg.content }}
+{% endfor %}
+```
+
+**Parameters:**
+- `role` (required): `"system"`, `"user"`, or `"assistant"`
+- `opts` (optional): `{author?: string, author_id?: string}`
+
+**Behavior:**
+- Content before the first `_msg()` call becomes the system prompt
+- Content between `_msg()` calls becomes individual messages with the specified role
+- Empty messages (whitespace-only) are filtered out
+- If no `_msg()` calls are present, the entire output is the system prompt (legacy behavior)
+
+**Security:** The `_msg()` function uses a cryptographic nonce (256-bit random hex) to mark message boundaries. Template context values are strings, not template code — Discord user messages containing marker-like text cannot trigger the parser.
+
+### Template Inheritance
+
+Templates can inherit from other entities' templates:
+
+```
+{% extends "base-entity-name" %}
+
+{% block custom_section %}
+Custom content here
+{% endblock %}
+```
+
+The parent template is loaded by looking up the entity by name and reading its template. The child template overrides parent `{% block %}` sections. Nunjucks provides built-in circular inheritance detection.
+
+**Note:** The parent template runs with the same context as the child (entities, history, etc. come from the current render call, not from the parent entity).
 
 ### Full Prompt Control
 
-When a template is active, its output IS the system prompt. The user message sent to the LLM is only the latest message (not the full history), since the template can include history directly:
+When a template uses `_msg()`, its output is parsed into a structured system prompt + message array. Without `_msg()`, the entire output is the system prompt and only the latest message is sent as user content. The built-in default template uses `_msg()` to produce proper role-based chat messages.
 
 ```
 {% for msg in history %}
+{{ _msg(msg.role) }}
 {{ msg.author }}: {{ msg.content }}
 {% endfor %}
 ```
@@ -206,7 +259,6 @@ Entities with different templates get **separate LLM calls**. Entities with the 
 
 The following Nunjucks features are not yet available and will be implemented in a future update:
 
-- `{% extends %}` — template inheritance (requires entity-name-based loader)
 - `{% include %}` — template inclusion
 - `{% macro %}` — reusable template macros
 - `{% set %}` — variable assignment

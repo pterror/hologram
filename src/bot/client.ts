@@ -88,6 +88,7 @@ export const bot = createBot({
     sticker: {
       id: true,
       name: true,
+      formatType: true,
     },
   },
 });
@@ -320,7 +321,11 @@ bot.events.messageCreate = async (message) => {
     }));
   }
   if (message.stickerItems?.length) {
-    msgData.stickers = message.stickerItems.map(s => s.name);
+    msgData.stickers = message.stickerItems.map(s => ({
+      id: s.id.toString(),
+      name: s.name,
+      format_type: (s as any).formatType ?? 0,
+    }));
   }
   const hasData = Object.keys(msgData).length > 0;
 

@@ -17,7 +17,10 @@ declare module "nunjucks" {
     throwOnUndefined?: boolean;
   }
 
-  export class Loader {}
+  export class Loader {
+    cache: Record<string, unknown>;
+    getSource(name: string): { src: string; path: string; noCache: boolean } | null;
+  }
 
   export const runtime: {
     memberLookup: (obj: unknown, val: unknown) => unknown;

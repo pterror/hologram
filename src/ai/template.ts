@@ -15,9 +15,11 @@
  * prototype chain traversal and dangerous methods.
  */
 
+import { randomBytes } from "crypto";
 import nunjucks from "nunjucks";
 import { ExprError } from "../logic/expr";
 import { validateRegexPattern } from "../logic/safe-regex";
+import { getEntityByName, getEntityTemplate } from "../db/entities";
 
 // =============================================================================
 // Limits
@@ -144,10 +146,27 @@ nunjucks.runtime.fromIterator = function (arr: unknown): unknown {
 };
 
 // =============================================================================
+// Template Loader (Entity-Name Resolution)
+// =============================================================================
+
+class EntityTemplateLoader extends nunjucks.Loader {
+  cache: Record<string, unknown> = {};
+
+  getSource(name: string): { src: string; path: string; noCache: boolean } | null {
+    const entity = getEntityByName(name);
+    if (!entity) return null;
+    const template = getEntityTemplate(entity.id);
+    if (!template) return null;
+    return { src: template, path: `entity:${entity.id}:${name}`, noCache: true };
+  }
+}
+
+// =============================================================================
 // Environment Setup
 // =============================================================================
 
-const env = new nunjucks.Environment(null, {
+const loader = new EntityTemplateLoader();
+const env = new nunjucks.Environment(loader, {
   autoescape: false, // No HTML escaping (we're generating LLM prompts)
   trimBlocks: true, // Strip newline after block tags
   lstripBlocks: true, // Strip leading whitespace on block-only lines
@@ -278,4 +297,112 @@ export function renderEntityTemplate(
       `Template error: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+// =============================================================================
+// Nonce-Based Structured Output Protocol
+// =============================================================================
+
+/** Valid roles for _msg() markers */
+const VALID_ROLES = new Set(["system", "user", "assistant"]);
+
+/** Marker format: <<<HMSG:{nonce}:{base64(JSON)}>>> */
+const MARKER_PREFIX = "<<<HMSG:";
+const MARKER_SUFFIX = ">>>";
+
+export interface ParsedTemplateMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+  author?: string;
+  author_id?: string;
+}
+
+export interface ParsedTemplateOutput {
+  /** Content before first _msg() marker (system prompt) */
+  systemPrompt: string;
+  /** Content between _msg() markers (structured messages) */
+  messages: ParsedTemplateMessage[];
+}
+
+/**
+ * Create a _msg() function bound to a specific nonce.
+ * Emits <<<HMSG:{nonce}:{base64(JSON)}>>> markers in template output.
+ */
+function makeMsgFunction(nonce: string): (role: string, opts?: { author?: string; author_id?: string }) => string {
+  return (role: string, opts?: { author?: string; author_id?: string }): string => {
+    if (!VALID_ROLES.has(role)) {
+      throw new ExprError(`_msg() role must be "system", "user", or "assistant", got "${role}"`);
+    }
+    const payload = JSON.stringify({ role, ...opts });
+    const encoded = Buffer.from(payload).toString("base64");
+    return `${MARKER_PREFIX}${nonce}:${encoded}${MARKER_SUFFIX}`;
+  };
+}
+
+/**
+ * Parse structured output from a rendered template.
+ * Splits on nonce-based markers to extract system prompt + messages.
+ */
+export function parseStructuredOutput(rendered: string, nonce: string): ParsedTemplateOutput {
+  const markerPattern = new RegExp(
+    `<<<HMSG:${nonce}:([A-Za-z0-9+/=]+)>>>`,
+    "g",
+  );
+
+  // Find all markers
+  const markers: Array<{ index: number; length: number; payload: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = markerPattern.exec(rendered)) !== null) {
+    markers.push({
+      index: match.index,
+      length: match[0].length,
+      payload: match[1],
+    });
+  }
+
+  // No markers → entire output is systemPrompt (legacy compat)
+  if (markers.length === 0) {
+    return { systemPrompt: rendered.trim(), messages: [] };
+  }
+
+  // Content before first marker → systemPrompt
+  const systemPrompt = rendered.slice(0, markers[0].index).trim();
+
+  // Content between markers → messages
+  const messages: ParsedTemplateMessage[] = [];
+  for (let i = 0; i < markers.length; i++) {
+    const marker = markers[i];
+    const contentStart = marker.index + marker.length;
+    const contentEnd = i + 1 < markers.length ? markers[i + 1].index : rendered.length;
+    const content = rendered.slice(contentStart, contentEnd).trim();
+
+    // Decode marker payload
+    const decoded = JSON.parse(Buffer.from(marker.payload, "base64").toString("utf-8"));
+    const role = decoded.role as "system" | "user" | "assistant";
+
+    // Skip empty-content messages
+    if (!content) continue;
+
+    const msg: ParsedTemplateMessage = { role, content };
+    if (decoded.author) msg.author = decoded.author;
+    if (decoded.author_id) msg.author_id = decoded.author_id;
+    messages.push(msg);
+  }
+
+  return { systemPrompt, messages };
+}
+
+/**
+ * Render a template and parse structured output.
+ * Injects _msg() into the template context for structured message emission.
+ * Returns parsed system prompt + messages.
+ */
+export function renderStructuredTemplate(
+  source: string,
+  ctx: Record<string, unknown>,
+): ParsedTemplateOutput {
+  const nonce = randomBytes(32).toString("hex");
+  ctx._msg = makeMsgFunction(nonce);
+  const rendered = renderEntityTemplate(source, ctx);
+  return parseStructuredOutput(rendered, nonce);
 }

@@ -26,7 +26,7 @@ src/
 │   ├── context.ts        # EvaluatedEntity, MessageContext, formatting utils
 │   ├── handler.ts        # handleMessage() + re-exports
 │   ├── parsing.ts        # Response parsing (XML + Name prefix), name stripping
-│   ├── prompt.ts         # expandEntityRefs(), buildSystemPrompt()
+│   ├── prompt.ts         # expandEntityRefs(), buildPromptAndMessages(), DEFAULT_TEMPLATE
 │   ├── streaming.ts      # handleMessageStreaming(), stream generators
 │   ├── template.ts       # Nunjucks template engine with runtime security patches
 │   ├── tools.ts          # createTools() factory + $locked permission checks
@@ -175,7 +175,8 @@ Override the default system prompt formatting per entity using custom templates 
 {{ expr }}                           — expression output
 {% if expr %}...{% elif expr %}...{% else %}...{% endif %}
 {% for var in expr %}...{% else %}...{% endfor %}
-{% block name %}...{% endblock %}    — named blocks (renders inline)
+{% extends "entity-name" %}          — template inheritance (loads another entity's template)
+{% block name %}...{% endblock %}    — named blocks (renders inline, or overrides parent blocks)
 {{ value | filter }}                 — pipe filters
 {%- tag -%}                          — whitespace control (strip leading/trailing)
 {# comment #}
@@ -191,18 +192,35 @@ Override the default system prompt formatting per entity using custom templates 
 - `memories` — object mapping entity ID to array of memory strings
 - `entity_names` — comma-separated names of responding entities
 - `freeform` — boolean, true if any entity has `$freeform`
-- `history` — array of structured messages `[{author, content, author_id, created_at, is_bot, embeds, stickers, attachments}]` (chronological order)
+- `history` — array of structured messages `[{author, content, author_id, created_at, is_bot, role, embeds, stickers, attachments}]` (chronological order). `role` is `"assistant"` for entity messages, `"user"` for human messages. `stickers` are `[{id, name, format_type}]` objects.
+- `_msg(role, opts?)` — function that emits structured message markers. See "Structured Output Protocol" below.
+- `_single_entity` — boolean, true when exactly one entity is responding (used by default template)
 
-**Full prompt control:** When a template is active, its output IS the system prompt. The user message sent to the LLM is only the latest message (not full history), since the template can include history via `{% for msg in history %}`.
+**Full prompt control:** When a template uses `_msg()`, its output is parsed into a structured system prompt + message array sent to the LLM. Without `_msg()`, the entire output is the system prompt and only the latest message is sent as user content. The built-in default template uses `_msg()` to produce proper role-based chat messages.
+
+**Structured output protocol (`_msg()`):** Call `_msg(role, opts?)` in templates to emit structured chat messages. `role` must be `"system"`, `"user"`, or `"assistant"`. Optional `opts` can include `{author, author_id}`. Content before the first `_msg()` call becomes the system prompt. Content between calls becomes individual messages.
+
+```
+{# System prompt content goes here #}
+You are {{ entities[0].name }}.
+
+{# Then emit structured messages #}
+{% for msg in history %}
+{{ _msg(msg.role, {author: msg.author, author_id: msg.author_id}) }}
+{{ msg.author }}: {{ msg.content }}
+{% endfor %}
+```
+
+**Template inheritance (`{% extends %}`):** Templates can inherit from other entities' templates using `{% extends "entity-name" %}`. The parent template is loaded by looking up the entity by name and reading its template. Override parent blocks with `{% block name %}...{% endblock %}`. Nunjucks has built-in circular inheritance detection.
 
 **Behavior:**
-- `null` template (default) = use standard `buildSystemPrompt()` formatting
+- `null` template (default) = use built-in `DEFAULT_TEMPLATE` (Nunjucks template that replicates standard formatting with `_msg()` structured output)
 - Empty submission via `/edit type:template` clears template back to default
 - Entities with different templates get separate LLM calls
 - Entities with the same template (including null) share a call as before
 - Limits: 1000 iterations per for-loop, 1MB output
 
-**Deferred (TODO.md):** `{% extends %}`, `{% include %}`, `{% macro %}`, `{% set %}` — require template loading/resolution (future: entity-name-based loader).
+**Deferred (TODO.md):** `{% include %}`, `{% macro %}`, `{% set %}` — not yet implemented.
 
 ### Context Window
 
@@ -237,7 +255,7 @@ Other preprocessing:
 
 ### Stickers
 
-Stickers are serialized as `*sent a sticker: name*` and appended to message content. A sticker-only message becomes just the sticker text, e.g. `*sent a sticker: catwave*`.
+Stickers are stored as structured objects `{id, name, format_type}` in the message `data` JSON column (`format_type`: 1=PNG, 2=APNG, 3=Lottie, 4=GIF). Legacy DB rows with string-only sticker names are normalized on read via `normalizeStickers()`. Stickers are serialized as `*sent a sticker: name*` and appended to message content for LLM context. A sticker-only message becomes just the sticker text, e.g. `*sent a sticker: catwave*`.
 
 **Functions:** `random(n)`, `has_fact(pattern)`, `roll(dice)`, `mentioned_in_dialogue(name)`, `messages(n, format, filter)`, `duration(ms)`, `date_str(offset?)`, `time_str(offset?)`, `isodate(offset?)`, `isotime(offset?)`, `weekday(offset?)`
 

@@ -2,16 +2,13 @@ import { streamText, stepCountIs } from "ai";
 import { getLanguageModel, DEFAULT_MODEL, InferenceError } from "./models";
 import { debug, error } from "../logger";
 import { getEntityWithFacts, type EntityWithFacts } from "../db/entities";
-import { resolveDiscordEntity, getMessages, getWebhookMessageEntity } from "../db/discord";
+import { resolveDiscordEntity } from "../db/discord";
 import {
-  applyStripPatterns,
-  buildStructuredMessages,
   DEFAULT_CONTEXT_LIMIT,
   type EvaluatedEntity,
   type MessageContext,
-  type StructuredMessage,
 } from "./context";
-import { expandEntityRefs, buildSystemPrompt } from "./prompt";
+import { expandEntityRefs, buildPromptAndMessages } from "./prompt";
 import { createTools } from "./tools";
 import {
   stripNamePrefixFromStream,
@@ -131,17 +128,10 @@ export async function* handleMessageStreaming(
     }
   }
 
-  // Get message history
-  const history = getMessages(channelId, 100);
-
   // Determine context limit from entities (first non-null wins)
   const contextLimit = entities.find(e => e.contextLimit !== null)?.contextLimit ?? DEFAULT_CONTEXT_LIMIT;
 
-  // Build prompts
-  const template = entities[0]?.template ?? null;
-  const systemPrompt = buildSystemPrompt(entities, other, ctx.entityMemories, template, channelId);
-
-  // Apply strip patterns to message history
+  // Determine effective strip patterns
   const entityStripPatterns = entities[0]?.stripPatterns;
   const modelSpec_ = entities[0]?.modelSpec ?? DEFAULT_MODEL;
   const effectiveStripPatterns = entityStripPatterns !== null
@@ -150,28 +140,11 @@ export async function* handleMessageStreaming(
       ? ["</blockquote>"]
       : [];
 
-  // Build structured messages (role-based) or single user message for templates
-  let llmMessages: StructuredMessage[];
-  if (template) {
-    // Template controls full prompt — user message is just the latest
-    const latest = history[0]; // newest first
-    let latestContent = latest ? `${latest.author_name}: ${latest.content}` : "";
-    if (effectiveStripPatterns.length > 0) {
-      latestContent = applyStripPatterns(latestContent, effectiveStripPatterns);
-    }
-    llmMessages = [{ role: "user", content: latestContent }];
-  } else {
-    const entityNames = entities.map(e => e.name);
-    llmMessages = buildStructuredMessages(
-      history, contextLimit, entityNames,
-      (m) => !!m.discord_message_id && !!getWebhookMessageEntity(m.discord_message_id),
-    );
-    if (effectiveStripPatterns.length > 0) {
-      for (const msg of llmMessages) {
-        msg.content = applyStripPatterns(msg.content, effectiveStripPatterns);
-      }
-    }
-  }
+  // Build prompts and messages via template engine
+  const template = entities[0]?.template ?? null;
+  const { systemPrompt, messages: llmMessages } = buildPromptAndMessages(
+    entities, other, ctx.entityMemories, template, channelId, contextLimit, effectiveStripPatterns,
+  );
 
   debug("Calling LLM (streaming)", {
     entities: entities.map(e => e.name),

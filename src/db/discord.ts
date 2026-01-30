@@ -285,11 +285,26 @@ export interface Message {
   created_at: string;
 }
 
+export interface StickerData {
+  id: string;          // bigint → string for JSON
+  name: string;
+  format_type: number; // StickerFormatTypes enum value (1=PNG, 2=APNG, 3=Lottie, 4=GIF)
+}
+
 export interface MessageData {
   is_bot?: boolean;
   embeds?: Array<{ title?: string; description?: string; fields?: Array<{ name: string; value: string }> }>;
-  stickers?: string[];
+  stickers?: StickerData[];
   attachments?: Array<{ filename: string; url: string; content_type?: string }>;
+}
+
+/** Normalize sticker data for backward compat with legacy string[] format in DB rows */
+export function normalizeStickers(raw: unknown[]): StickerData[] {
+  return raw.map(s =>
+    typeof s === "string"
+      ? { id: "", name: s, format_type: 0 }   // legacy: name-only
+      : s as StickerData                        // new format
+  );
 }
 
 export function parseMessageData(raw: string | null): MessageData | null {
