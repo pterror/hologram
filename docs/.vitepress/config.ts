@@ -21,15 +21,22 @@ export default defineConfig({
           { text: 'Core Concepts', link: '/guide/concepts' },
           { text: 'Setting Up a Channel', link: '/guide/channel-setup' },
           { text: 'Creating a Persona', link: '/guide/personas' },
+          { text: 'Multi-Character Scenes', link: '/guide/multi-character' },
+          { text: 'Permissions', link: '/guide/permissions' },
           { text: 'Transformations', link: '/guide/transformations' },
+          { text: 'SillyTavern Migration', link: '/guide/sillytavern' },
         ]
       },
       {
         text: 'Reference',
         items: [
           { text: 'Commands', link: '/reference/commands' },
-          { text: 'Triggers', link: '/reference/triggers' },
+          { text: 'Directives', link: '/reference/directives' },
           { text: 'Fact Patterns', link: '/reference/facts' },
+          { text: 'Triggers', link: '/reference/triggers' },
+          { text: 'Custom Templates', link: '/reference/templates' },
+          { text: 'Expression Security', link: '/reference/expression-security' },
+          { text: 'Safe Regex', link: '/reference/safe-regex' },
         ]
       },
       {
