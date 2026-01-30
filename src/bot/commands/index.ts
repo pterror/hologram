@@ -180,6 +180,7 @@ export async function respondWithV2Modal(
       customId,
       title,
       components: labels,
+      flags: 1 << 15, // IS_COMPONENTS_V2
     },
   });
 }
