@@ -922,9 +922,15 @@ registerModalHandler("edit-permissions", async (bot, interaction, _values) => {
     const entries = buildEntries(values);
     const configKey = PERM_CONFIG_KEYS[field];
 
-    setEntityConfig(entityId, {
-      [configKey]: entries.length > 0 ? JSON.stringify(entries) : null,
-    });
+    if (field === "blacklist") {
+      setEntityConfig(entityId, {
+        [configKey]: entries.length > 0 ? JSON.stringify(entries) : null,
+      });
+    } else {
+      setEntityConfig(entityId, {
+        [configKey]: entries.length > 0 ? JSON.stringify(entries) : JSON.stringify("everyone"),
+      });
+    }
   }
 
   await respond(bot, interaction, `Updated permissions for "${entity.name}"`, true);

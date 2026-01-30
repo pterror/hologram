@@ -299,7 +299,7 @@ Permissions are managed via `/edit entity type:permissions`, which presents Disc
 **Storage:** Permission lists are stored as JSON arrays in entity config columns. Role IDs use a `role:` prefix to distinguish from user IDs. Legacy plain snowflakes and usernames still work for permission checks.
 
 **Semantics:**
-- 0 selections on view/edit/use = anyone (stored as `null`)
+- 0 selections on view/edit/use = `"everyone"` (stored as `JSON.stringify("everyone")`)
 - 0 selections on blacklist = no blacklist (stored as `null`)
 - New entities default to owner pre-selected in view and edit
 
