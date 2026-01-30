@@ -2174,6 +2174,10 @@ export function parsePermissionDirectives(facts: string[], defaults?: Permission
  * Entries can be Discord IDs (17-19 digits, matching user ID or role IDs) or usernames (case-insensitive).
  */
 export function matchesUserEntry(entry: string, userId: string, username: string, userRoles: string[] = []): boolean {
+  // Explicit role: prefix from mentionable select UI
+  if (entry.startsWith("role:")) {
+    return userRoles.includes(entry.slice(5));
+  }
   // Discord IDs are 17-19 digit snowflakes - check user ID and role IDs
   if (/^\d{17,19}$/.test(entry)) {
     return entry === userId || userRoles.includes(entry);

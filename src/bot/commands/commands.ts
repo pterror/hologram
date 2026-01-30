@@ -1,9 +1,12 @@
-import { ApplicationCommandOptionTypes, TextStyles } from "@discordeno/bot";
+import { ApplicationCommandOptionTypes, TextStyles, MessageComponentTypes } from "@discordeno/bot";
 import {
   registerCommand,
   registerModalHandler,
+  registerComponentHandler,
   respond,
   respondWithModal,
+  respondWithComponents,
+  updateMessageWithComponents,
   type CommandContext,
 } from "./index";
 import {
@@ -138,6 +141,113 @@ function canUserView(entity: EntityWithFacts, userId: string, username: string, 
 }
 
 // =============================================================================
+// Permissions UI Helpers (Mentionable Select Menus)
+// =============================================================================
+
+const PERM_FIELDS = ["view", "edit", "use", "blacklist"] as const;
+type PermField = (typeof PERM_FIELDS)[number];
+
+const PERM_LABELS: Record<PermField, string> = {
+  view: "View",
+  edit: "Edit",
+  use: "Use",
+  blacklist: "Blacklist",
+};
+
+const PERM_PLACEHOLDERS: Record<PermField, string> = {
+  view: "Select users/roles who can view (empty = @everyone)",
+  edit: "Select users/roles who can edit (empty = @everyone)",
+  use: "Select users/roles who can use (empty = @everyone)",
+  blacklist: "Select users/roles to block (empty = none)",
+};
+
+const PERM_CONFIG_KEYS: Record<PermField, string> = {
+  view: "config_view",
+  edit: "config_edit",
+  use: "config_use",
+  blacklist: "config_blacklist",
+};
+
+/**
+ * Format a permission DB value for display.
+ * Returns a human-readable string.
+ */
+function formatPermValue(value: string[] | "everyone" | null, field: PermField): string {
+  if (field === "blacklist") {
+    if (!value || value === "everyone" || (Array.isArray(value) && value.length === 0)) return "None";
+    if (Array.isArray(value)) return value.map(formatEntry).join(", ");
+    return "None";
+  }
+  if (value === "everyone" || value === null) return "@everyone";
+  if (Array.isArray(value) && value.length === 0) return "@everyone";
+  if (Array.isArray(value)) return value.map(formatEntry).join(", ");
+  return "@everyone";
+}
+
+/** Format a single permission entry as a mention */
+function formatEntry(entry: string): string {
+  if (entry.startsWith("role:")) return `<@&${entry.slice(5)}>`;
+  if (/^\d{17,19}$/.test(entry)) return `<@${entry}>`;
+  return entry;
+}
+
+/**
+ * Build default_values array for a mentionable select from DB value.
+ * Skips username entries (can't pre-populate those in a select).
+ */
+function buildDefaultValues(value: string[] | "everyone" | null): Array<{ id: string; type: "user" | "role" }> {
+  if (!value || value === "everyone" || !Array.isArray(value)) return [];
+  const defaults: Array<{ id: string; type: "user" | "role" }> = [];
+  for (const entry of value) {
+    if (entry.startsWith("role:")) {
+      defaults.push({ id: entry.slice(5), type: "role" });
+    } else if (/^\d{17,19}$/.test(entry)) {
+      defaults.push({ id: entry, type: "user" });
+    }
+    // Skip username strings — can't pre-populate in select
+  }
+  return defaults;
+}
+
+/**
+ * Build the permissions message content and components from DB state.
+ */
+function buildPermissionsMessage(entityId: number, entityName: string): { content: string; components: unknown[] } {
+  const defaults = getPermissionDefaults(entityId);
+
+  // Build summary text
+  const lines = [`**Permissions: ${entityName}**`];
+  for (const field of PERM_FIELDS) {
+    const value = field === "blacklist" ? defaults.blacklist : defaults[`${field}List`];
+    lines.push(`**${PERM_LABELS[field]}:** ${formatPermValue(value as string[] | "everyone" | null, field)}`);
+  }
+
+  // Build 4 action rows, one mentionable select each
+  const components = PERM_FIELDS.map(field => {
+    const value = field === "blacklist" ? defaults.blacklist : defaults[`${field}List`];
+    const defaultValues = buildDefaultValues(value as string[] | "everyone" | null);
+
+    const select: Record<string, unknown> = {
+      type: MessageComponentTypes.MentionableSelect,
+      customId: `perm:${entityId}:${field}`,
+      placeholder: PERM_PLACEHOLDERS[field],
+      minValues: 0,
+      maxValues: 25,
+    };
+    if (defaultValues.length > 0) {
+      select.defaultValues = defaultValues;
+    }
+
+    return {
+      type: MessageComponentTypes.ActionRow,
+      components: [select],
+    };
+  });
+
+  return { content: lines.join("\n"), components };
+}
+
+// =============================================================================
 // /create - Create entity
 // =============================================================================
 
@@ -158,6 +268,11 @@ registerCommand({
     if (name) {
       // Quick create with name
       const entity = createEntity(name, ctx.userId);
+      // Set owner-only defaults for view and edit
+      setEntityConfig(entity.id, {
+        config_view: JSON.stringify([ctx.userId]),
+        config_edit: JSON.stringify([ctx.userId]),
+      });
       await respond(ctx.bot, ctx.interaction, `Created ${formatEntityDisplay(name, entity.id)}`, true);
     } else {
       // Open modal for details
@@ -187,6 +302,12 @@ registerModalHandler("create", async (bot, interaction, values) => {
 
   const userId = interaction.user?.id?.toString() ?? "";
   const entity = createEntity(name, userId);
+
+  // Set owner-only defaults for view and edit
+  setEntityConfig(entity.id, {
+    config_view: JSON.stringify([userId]),
+    config_edit: JSON.stringify([userId]),
+  });
 
   // Add user-provided facts
   const facts = factsText.split("\n").map(f => f.trim()).filter(f => f);
@@ -445,51 +566,9 @@ registerCommand({
     }
 
     if (editType === "permissions") {
-      // Permissions editing - 4 text fields for access control
-      const defaults = getPermissionDefaults(entity.id);
-
-      const formatList = (list: string[] | "everyone" | null): string => {
-        if (list === "everyone") return "@everyone";
-        if (list === null || list.length === 0) return "";
-        return list.join(", ");
-      };
-
-      const permFields = [
-        {
-          customId: "perm_view",
-          label: "View ($view)",
-          style: TextStyles.Short,
-          value: formatList(defaults.viewList),
-          required: false,
-          placeholder: "@everyone, or comma-separated usernames/IDs",
-        },
-        {
-          customId: "perm_edit",
-          label: "Edit ($edit)",
-          style: TextStyles.Short,
-          value: formatList(defaults.editList),
-          required: false,
-          placeholder: "@everyone, or comma-separated usernames/IDs",
-        },
-        {
-          customId: "perm_use",
-          label: "Use ($use)",
-          style: TextStyles.Short,
-          value: formatList(defaults.useList),
-          required: false,
-          placeholder: "@everyone, or comma-separated usernames/IDs",
-        },
-        {
-          customId: "perm_blacklist",
-          label: "Blacklist ($blacklist)",
-          style: TextStyles.Short,
-          value: formatList(defaults.blacklist),
-          required: false,
-          placeholder: "Comma-separated usernames/IDs to block",
-        },
-      ];
-
-      await respondWithModal(ctx.bot, ctx.interaction, `edit-permissions:${entity.id}`, `Permissions: ${entity.name}`, permFields);
+      // Permissions editing — mentionable select menus (save-per-field)
+      const { content, components } = buildPermissionsMessage(entity.id, entity.name);
+      await respondWithComponents(ctx.bot, ctx.interaction, content, components);
       return;
     }
 
@@ -811,57 +890,66 @@ registerModalHandler("edit-config", async (bot, interaction, values) => {
   await respond(bot, interaction, `Updated config for "${entity.name}": ${changes.join(", ")}`, true);
 });
 
-registerModalHandler("edit-permissions", async (bot, interaction, values) => {
+// =============================================================================
+// Permissions Component Handler (Mentionable Select Menus)
+// =============================================================================
+
+registerComponentHandler("perm", async (bot, interaction) => {
   const customId = interaction.data?.customId ?? "";
-  const entityId = parseInt(customId.split(":")[1]);
+  const parts = customId.split(":");
+  const entityId = parseInt(parts[1]);
+  const field = parts[2] as PermField;
+
+  if (!PERM_FIELDS.includes(field)) return;
 
   const entity = getEntityWithFacts(entityId);
   if (!entity) {
-    await respond(bot, interaction, "Entity not found", true);
+    await updateMessageWithComponents(bot, interaction, "Entity not found.", []);
     return;
   }
 
   // Check edit permission
   const userId = interaction.user?.id?.toString() ?? "";
   const username = interaction.user?.username ?? "";
-  if (!canUserEdit(entity, userId, username)) {
-    await respond(bot, interaction, "You don't have permission to edit this entity", true);
+  const userRoles: string[] = (interaction.member?.roles ?? []).map((r: bigint) => r.toString());
+  if (!canUserEdit(entity, userId, username, userRoles)) {
+    await updateMessageWithComponents(bot, interaction, "You don't have permission to edit this entity.", []);
     return;
   }
 
-  const parsePermList = (raw: string): string | null => {
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-    if (trimmed === "@everyone") return JSON.stringify("everyone");
-    const entries = trimmed.split(",").map(s => s.trim()).filter(s => s);
-    if (entries.length === 0) return null;
-    return JSON.stringify(entries);
-  };
+  // Extract selected values from the interaction
+  const selectedValues: string[] = interaction.data?.values ?? [];
+  const resolved = interaction.data?.resolved;
 
-  const viewRaw = values.perm_view ?? "";
-  const editRaw = values.perm_edit ?? "";
-  const useRaw = values.perm_use ?? "";
-  const blacklistRaw = values.perm_blacklist ?? "";
+  // Build entries with role: prefix for roles
+  const entries: string[] = [];
+  for (const id of selectedValues) {
+    // Check if this ID is a role by looking in resolved.roles
+    const isRole = resolved?.roles?.has(BigInt(id)) ?? false;
+    if (isRole) {
+      entries.push(`role:${id}`);
+    } else {
+      entries.push(id);
+    }
+  }
 
-  const blacklistEntries = blacklistRaw.trim()
-    ? blacklistRaw.split(",").map(s => s.trim()).filter(s => s)
-    : [];
+  // Save to DB
+  const configKey = PERM_CONFIG_KEYS[field];
+  if (field === "blacklist") {
+    // Blacklist: empty = null (no blacklist)
+    setEntityConfig(entityId, {
+      [configKey]: entries.length > 0 ? JSON.stringify(entries) : null,
+    });
+  } else {
+    // View/edit/use: empty = "everyone"
+    setEntityConfig(entityId, {
+      [configKey]: entries.length > 0 ? JSON.stringify(entries) : JSON.stringify("everyone"),
+    });
+  }
 
-  setEntityConfig(entityId, {
-    config_view: parsePermList(viewRaw),
-    config_edit: parsePermList(editRaw),
-    config_use: parsePermList(useRaw),
-    config_blacklist: blacklistEntries.length > 0 ? JSON.stringify(blacklistEntries) : null,
-  });
-
-  const changes: string[] = [];
-  if (viewRaw.trim()) changes.push(`view: ${viewRaw.trim()}`);
-  if (editRaw.trim()) changes.push(`edit: ${editRaw.trim()}`);
-  if (useRaw.trim()) changes.push(`use: ${useRaw.trim()}`);
-  if (blacklistRaw.trim()) changes.push(`blacklist: ${blacklistRaw.trim()}`);
-  if (changes.length === 0) changes.push("all cleared");
-
-  await respond(bot, interaction, `Updated permissions for "${entity.name}": ${changes.join(", ")}`, true);
+  // Rebuild message from DB state and update
+  const { content, components } = buildPermissionsMessage(entityId, entity.name);
+  await updateMessageWithComponents(bot, interaction, content, components);
 });
 
 registerModalHandler("edit-both", async (bot, interaction, values) => {

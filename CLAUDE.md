@@ -294,13 +294,20 @@ Discord channels/users/servers map to entities via `discord_entities`:
 
 ### Access Control
 
-Permissions are stored in entity config columns, managed via `/edit entity type:permissions`. Accept usernames, Discord user IDs, and role IDs (comma-separated). `@everyone` grants universal access.
+Permissions are managed via `/edit entity type:permissions`, which presents Discord mentionable select menus (users and roles). Each field saves immediately on selection.
+
+**Storage:** Permission lists are stored as JSON arrays in entity config columns. Role IDs use a `role:` prefix to distinguish from user IDs. Legacy plain snowflakes and usernames still work for permission checks.
+
+**Semantics:**
+- 0 selections on view/edit/use = `"everyone"` (stored as `JSON.stringify("everyone")`)
+- 0 selections on blacklist = no blacklist (stored as `null`)
+- New entities default to owner pre-selected in view and edit
 
 **Behavior:**
 - Blacklist blocks view, edit, and entity responses in chat
 - Blacklist overrides whitelist (deny wins)
 - Owner is never blocked by blacklist
-- Default: edit=owner-only, view=owner-only, use=everyone, blacklist=empty
+- Default for new entities: edit=owner-only, view=owner-only, use=everyone, blacklist=empty
 
 ## Commands
 

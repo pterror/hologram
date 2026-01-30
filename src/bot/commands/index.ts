@@ -265,6 +265,14 @@ export async function handleInteraction(bot: Bot, interaction: Interaction) {
     await handleModalSubmit(bot, interaction, customId, values);
   }
 
+  // Handle message component interactions (select menus, buttons, etc.)
+  if (interaction.type === InteractionTypes.MessageComponent) {
+    const customId = interaction.data?.customId;
+    if (customId) {
+      await handleComponentInteraction(bot, interaction, customId);
+    }
+  }
+
   // Handle autocomplete
   if (interaction.type === InteractionTypes.ApplicationCommandAutocomplete) {
     await handleAutocomplete(bot, interaction);
@@ -449,4 +457,54 @@ async function handleModalSubmit(bot: Bot, interaction: Interaction, customId: s
   if (handler) {
     await handler(bot, interaction, values);
   }
+}
+
+// Component interaction handlers (for select menus, buttons, etc.)
+const componentHandlers = new Map<string, (bot: Bot, interaction: Interaction) => Promise<void>>();
+
+export function registerComponentHandler(prefix: string, handler: (bot: Bot, interaction: Interaction) => Promise<void>) {
+  componentHandlers.set(prefix, handler);
+}
+
+async function handleComponentInteraction(bot: Bot, interaction: Interaction, customId: string) {
+  const prefix = customId.split(":")[0];
+  const handler = componentHandlers.get(prefix);
+  if (handler) {
+    try {
+      await handler(bot, interaction);
+    } catch (err) {
+      error("Component handler error", err, { customId });
+      await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+        type: InteractionResponseTypes.UpdateMessage,
+        data: { content: `Error: ${err}` },
+      });
+    }
+  }
+}
+
+// =============================================================================
+// Component Response Helpers
+// =============================================================================
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function respondWithComponents(bot: Bot, interaction: Interaction, content: string, components: any[], ephemeral = true) {
+  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+    type: InteractionResponseTypes.ChannelMessageWithSource,
+    data: {
+      content,
+      components,
+      flags: ephemeral ? 64 : undefined,
+    },
+  });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function updateMessageWithComponents(bot: Bot, interaction: Interaction, content: string, components: any[]) {
+  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+    type: InteractionResponseTypes.UpdateMessage,
+    data: {
+      content,
+      components,
+    },
+  });
 }
