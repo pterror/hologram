@@ -184,7 +184,6 @@ function initSchema(db: Database) {
   migrateEntityTemplate(db);
   migrateMessagesData(db);
   migrateEntityConfigColumns(db);
-  migrateLegacyStickerData(db);
 }
 
 /**
@@ -287,49 +286,4 @@ function migrateEntityConfigColumns(db: Database) {
   db.exec(`ALTER TABLE entities ADD COLUMN config_edit TEXT`);
   db.exec(`ALTER TABLE entities ADD COLUMN config_use TEXT`);
   db.exec(`ALTER TABLE entities ADD COLUMN config_blacklist TEXT`);
-}
-
-/**
- * Migrate legacy sticker data in messages.data JSON blob.
- * Old format stored stickers as string[] (just names).
- * New format uses StickerData[] ({id, name, format_type}).
- * This is a one-time migration; normalizeStickers() is removed after this.
- */
-function migrateLegacyStickerData(db: Database) {
-  // Find all messages with sticker data that might have legacy string entries
-  const rows = db.prepare(`
-    SELECT id, data FROM messages
-    WHERE data IS NOT NULL AND json_type(data, '$.stickers') = 'array'
-  `).all() as Array<{ id: number; data: string }>;
-
-  let migrated = 0;
-  const update = db.prepare(`UPDATE messages SET data = ? WHERE id = ?`);
-
-  for (const row of rows) {
-    let parsed;
-    try {
-      parsed = JSON.parse(row.data);
-    } catch {
-      continue;
-    }
-    if (!Array.isArray(parsed.stickers)) continue;
-
-    let needsUpdate = false;
-    for (let i = 0; i < parsed.stickers.length; i++) {
-      if (typeof parsed.stickers[i] === "string") {
-        parsed.stickers[i] = { id: "", name: parsed.stickers[i], format_type: 0 };
-        needsUpdate = true;
-      }
-    }
-
-    if (needsUpdate) {
-      update.run(JSON.stringify(parsed), row.id);
-      migrated++;
-    }
-  }
-
-  if (migrated > 0) {
-    // Log is not available here (runs before bot init), so use console for one-time migration notice
-    console.log(`[migration] Converted legacy sticker data in ${migrated} message(s)`);
-  }
 }
