@@ -791,10 +791,6 @@ const RESPOND_SIGIL = "$respond";
 const RETRY_SIGIL = "$retry ";
 const AVATAR_SIGIL = "$avatar ";
 const LOCKED_SIGIL = "$locked";
-const EDIT_SIGIL = "$edit ";
-const VIEW_SIGIL = "$view ";
-const BLACKLIST_SIGIL = "$blacklist ";
-const USE_SIGIL = "$use ";
 const STREAM_SIGIL = "$stream";
 const MEMORY_SIGIL = "$memory";
 const CONTEXT_SIGIL = "$context";
@@ -841,8 +837,6 @@ export interface ProcessedFact {
   contextExpr?: string;
   /** True if this fact is a $freeform directive */
   isFreeform: boolean;
-  /** True if this fact is a permission directive ($edit, $view, $blacklist) */
-  isPermission: boolean;
   /** True if this fact is a $model directive */
   isModel: boolean;
   /** For $model directives, the model spec (e.g. "google:gemini-2.0-flash") */
@@ -890,7 +884,6 @@ export function parseFact(fact: string): ProcessedFact {
         isMemory: false,
         isContext: false,
         isFreeform: false,
-        isPermission: false,
         isModel: false,
         isStrip: false,
       };
@@ -925,7 +918,6 @@ export function parseFact(fact: string): ProcessedFact {
         isMemory: false,
         isContext: false,
         isFreeform: false,
-        isPermission: false,
         isModel: false,
         isStrip: false,
       };
@@ -948,7 +940,6 @@ export function parseFact(fact: string): ProcessedFact {
         isMemory: false,
         isContext: false,
         isFreeform: false,
-        isPermission: false,
         isModel: false,
         isStrip: false,
       };
@@ -972,7 +963,6 @@ export function parseFact(fact: string): ProcessedFact {
         isMemory: false,
         isContext: false,
         isFreeform: false,
-        isPermission: false,
         isModel: false,
         isStrip: false,
       };
@@ -995,7 +985,6 @@ export function parseFact(fact: string): ProcessedFact {
         memoryScope: memoryResultCond,
         isContext: false,
         isFreeform: false,
-        isPermission: false,
         isModel: false,
         isStrip: false,
       };
@@ -1018,7 +1007,6 @@ export function parseFact(fact: string): ProcessedFact {
         isContext: true,
         contextExpr: contextResultCond,
         isFreeform: false,
-        isPermission: false,
         isModel: false,
         isStrip: false,
       };
@@ -1039,7 +1027,6 @@ export function parseFact(fact: string): ProcessedFact {
         isMemory: false,
         isContext: false,
         isFreeform: true,
-        isPermission: false,
         isModel: false,
         isStrip: false,
       };
@@ -1061,7 +1048,6 @@ export function parseFact(fact: string): ProcessedFact {
         isMemory: false,
         isContext: false,
         isFreeform: false,
-        isPermission: false,
         isModel: true,
         modelSpec: modelResultCond,
         isStrip: false,
@@ -1084,19 +1070,13 @@ export function parseFact(fact: string): ProcessedFact {
         isMemory: false,
         isContext: false,
         isFreeform: false,
-        isPermission: false,
         isModel: false,
         isStrip: true,
         stripPatterns: stripResultCond,
       };
     }
 
-    // Check if content is a permission directive ($edit, $view, $blacklist, $use)
-    if (content.startsWith(EDIT_SIGIL) || content.startsWith(VIEW_SIGIL) || content.startsWith(BLACKLIST_SIGIL) || content.startsWith(USE_SIGIL)) {
-      return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isPermission: true, isModel: false, isStrip: false };
-    }
-
-    return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isPermission: false, isModel: false, isStrip: false };
+    return { content, conditional: true, expression, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isModel: false, isStrip: false };
   }
 
   // Check for unconditional $respond
@@ -1115,7 +1095,6 @@ export function parseFact(fact: string): ProcessedFact {
       isMemory: false,
       isContext: false,
       isFreeform: false,
-      isPermission: false,
       isModel: false,
       isStrip: false,
     };
@@ -1137,7 +1116,6 @@ export function parseFact(fact: string): ProcessedFact {
       isMemory: false,
       isContext: false,
       isFreeform: false,
-      isPermission: false,
       isModel: false,
       isStrip: false,
     };
@@ -1159,7 +1137,6 @@ export function parseFact(fact: string): ProcessedFact {
       isMemory: false,
       isContext: false,
       isFreeform: false,
-      isPermission: false,
       isModel: false,
       isStrip: false,
     };
@@ -1182,7 +1159,6 @@ export function parseFact(fact: string): ProcessedFact {
       isMemory: false,
       isContext: false,
       isFreeform: false,
-      isPermission: false,
       isModel: false,
       isStrip: false,
     };
@@ -1204,7 +1180,6 @@ export function parseFact(fact: string): ProcessedFact {
       memoryScope: memoryResult,
       isContext: false,
       isFreeform: false,
-      isPermission: false,
       isModel: false,
       isStrip: false,
     };
@@ -1226,7 +1201,6 @@ export function parseFact(fact: string): ProcessedFact {
       isContext: true,
       contextExpr: contextResult,
       isFreeform: false,
-      isPermission: false,
       isModel: false,
       isStrip: false,
     };
@@ -1246,7 +1220,6 @@ export function parseFact(fact: string): ProcessedFact {
       isMemory: false,
       isContext: false,
         isFreeform: true,
-        isPermission: false,
         isModel: false,
         isStrip: false,
       };
@@ -1267,7 +1240,6 @@ export function parseFact(fact: string): ProcessedFact {
       isMemory: false,
       isContext: false,
       isFreeform: false,
-      isPermission: false,
       isModel: true,
       modelSpec: modelResult,
       isStrip: false,
@@ -1289,19 +1261,14 @@ export function parseFact(fact: string): ProcessedFact {
       isMemory: false,
       isContext: false,
       isFreeform: false,
-      isPermission: false,
       isModel: false,
       isStrip: true,
       stripPatterns: stripResult,
     };
   }
 
-  // Check for permission directives ($edit, $view, $blacklist, $use)
-  if (trimmed.startsWith(EDIT_SIGIL) || trimmed.startsWith(VIEW_SIGIL) || trimmed.startsWith(BLACKLIST_SIGIL) || trimmed.startsWith(USE_SIGIL)) {
-    return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isPermission: true, isModel: false, isStrip: false };
-  }
 
-  return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isPermission: false, isModel: false, isStrip: false };
+  return { content: trimmed, conditional: false, isRespond: false, isRetry: false, isAvatar: false, isLockedDirective: false, isLockedFact: false, isStream: false, isMemory: false, isContext: false, isFreeform: false, isModel: false, isStrip: false };
 }
 
 /**
@@ -1764,11 +1731,6 @@ export function evaluateFacts(
       continue;
     }
 
-    // Handle permission directives ($edit, $view, $blacklist) - strip from LLM context
-    if (parsed.isPermission) {
-      continue;
-    }
-
     results.push(parsed.content);
   }
 
@@ -2176,82 +2138,35 @@ export interface PermissionDefaults {
 
 /**
  * Parse permission directives from raw facts.
- * This extracts $locked, $edit, and $view directives without evaluating $if conditions.
- * Used for permission checking on commands.
- * Optional defaults from entity config columns are used as initial values.
+ * Extracts $locked from facts; permission lists ($edit, $view, $use, $blacklist)
+ * come from entity config columns via the defaults parameter.
  */
 export function parsePermissionDirectives(facts: string[], defaults?: PermissionDefaults): EntityPermissions {
   let isLocked = false;
   const lockedFacts = new Set<string>();
-  let editList: string[] | "everyone" | null = defaults?.editList ?? null;
-  let viewList: string[] | "everyone" | null = defaults?.viewList ?? null;
-  let useList: string[] | "everyone" | null = defaults?.useList ?? null;
-  const blacklist: string[] = [...(defaults?.blacklist ?? [])];
 
   for (const fact of facts) {
     const trimmed = fact.trim();
-
-    // Skip comments
     if (trimmed.startsWith("$#")) continue;
 
-    // Check for $locked
     if (trimmed === LOCKED_SIGIL) {
       isLocked = true;
       continue;
     }
     if (trimmed.startsWith(LOCKED_SIGIL + " ")) {
-      const content = trimmed.slice(LOCKED_SIGIL.length + 1).trim();
-      lockedFacts.add(content);
-      continue;
-    }
-
-    // Check for $edit
-    if (trimmed.startsWith(EDIT_SIGIL)) {
-      const value = trimmed.slice(EDIT_SIGIL.length).trim();
-      editList = parseUserList(value);
-      continue;
-    }
-
-    // Check for $view
-    if (trimmed.startsWith(VIEW_SIGIL)) {
-      const value = trimmed.slice(VIEW_SIGIL.length).trim();
-      viewList = parseUserList(value);
-      continue;
-    }
-
-    // Check for $blacklist (accumulates multiple lines)
-    if (trimmed.startsWith(BLACKLIST_SIGIL)) {
-      const value = trimmed.slice(BLACKLIST_SIGIL.length).trim();
-      const parsed = parseUserList(value);
-      // Ignore $blacklist @everyone (nonsensical)
-      if (parsed !== "everyone") {
-        blacklist.push(...parsed);
-      }
-      continue;
-    }
-
-    // Check for $use
-    if (trimmed.startsWith(USE_SIGIL)) {
-      const value = trimmed.slice(USE_SIGIL.length).trim();
-      useList = parseUserList(value);
+      lockedFacts.add(trimmed.slice(LOCKED_SIGIL.length + 1).trim());
       continue;
     }
   }
 
-  return { isLocked, lockedFacts, editList, viewList, useList, blacklist };
-}
-
-/**
- * Parse a user list value.
- * "@everyone" -> "everyone"
- * "user1, user2, user3" -> ["user1", "user2", "user3"]
- */
-function parseUserList(value: string): string[] | "everyone" {
-  if (value.toLowerCase() === "@everyone" || value.toLowerCase() === "everyone") {
-    return "everyone";
-  }
-  // Split by comma and trim each entry
-  return value.split(",").map(s => s.trim()).filter(s => s.length > 0);
+  return {
+    isLocked,
+    lockedFacts,
+    editList: defaults?.editList ?? null,
+    viewList: defaults?.viewList ?? null,
+    useList: defaults?.useList ?? null,
+    blacklist: [...(defaults?.blacklist ?? [])],
+  };
 }
 
 /**

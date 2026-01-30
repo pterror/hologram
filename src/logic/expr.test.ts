@@ -928,33 +928,23 @@ describe("complex expression edge cases", () => {
 // =============================================================================
 
 describe("permission directives", () => {
-  test("$edit with usernames", () => {
-    const facts = ["$edit alice, bob, carol", "some fact"];
-    const result = parsePermissionDirectives(facts);
+  test("defaults provide editList", () => {
+    const result = parsePermissionDirectives([], { editList: ["alice", "bob", "carol"] });
     expect(result.editList).toEqual(["alice", "bob", "carol"]);
   });
 
-  test("$edit @everyone", () => {
-    const facts = ["$edit @everyone"];
-    const result = parsePermissionDirectives(facts);
+  test("defaults provide editList @everyone", () => {
+    const result = parsePermissionDirectives([], { editList: "everyone" });
     expect(result.editList).toBe("everyone");
   });
 
-  test("$edit everyone (without @)", () => {
-    const facts = ["$edit everyone"];
-    const result = parsePermissionDirectives(facts);
-    expect(result.editList).toBe("everyone");
-  });
-
-  test("$view with usernames", () => {
-    const facts = ["$view alice, bob"];
-    const result = parsePermissionDirectives(facts);
+  test("defaults provide viewList", () => {
+    const result = parsePermissionDirectives([], { viewList: ["alice", "bob"] });
     expect(result.viewList).toEqual(["alice", "bob"]);
   });
 
-  test("$view @everyone", () => {
-    const facts = ["$view @everyone"];
-    const result = parsePermissionDirectives(facts);
+  test("defaults provide viewList @everyone", () => {
+    const result = parsePermissionDirectives([], { viewList: "everyone" });
     expect(result.viewList).toBe("everyone");
   });
 
@@ -973,26 +963,29 @@ describe("permission directives", () => {
     expect(result.lockedFacts.has("another protected")).toBe(true);
   });
 
-  test("multiple permission directives", () => {
-    const facts = [
-      "$edit alice, bob",
-      "$view @everyone",
-      "$locked secret fact",
-      "normal fact",
-    ];
-    const result = parsePermissionDirectives(facts);
+  test("defaults with locked facts", () => {
+    const facts = ["$locked secret fact", "normal fact"];
+    const result = parsePermissionDirectives(facts, {
+      editList: ["alice", "bob"],
+      viewList: "everyone",
+    });
     expect(result.editList).toEqual(["alice", "bob"]);
     expect(result.viewList).toBe("everyone");
     expect(result.lockedFacts.has("secret fact")).toBe(true);
   });
 
-  test("ignores comments in permission parsing", () => {
-    const facts = [
-      "$# $edit everyone",
-      "$edit alice",
-    ];
+  test("ignores comments", () => {
+    const facts = ["$# $locked"];
     const result = parsePermissionDirectives(facts);
-    expect(result.editList).toEqual(["alice"]);
+    expect(result.isLocked).toBe(false);
+  });
+
+  test("no defaults returns null lists", () => {
+    const result = parsePermissionDirectives([]);
+    expect(result.editList).toBeNull();
+    expect(result.viewList).toBeNull();
+    expect(result.useList).toBeNull();
+    expect(result.blacklist).toEqual([]);
   });
 });
 
@@ -1855,39 +1848,20 @@ import { parsePermissionDirectives, matchesUserEntry, isUserBlacklisted, isUserA
 // $use directive tests
 // =============================================================================
 
-describe("$use directive", () => {
-  test("parsePermissionDirectives: $use with usernames", () => {
-    const perms = parsePermissionDirectives(["$use alice, bob"]);
+describe("$use directive via defaults", () => {
+  test("defaults provide useList with usernames", () => {
+    const perms = parsePermissionDirectives([], { useList: ["alice", "bob"] });
     expect(perms.useList).toEqual(["alice", "bob"]);
   });
 
-  test("parsePermissionDirectives: $use @everyone", () => {
-    const perms = parsePermissionDirectives(["$use @everyone"]);
+  test("defaults provide useList @everyone", () => {
+    const perms = parsePermissionDirectives([], { useList: "everyone" });
     expect(perms.useList).toBe("everyone");
   });
 
-  test("parsePermissionDirectives: no $use = null (no restriction)", () => {
+  test("no defaults = null useList (no restriction)", () => {
     const perms = parsePermissionDirectives(["is a character"]);
     expect(perms.useList).toBeNull();
-  });
-
-  test("parseFact: $use is treated as permission directive", () => {
-    const result = parseFact("$use alice, bob");
-    expect(result.isPermission).toBe(true);
-  });
-
-  test("parseFact: conditional $use is treated as permission directive", () => {
-    const result = parseFact("$if true: $use alice");
-    expect(result.isPermission).toBe(true);
-  });
-
-  test("evaluateFacts: $use is stripped from output facts", () => {
-    const facts = ["is a character", "$use alice", "has silver hair"];
-    const ctx = createBaseContext({ facts, has_fact: (p: string) => facts.some(f => new RegExp(p, "i").test(f)), name: "Test" });
-    const result = evaluateFacts(facts, ctx);
-    expect(result.facts).not.toContain("$use alice");
-    expect(result.facts).toContain("is a character");
-    expect(result.facts).toContain("has silver hair");
   });
 });
 
@@ -1922,38 +1896,38 @@ describe("matchesUserEntry with roles", () => {
 // =============================================================================
 
 describe("isUserAllowed", () => {
-  test("no $use directive = everyone allowed", () => {
-    const perms = parsePermissionDirectives(["is a character"]);
+  test("no useList = everyone allowed", () => {
+    const perms = parsePermissionDirectives([]);
     expect(isUserAllowed(perms, "123", "alice", "456")).toBe(true);
   });
 
-  test("$use @everyone = everyone allowed", () => {
-    const perms = parsePermissionDirectives(["$use @everyone"]);
+  test("useList @everyone = everyone allowed", () => {
+    const perms = parsePermissionDirectives([], { useList: "everyone" });
     expect(isUserAllowed(perms, "123", "alice", "456")).toBe(true);
   });
 
-  test("$use with matching username", () => {
-    const perms = parsePermissionDirectives(["$use alice, bob"]);
+  test("useList with matching username", () => {
+    const perms = parsePermissionDirectives([], { useList: ["alice", "bob"] });
     expect(isUserAllowed(perms, "123", "alice", "456")).toBe(true);
   });
 
-  test("$use with non-matching username", () => {
-    const perms = parsePermissionDirectives(["$use alice, bob"]);
+  test("useList with non-matching username", () => {
+    const perms = parsePermissionDirectives([], { useList: ["alice", "bob"] });
     expect(isUserAllowed(perms, "123", "charlie", "456")).toBe(false);
   });
 
   test("owner is always allowed", () => {
-    const perms = parsePermissionDirectives(["$use alice"]);
+    const perms = parsePermissionDirectives([], { useList: ["alice"] });
     expect(isUserAllowed(perms, "456", "owner", "456")).toBe(true);
   });
 
-  test("$use with matching role ID", () => {
-    const perms = parsePermissionDirectives(["$use 111222333444555666"]);
+  test("useList with matching role ID", () => {
+    const perms = parsePermissionDirectives([], { useList: ["111222333444555666"] });
     expect(isUserAllowed(perms, "123", "alice", "456", ["111222333444555666"])).toBe(true);
   });
 
-  test("$use with non-matching role ID", () => {
-    const perms = parsePermissionDirectives(["$use 111222333444555666"]);
+  test("useList with non-matching role ID", () => {
+    const perms = parsePermissionDirectives([], { useList: ["111222333444555666"] });
     expect(isUserAllowed(perms, "123", "alice", "456", ["000000000000000000"])).toBe(false);
   });
 });
@@ -1964,17 +1938,17 @@ describe("isUserAllowed", () => {
 
 describe("isUserBlacklisted with roles", () => {
   test("blacklist role ID blocks user with that role", () => {
-    const perms = parsePermissionDirectives(["$blacklist 111222333444555666"]);
+    const perms = parsePermissionDirectives([], { blacklist: ["111222333444555666"] });
     expect(isUserBlacklisted(perms, "123", "alice", "456", ["111222333444555666"])).toBe(true);
   });
 
   test("blacklist role ID does not block user without that role", () => {
-    const perms = parsePermissionDirectives(["$blacklist 111222333444555666"]);
+    const perms = parsePermissionDirectives([], { blacklist: ["111222333444555666"] });
     expect(isUserBlacklisted(perms, "123", "alice", "456", ["000000000000000000"])).toBe(false);
   });
 
   test("owner is never blacklisted even with role match", () => {
-    const perms = parsePermissionDirectives(["$blacklist 111222333444555666"]);
+    const perms = parsePermissionDirectives([], { blacklist: ["111222333444555666"] });
     expect(isUserBlacklisted(perms, "456", "owner", "456", ["111222333444555666"])).toBe(false);
   });
 });

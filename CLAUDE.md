@@ -286,25 +286,12 @@ Discord channels/users/servers map to entities via `discord_entities`:
 
 ### Access Control
 
-Control who can interact with entities using permission directives:
-
-```
-$blacklist alice                   # Block username from all interactions
-$blacklist 123456789012345678      # Block by Discord ID or role ID
-$blacklist alice, 123456789, bob   # Mixed usernames and IDs
-$edit @everyone                    # Anyone can edit
-$edit alice, 123456789             # Specific users (username, user ID, or role ID)
-$view @everyone                    # Anyone can view
-$view alice, bob                   # Specific users only
-$use @everyone                     # Anyone can trigger responses
-$use alice, 123456789              # Restrict who can trigger
-```
+Permissions are stored in entity config columns, managed via `/edit entity type:permissions`. Accept usernames, Discord user IDs, and role IDs (comma-separated). `@everyone` grants universal access.
 
 **Behavior:**
 - Blacklist blocks view, edit, and entity responses in chat
 - Blacklist overrides whitelist (deny wins)
 - Owner is never blocked by blacklist
-- All permission directives accept usernames, Discord user IDs, and role IDs
 - Default: edit=owner-only, view=owner-only, use=everyone, blacklist=empty
 
 ## Commands
