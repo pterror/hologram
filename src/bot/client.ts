@@ -7,7 +7,7 @@ import { InferenceError } from "../ai/models";
 import type { EvaluatedEntity } from "../ai/context";
 import { isModelAllowed } from "../ai/models";
 import { retrieveRelevantMemories, type MemoryScope } from "../db/memories";
-import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, updateMessageByDiscordId, deleteMessageByDiscordId, trackWebhookMessage, getWebhookMessageEntity, getMessages, getFilteredMessages, formatMessagesForContext, recordEvalError, type MessageData } from "../db/discord";
+import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, updateMessageByDiscordId, deleteMessageByDiscordId, trackWebhookMessage, getWebhookMessageEntity, getMessages, getFilteredMessages, formatMessagesForContext, recordEvalError, isOurWebhookUserId, type MessageData } from "../db/discord";
 import { getEntity, getEntityWithFacts, getSystemEntity, getFactsForEntity, type EntityWithFacts } from "../db/entities";
 import { evaluateFacts, createBaseContext, parsePermissionDirectives, isUserBlacklisted, isUserAllowed } from "../logic/expr";
 import { executeWebhook, editWebhookMessage, setBot } from "./webhooks";
@@ -250,7 +250,7 @@ bot.events.messageCreate = async (message) => {
   }
 
   // mentionedUserIds is unreliable in Discordeno, parse from content as fallback
-  const isMentioned = botUserId !== null && (
+  const isBotMentioned = botUserId !== null && (
     message.mentionedUserIds?.includes(botUserId) ||
     content.includes(`<@${botUserId}>`)
   );
@@ -266,6 +266,19 @@ bot.events.messageCreate = async (message) => {
   const isReplied = isRepliedToBot || !!repliedToWebhookEntity;
   // Forwarded messages have messageSnapshots
   const isForward = (message.messageSnapshots?.length ?? 0) > 0;
+
+  // Check if any mentioned user ID is one of our webhook IDs
+  // (handles reply-with-@ping to webhook entity messages)
+  let isWebhookMentioned = false;
+  if (!isBotMentioned && message.mentionedUserIds?.length) {
+    for (const uid of message.mentionedUserIds) {
+      if (isOurWebhookUserId(uid.toString())) {
+        isWebhookMentioned = true;
+        break;
+      }
+    }
+  }
+  const isMentioned = isBotMentioned || isWebhookMentioned;
 
   // Track response chain depth to prevent infinite self-response loops
   const isWebhookMessage = !!message.webhookId;

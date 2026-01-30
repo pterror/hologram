@@ -528,6 +528,20 @@ export function markUserWelcomed(userId: string): void {
 }
 
 // =============================================================================
+// Webhook Identity
+// =============================================================================
+
+/**
+ * Check if a Discord user ID belongs to one of our webhooks.
+ * Used to detect when a user @-mentions a webhook entity (e.g., reply with @ping ON).
+ */
+export function isOurWebhookUserId(userId: string): boolean {
+  const db = getDb();
+  const row = db.prepare(`SELECT 1 FROM webhooks WHERE webhook_id = ? LIMIT 1`).get(userId);
+  return !!row;
+}
+
+// =============================================================================
 // Webhook Message Tracking (for reply detection)
 // =============================================================================
 

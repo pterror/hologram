@@ -7,7 +7,7 @@ import {
   DEFAULT_CONTEXT_LIMIT,
   type EvaluatedEntity,
 } from "./context";
-import { getMessages, getWebhookMessageEntity, parseMessageData, normalizeStickers } from "../db/discord";
+import { getMessages, getWebhookMessageEntity, parseMessageData, normalizeStickers, resolveDiscordEntity } from "../db/discord";
 import { evalMacroValue, formatDuration, rollDice, type ExprContext } from "../logic/expr";
 import { DEFAULT_MODEL } from "./models";
 import { DEFAULT_TEMPLATE, renderStructuredTemplate } from "./template";
@@ -383,4 +383,75 @@ export function buildPromptAndMessages(
   messages = [{ role: "user", content: latestContent }];
 
   return { systemPrompt: output.systemPrompt, messages };
+}
+
+// =============================================================================
+// Shared Prompt Preparation
+// =============================================================================
+
+export interface PreparedPromptContext {
+  systemPrompt: string;
+  messages: StructuredMessage[];
+  other: EntityWithFacts[];
+  contextLimit: number;
+  effectiveStripPatterns: string[];
+}
+
+/**
+ * Prepare the full prompt context from evaluated entities.
+ * Extracts the shared logic between handleMessage and handleMessageStreaming:
+ * - Expand entity refs and macros
+ * - Resolve user entity
+ * - Determine context limit and strip patterns
+ * - Build system prompt and structured messages via template engine
+ */
+export function preparePromptContext(
+  entities: EvaluatedEntity[],
+  channelId: string,
+  guildId: string | undefined,
+  userId: string,
+  entityMemories?: Map<number, Array<{ content: string }>>,
+): PreparedPromptContext {
+  const other: EntityWithFacts[] = [];
+
+  // Expand {{entity:ID}} refs and other macros in facts, collect referenced entities
+  const seenIds = new Set(entities.map(e => e.id));
+  const respondingNames = entities.map(e => e.name);
+  for (const entity of entities) {
+    other.push(...expandEntityRefs(entity, seenIds, entity.exprContext, {
+      modelSpec: entity.modelSpec,
+      contextLimit: entity.contextLimit,
+      respondingNames,
+    }));
+  }
+
+  // Add user entity if bound
+  const userEntityId = resolveDiscordEntity(userId, "user", guildId, channelId);
+  if (userEntityId && !seenIds.has(userEntityId)) {
+    const userEntity = getEntityWithFacts(userEntityId);
+    if (userEntity) {
+      other.push(userEntity);
+      seenIds.add(userEntityId);
+    }
+  }
+
+  // Determine context limit from entities (first non-null wins)
+  const contextLimit = entities.find(e => e.contextLimit !== null)?.contextLimit ?? DEFAULT_CONTEXT_LIMIT;
+
+  // Determine effective strip patterns
+  const entityStripPatterns = entities[0]?.stripPatterns;
+  const modelSpec_ = entities[0]?.modelSpec ?? DEFAULT_MODEL;
+  const effectiveStripPatterns = entityStripPatterns !== null
+    ? entityStripPatterns
+    : modelSpec_.includes("gemini-2.5-flash-preview")
+      ? ["</blockquote>"]
+      : [];
+
+  // Build prompts and messages via template engine
+  const template = entities[0]?.template ?? null;
+  const { systemPrompt, messages } = buildPromptAndMessages(
+    entities, other, entityMemories, template, channelId, contextLimit, effectiveStripPatterns,
+  );
+
+  return { systemPrompt, messages, other, contextLimit, effectiveStripPatterns };
 }

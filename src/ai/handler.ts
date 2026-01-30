@@ -1,14 +1,11 @@
 import { generateText, stepCountIs } from "ai";
 import { getLanguageModel, DEFAULT_MODEL, InferenceError } from "./models";
 import { debug, error } from "../logger";
-import { getEntityWithFacts, type EntityWithFacts } from "../db/entities";
-import { resolveDiscordEntity } from "../db/discord";
 import {
-  DEFAULT_CONTEXT_LIMIT,
   type EvaluatedEntity,
   type MessageContext,
 } from "./context";
-import { expandEntityRefs, buildPromptAndMessages } from "./prompt";
+import { preparePromptContext } from "./prompt";
 import { createTools } from "./tools";
 import { stripNamePrefix, parseMultiEntityResponse, parseNamePrefixResponse, type EntityResponse } from "./parsing";
 
@@ -34,30 +31,12 @@ export interface ResponseResult {
 export async function handleMessage(ctx: MessageContext): Promise<ResponseResult | null> {
   const { channelId, guildId, userId, isMentioned, respondingEntities } = ctx;
 
-  // Separate evaluated responding entities from other raw entities
   const evaluated: EvaluatedEntity[] = respondingEntities ?? [];
-  const other: EntityWithFacts[] = [];
 
-  // Expand {{entity:ID}} refs and other macros in facts, collect referenced entities
-  const seenIds = new Set(evaluated.map(e => e.id));
-  const respondingNames = evaluated.map(e => e.name);
-  for (const entity of evaluated) {
-    other.push(...expandEntityRefs(entity, seenIds, entity.exprContext, {
-      modelSpec: entity.modelSpec,
-      contextLimit: entity.contextLimit,
-      respondingNames,
-    }));
-  }
-
-  // Add user entity if bound
-  const userEntityId = resolveDiscordEntity(userId, "user", guildId, channelId);
-  if (userEntityId && !seenIds.has(userEntityId)) {
-    const userEntity = getEntityWithFacts(userEntityId);
-    if (userEntity) {
-      other.push(userEntity);
-      seenIds.add(userEntityId);
-    }
-  }
+  // Prepare prompt context (expand refs, resolve user entity, build prompt)
+  const { systemPrompt, messages: llmMessages, other, contextLimit } = preparePromptContext(
+    evaluated, channelId, guildId, userId, ctx.entityMemories,
+  );
 
   // Decide whether to respond
   const shouldRespond = isMentioned || evaluated.length > 0 || other.length > 0;
@@ -65,24 +44,6 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
     debug("Not responding - not mentioned and no entities");
     return null;
   }
-
-  // Determine context limit from entities (first non-null wins)
-  const contextLimit = evaluated.find(e => e.contextLimit !== null)?.contextLimit ?? DEFAULT_CONTEXT_LIMIT;
-
-  // Determine effective strip patterns
-  const entityStripPatterns = evaluated[0]?.stripPatterns;
-  const modelSpec_ = evaluated[0]?.modelSpec ?? DEFAULT_MODEL;
-  const effectiveStripPatterns = entityStripPatterns !== null
-    ? entityStripPatterns
-    : modelSpec_.includes("gemini-2.5-flash-preview")
-      ? ["</blockquote>"]
-      : [];
-
-  // Build prompts and messages via template engine
-  const template = evaluated[0]?.template ?? null;
-  const { systemPrompt, messages: llmMessages } = buildPromptAndMessages(
-    evaluated, other, ctx.entityMemories, template, channelId, contextLimit, effectiveStripPatterns,
-  );
 
   debug("Calling LLM", {
     respondingEntities: evaluated.map(e => e.name),

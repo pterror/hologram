@@ -102,7 +102,7 @@ Template engine migrated to Nunjucks with runtime security patches. Entity-name-
 
 ### Structured Messages Refactor
 
-Current state: message history uses role-based `user`/`assistant` messages via unified `buildPromptAndMessages()` in `prompt.ts` (replaces duplicated logic in handler.ts/streaming.ts). Both custom templates and the built-in `DEFAULT_TEMPLATE` produce structured output via `_msg()` nonce protocol. Templates get rich structured `history` objects with `is_bot`, `role`, `embeds`, `stickers` (now `{id, name, format_type}` objects), `attachments`. Bot messages are tracked via `data` JSON column.
+Current state: message history uses role-based `user`/`assistant` messages via `preparePromptContext()` in `prompt.ts` (shared by handler.ts, streaming.ts, and debug commands). Both custom templates and the built-in `DEFAULT_TEMPLATE` produce structured output via `_msg()` nonce protocol. Templates get rich structured `history` objects with `is_bot`, `role`, `embeds`, `stickers` (now `{id, name, format_type}` objects), `attachments`. Bot messages are tracked via `data` JSON column.
 
 - [x] **Role-based messages**: Model responses are `assistant` messages using AI SDK structured messages array. `buildPromptAndMessages()` in `prompt.ts` assigns roles based on `webhook_messages` lookup.
 - [x] **JSON blob storage**: `data TEXT` column on `messages` table stores `MessageData` JSON (is_bot, embeds, stickers, attachments). SQLite `json_extract()` used for `$user`/`$bot` classification.

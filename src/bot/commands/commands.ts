@@ -36,7 +36,9 @@ import {
   setChannelForgetTime,
 } from "../../db/discord";
 import { parsePermissionDirectives, matchesUserEntry, isUserBlacklisted, isUserAllowed, evaluateFacts, createBaseContext } from "../../logic/expr";
-import { formatEntityDisplay, formatEvaluatedEntity, buildMessageHistory } from "../../ai/context";
+import { formatEntityDisplay } from "../../ai/context";
+import type { EvaluatedEntity } from "../../ai/context";
+import { preparePromptContext } from "../../ai/prompt";
 import { sendResponse } from "../client";
 import { debug } from "../../logger";
 import { formatMessagesForContext, getFilteredMessages } from "../../db/discord";
@@ -1147,45 +1149,41 @@ async function handleInfoPrompt(ctx: CommandContext, options: Record<string, unk
   const targetEntity = await resolveTargetEntity(ctx, entityInput, "prompt");
   if (!targetEntity) return;
 
-  // Evaluate facts through expr.ts with a mock context (no triggers active)
-  const contextParts: string[] = [formatEvaluatedEntityFromRaw(targetEntity)];
+  // Evaluate facts with a mock context (no triggers active)
+  const evaluated = buildEvaluatedEntity(targetEntity);
 
-  // Add user entity if bound
-  const userEntityId = resolveDiscordEntity(ctx.userId, "user", ctx.guildId, ctx.channelId);
-  if (userEntityId) {
-    const userEntity = getEntityWithFacts(userEntityId);
-    if (userEntity) {
-      contextParts.push(formatEvaluatedEntityFromRaw(userEntity));
-    }
-  }
+  // Use the actual template pipeline to build the system prompt
+  const { systemPrompt } = preparePromptContext(
+    [evaluated], ctx.channelId, ctx.guildId, ctx.userId,
+  );
 
-  const systemPrompt = elideText(contextParts.join("\n\n"));
-  await respond(ctx.bot, ctx.interaction, systemPrompt, true);
+  await respond(ctx.bot, ctx.interaction, elideText(systemPrompt), true);
 }
 
-/** Evaluate an entity's facts with a mock context and format for display */
-function formatEvaluatedEntityFromRaw(entity: EntityWithFacts): string {
+/** Build an EvaluatedEntity from a raw entity using a mock expression context */
+function buildEvaluatedEntity(entity: EntityWithFacts): EvaluatedEntity {
   const rawFacts = entity.facts.map(f => f.content);
   const mockContext = createBaseContext({
     facts: rawFacts,
     has_fact: (pattern: string) => rawFacts.some(f => new RegExp(pattern, "i").test(f)),
     name: entity.name,
   });
-  const evaluated = evaluateFacts(rawFacts, mockContext);
-  return formatEvaluatedEntity({
+  const result = evaluateFacts(rawFacts, mockContext);
+  return {
     id: entity.id,
     name: entity.name,
-    facts: evaluated.facts,
-    avatarUrl: evaluated.avatarUrl,
-    streamMode: evaluated.streamMode,
-    streamDelimiter: evaluated.streamDelimiter,
-    memoryScope: evaluated.memoryScope,
-    contextLimit: evaluated.contextLimit,
-    isFreeform: evaluated.isFreeform,
-    modelSpec: evaluated.modelSpec,
-    stripPatterns: evaluated.stripPatterns,
+    facts: result.facts,
+    avatarUrl: result.avatarUrl,
+    streamMode: result.streamMode,
+    streamDelimiter: result.streamDelimiter,
+    memoryScope: result.memoryScope,
+    contextLimit: result.contextLimit,
+    isFreeform: result.isFreeform,
+    modelSpec: result.modelSpec,
+    stripPatterns: result.stripPatterns,
     template: entity.template,
-  });
+    exprContext: mockContext,
+  };
 }
 
 async function handleInfoHistory(ctx: CommandContext, options: Record<string, unknown>) {
@@ -1193,9 +1191,17 @@ async function handleInfoHistory(ctx: CommandContext, options: Record<string, un
   const targetEntity = await resolveTargetEntity(ctx, entityInput, "history");
   if (!targetEntity) return;
 
-  const messages = getMessages(ctx.channelId, 100);
-  const userMessage = elideText(buildMessageHistory(messages));
-  await respond(ctx.bot, ctx.interaction, userMessage, true);
+  // Evaluate facts with a mock context (no triggers active)
+  const evaluated = buildEvaluatedEntity(targetEntity);
+
+  // Use the actual template pipeline to build structured messages
+  const { messages } = preparePromptContext(
+    [evaluated], ctx.channelId, ctx.guildId, ctx.userId,
+  );
+
+  // Format messages as [role] content
+  const formatted = messages.map(m => `[${m.role}] ${m.content}`).join("\n\n");
+  await respond(ctx.bot, ctx.interaction, elideText(formatted || "(no messages)"), true);
 }
 
 // =============================================================================

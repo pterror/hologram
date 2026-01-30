@@ -1,14 +1,11 @@
 import { streamText, stepCountIs } from "ai";
 import { getLanguageModel, DEFAULT_MODEL, InferenceError } from "./models";
 import { debug, error } from "../logger";
-import { getEntityWithFacts, type EntityWithFacts } from "../db/entities";
-import { resolveDiscordEntity } from "../db/discord";
 import {
-  DEFAULT_CONTEXT_LIMIT,
   type EvaluatedEntity,
   type MessageContext,
 } from "./context";
-import { expandEntityRefs, buildPromptAndMessages } from "./prompt";
+import { preparePromptContext } from "./prompt";
 import { createTools } from "./tools";
 import {
   stripNamePrefixFromStream,
@@ -106,44 +103,9 @@ export async function* handleMessageStreaming(
 ): AsyncGenerator<StreamEvent, void, unknown> {
   const { channelId, guildId, entities, streamMode, delimiter } = ctx;
 
-  // Expand {{entity:ID}} refs and other macros in facts, collect referenced entities
-  const other: EntityWithFacts[] = [];
-  const seenIds = new Set(entities.map(e => e.id));
-  const respondingNames = entities.map(e => e.name);
-  for (const entity of entities) {
-    other.push(...expandEntityRefs(entity, seenIds, entity.exprContext, {
-      modelSpec: entity.modelSpec,
-      contextLimit: entity.contextLimit,
-      respondingNames,
-    }));
-  }
-
-  // Add user entity if bound
-  const userEntityId = resolveDiscordEntity(ctx.userId, "user", guildId, channelId);
-  if (userEntityId && !seenIds.has(userEntityId)) {
-    const userEntity = getEntityWithFacts(userEntityId);
-    if (userEntity) {
-      other.push(userEntity);
-      seenIds.add(userEntityId);
-    }
-  }
-
-  // Determine context limit from entities (first non-null wins)
-  const contextLimit = entities.find(e => e.contextLimit !== null)?.contextLimit ?? DEFAULT_CONTEXT_LIMIT;
-
-  // Determine effective strip patterns
-  const entityStripPatterns = entities[0]?.stripPatterns;
-  const modelSpec_ = entities[0]?.modelSpec ?? DEFAULT_MODEL;
-  const effectiveStripPatterns = entityStripPatterns !== null
-    ? entityStripPatterns
-    : modelSpec_.includes("gemini-2.5-flash-preview")
-      ? ["</blockquote>"]
-      : [];
-
-  // Build prompts and messages via template engine
-  const template = entities[0]?.template ?? null;
-  const { systemPrompt, messages: llmMessages } = buildPromptAndMessages(
-    entities, other, ctx.entityMemories, template, channelId, contextLimit, effectiveStripPatterns,
+  // Prepare prompt context (expand refs, resolve user entity, build prompt)
+  const { systemPrompt, messages: llmMessages, contextLimit } = preparePromptContext(
+    entities, channelId, guildId, ctx.userId, ctx.entityMemories,
   );
 
   debug("Calling LLM (streaming)", {
