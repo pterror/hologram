@@ -1304,7 +1304,7 @@ async function sendWelcomeDm(userId: bigint): Promise<void> {
 
 /**
  * Get all user IDs that should be notified of errors for an entity.
- * Includes owner + anyone in the $edit list (but not "everyone").
+ * Includes owner + anyone in the $edit list (but not "@everyone").
  */
 function getEditorsToNotify(entityId: number, ownerId: string | null, facts: string[]): string[] {
   const editors = new Set<string>();

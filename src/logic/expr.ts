@@ -2118,21 +2118,21 @@ export interface EntityPermissions {
   isLocked: boolean;
   /** Set of fact content strings that are locked (from $locked prefix) */
   lockedFacts: Set<string>;
-  /** User IDs allowed to edit, "everyone" for public, null for owner-only */
-  editList: string[] | "everyone" | null;
-  /** User IDs allowed to view, "everyone" for public, null for owner-only */
-  viewList: string[] | "everyone" | null;
-  /** Users/IDs/roles allowed to trigger responses, "everyone" for public, null for no restriction */
-  useList: string[] | "everyone" | null;
+  /** User IDs allowed to edit, "@everyone" for public, null for owner-only */
+  editList: string[] | "@everyone" | null;
+  /** User IDs allowed to view, "@everyone" for public, null for owner-only */
+  viewList: string[] | "@everyone" | null;
+  /** Users/IDs/roles allowed to trigger responses, "@everyone" for public, null for no restriction */
+  useList: string[] | "@everyone" | null;
   /** Users/IDs blocked from all interactions (usernames or Discord IDs) */
   blacklist: string[];
 }
 
 /** Defaults from entity config columns for permission directives */
 export interface PermissionDefaults {
-  editList?: string[] | "everyone" | null;
-  viewList?: string[] | "everyone" | null;
-  useList?: string[] | "everyone" | null;
+  editList?: string[] | "@everyone" | null;
+  viewList?: string[] | "@everyone" | null;
+  useList?: string[] | "@everyone" | null;
   blacklist?: string[];
 }
 
@@ -2207,7 +2207,7 @@ export function isUserBlacklisted(
  * Check if a user is allowed to trigger entity responses ($use whitelist).
  * Owner is always allowed.
  * null useList = no restriction (everyone allowed, default).
- * "everyone" = explicitly everyone allowed.
+ * "@everyone" = explicitly everyone allowed.
  * Otherwise check the list entries.
  */
 export function isUserAllowed(
@@ -2224,7 +2224,7 @@ export function isUserAllowed(
   if (permissions.useList === null) return true;
 
   // Explicit everyone
-  if (permissions.useList === "everyone") return true;
+  if (permissions.useList === "@everyone") return true;
 
   // Check list entries
   return permissions.useList.some(entry => matchesUserEntry(entry, userId, username, userRoles));

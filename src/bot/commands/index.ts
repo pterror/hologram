@@ -346,7 +346,7 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
         const facts = entityWithFacts.facts.map(f => f.content);
         const permissions = parsePermissionDirectives(facts, getPermissionDefaults(entity.id));
         if (isUserBlacklisted(permissions, userId, username, entity.owned_by, userRoles)) return false;
-        if (permissions.editList === "everyone") return true;
+        if (permissions.editList === "@everyone") return true;
         if (permissions.editList?.some(u => matchesUserEntry(u, userId, username, userRoles))) return true;
         return false;
       }).slice(0, 25);
@@ -384,7 +384,7 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
           const facts = entityWithFacts.facts.map(f => f.content);
           const permissions = parsePermissionDirectives(facts, getPermissionDefaults(entityId));
           if (isUserBlacklisted(permissions, userId, username, entityWithFacts.owned_by, userRoles)) continue;
-          if (permissions.editList !== "everyone" &&
+          if (permissions.editList !== "@everyone" &&
               !permissions.editList?.some(u => matchesUserEntry(u, userId, username, userRoles))) {
             continue;
           }
@@ -406,7 +406,7 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
       const facts = entityWithFacts.facts.map(f => f.content);
       const permissions = parsePermissionDirectives(facts, getPermissionDefaults(entity.id));
       if (isUserBlacklisted(permissions, userId, username, entity.owned_by, userRoles)) return false;
-      if (permissions.editList === "everyone") return true;
+      if (permissions.editList === "@everyone") return true;
       if (permissions.editList?.some(u => matchesUserEntry(u, userId, username, userRoles))) return true;
       return false;
     }).slice(0, 25);
@@ -424,7 +424,7 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
       if (isUserBlacklisted(permissions, userId, username, entity.owned_by, userRoles)) return false;
       // No $view directive = owner-only by default
       if (permissions.viewList === null) return false;
-      if (permissions.viewList === "everyone") return true;
+      if (permissions.viewList === "@everyone") return true;
       if (permissions.viewList.some(u => matchesUserEntry(u, userId, username, userRoles))) return true;
       return false;
     }).slice(0, 25);

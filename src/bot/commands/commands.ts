@@ -105,7 +105,7 @@ function canUserEdit(entity: EntityWithFacts, userId: string, username: string, 
   if (isUserBlacklisted(permissions, userId, username, entity.owned_by, userRoles)) return false;
 
   // Check $edit directive (supports both usernames, Discord IDs, and role IDs)
-  if (permissions.editList === "everyone") return true;
+  if (permissions.editList === "@everyone") return true;
   if (permissions.editList && permissions.editList.some(u => matchesUserEntry(u, userId, username, userRoles))) return true;
 
   // No $edit directive = owner only
@@ -132,7 +132,7 @@ function canUserView(entity: EntityWithFacts, userId: string, username: string, 
   if (permissions.viewList === null) return false;
 
   // Check $view directive (supports both usernames, Discord IDs, and role IDs)
-  if (permissions.viewList === "everyone") return true;
+  if (permissions.viewList === "@everyone") return true;
   if (permissions.viewList.some(u => matchesUserEntry(u, userId, username, userRoles))) return true;
 
   return false;
@@ -170,8 +170,8 @@ const PERM_CONFIG_KEYS: Record<PermField, string> = {
  * Build default_values array for a mentionable select from DB value.
  * Skips username entries (can't pre-populate those in a select).
  */
-function buildDefaultValues(value: string[] | "everyone" | null): Array<{ id: string; type: "user" | "role" }> {
-  if (!value || value === "everyone" || !Array.isArray(value)) return [];
+function buildDefaultValues(value: string[] | "@everyone" | null): Array<{ id: string; type: "user" | "role" }> {
+  if (!value || value === "@everyone" || !Array.isArray(value)) return [];
   const defaults: Array<{ id: string; type: "user" | "role" }> = [];
   for (const entry of value) {
     if (entry.startsWith("role:")) {
@@ -199,7 +199,7 @@ function buildPermissionsLabels(entityId: number, ownerId: string): unknown[] {
     if (value === null && (field === "view" || field === "edit")) {
       defaultValues = [{ id: ownerId, type: "user" }];
     } else {
-      defaultValues = buildDefaultValues(value as string[] | "everyone" | null);
+      defaultValues = buildDefaultValues(value as string[] | "@everyone" | null);
     }
 
     const select: Record<string, unknown> = {
@@ -928,7 +928,7 @@ registerModalHandler("edit-permissions", async (bot, interaction, _values) => {
       });
     } else {
       setEntityConfig(entityId, {
-        [configKey]: entries.length > 0 ? JSON.stringify(entries) : JSON.stringify("everyone"),
+        [configKey]: entries.length > 0 ? JSON.stringify(entries) : JSON.stringify("@everyone"),
       });
     }
   }

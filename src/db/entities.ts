@@ -126,9 +126,9 @@ export function setEntityConfig(entityId: number, config: Partial<EntityConfig>)
 
 /** Convert config columns to permission defaults for parsePermissionDirectives */
 export function getPermissionDefaults(entityId: number): {
-  editList: string[] | "everyone" | null;
-  viewList: string[] | "everyone" | null;
-  useList: string[] | "everyone" | null;
+  editList: string[] | "@everyone" | null;
+  viewList: string[] | "@everyone" | null;
+  useList: string[] | "@everyone" | null;
   blacklist: string[];
 } {
   const config = getEntityConfig(entityId);

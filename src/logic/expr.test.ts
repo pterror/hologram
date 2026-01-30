@@ -934,8 +934,8 @@ describe("permission directives", () => {
   });
 
   test("defaults provide editList @everyone", () => {
-    const result = parsePermissionDirectives([], { editList: "everyone" });
-    expect(result.editList).toBe("everyone");
+    const result = parsePermissionDirectives([], { editList: "@everyone" });
+    expect(result.editList).toBe("@everyone");
   });
 
   test("defaults provide viewList", () => {
@@ -944,8 +944,8 @@ describe("permission directives", () => {
   });
 
   test("defaults provide viewList @everyone", () => {
-    const result = parsePermissionDirectives([], { viewList: "everyone" });
-    expect(result.viewList).toBe("everyone");
+    const result = parsePermissionDirectives([], { viewList: "@everyone" });
+    expect(result.viewList).toBe("@everyone");
   });
 
   test("$locked directive", () => {
@@ -967,10 +967,10 @@ describe("permission directives", () => {
     const facts = ["$locked secret fact", "normal fact"];
     const result = parsePermissionDirectives(facts, {
       editList: ["alice", "bob"],
-      viewList: "everyone",
+      viewList: "@everyone",
     });
     expect(result.editList).toEqual(["alice", "bob"]);
-    expect(result.viewList).toBe("everyone");
+    expect(result.viewList).toBe("@everyone");
     expect(result.lockedFacts.has("secret fact")).toBe(true);
   });
 
@@ -1855,8 +1855,8 @@ describe("$use directive via defaults", () => {
   });
 
   test("defaults provide useList @everyone", () => {
-    const perms = parsePermissionDirectives([], { useList: "everyone" });
-    expect(perms.useList).toBe("everyone");
+    const perms = parsePermissionDirectives([], { useList: "@everyone" });
+    expect(perms.useList).toBe("@everyone");
   });
 
   test("no defaults = null useList (no restriction)", () => {
@@ -1902,7 +1902,7 @@ describe("isUserAllowed", () => {
   });
 
   test("useList @everyone = everyone allowed", () => {
-    const perms = parsePermissionDirectives([], { useList: "everyone" });
+    const perms = parsePermissionDirectives([], { useList: "@everyone" });
     expect(isUserAllowed(perms, "123", "alice", "456")).toBe(true);
   });
 
