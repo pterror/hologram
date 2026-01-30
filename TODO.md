@@ -63,17 +63,15 @@ See `docs/postmortem/2026-01-26-ux-critique.md` for full analysis.
 
 ### Bot Message Visibility
 
-Other Discord bots' messages are partially invisible in message history:
+Mostly resolved by the structured messages refactor:
 
-- **Embed-only messages are dropped:** `client.ts:223` bails on `!message.content && !message.stickerItems?.length`. Bots like Nekotina that respond entirely via embeds (title/description/fields) produce no `content`, so they're silently dropped. The conversation history has gaps where bot interactions happened but aren't recorded.
-- **Text-content bot messages are included but unlabeled:** Bots that do send regular `content` are stored and appear in LLM context identically to human users (`BotName: message`). The LLM has no way to distinguish them from humans.
-- **No `isBot` check exists anywhere:** Only the bot's own user ID is filtered (`client.ts:222`). Discord's `message.author.bot` flag is never inspected.
-- **`$user` filter misclassifies bot messages:** In `messages(n, fmt, "$user")`, bot messages count as "user" messages since they have no `webhook_messages` entry. Only Hologram's own webhook messages are classified as `$char`.
+- ~~**Embed-only messages are dropped**~~ — Now serialized as `title — description` into content, with full embed data in `data` JSON blob.
+- **Text-content bot messages are included but unlabeled:** Bots that send regular `content` are stored identically to human users (`BotName: message`). The LLM has no way to distinguish them in the message history. The `data.is_bot` flag is stored but not yet surfaced in LLM context formatting (only in template `history` objects and `$user`/`$bot` filters).
+- ~~**No `isBot` check exists anywhere**~~ — `message.author.toggles.bot` is now checked and stored as `data.is_bot`.
+- ~~**`$user` filter misclassifies bot messages**~~ — `$user` now excludes bot messages; new `$bot` filter added.
 
-Possible improvements:
-- Serialize embed-only messages minimally (e.g. `BotName [bot]: embed title - embed description`) so they appear in history
-- Add `[bot]` suffix to author names for `message.author.bot === true` so the LLM can distinguish them
-- Add `$bot` filter to `messages()` function for entity-level control
+Remaining improvements:
+- Add `[bot]` suffix to author names in LLM context so models can distinguish bots from humans
 - Consider a `$ignore_bots` directive to let entities opt out of seeing bot messages entirely
 - Default behavior TBD: most bot embeds (leaderboards, stats, game results) are noise for RP context, but some are conversational
 
@@ -103,14 +101,14 @@ Template engine migrated to Nunjucks with runtime security patches. The followin
 
 ### Structured Messages Refactor
 
-Current state: all message history is formatted as `"author: content\n..."` and sent as a single user message. Templates get structured `history` objects but the LLM API still uses flat text.
+Current state: message history uses role-based `user`/`assistant` messages via `buildStructuredMessages()`. Templates get rich structured `history` objects with `is_bot`, `embeds`, `stickers`, `attachments`. Bot messages are tracked via `data` JSON column.
 
-- [ ] **Role-based messages**: Model responses should be `assistant` messages, not packed into a single `user` message. The AI SDK supports `messages: [{role: "user", ...}, {role: "assistant", ...}]` — use it.
-- [ ] **JSON blob storage**: Add a `data JSON` column to the `messages` table storing the full structured Discord message (embeds, stickers, attachments, author metadata, `is_bot` flag). SQLite `json_extract()` for queries, raw objects for template context.
-- [ ] **Template integration**: Templates get rich message objects (`msg.embeds`, `msg.stickers`, `msg.attachments`, `msg.is_bot`) instead of flat `{author, content}`.
+- [x] **Role-based messages**: Model responses are `assistant` messages using AI SDK structured messages array. `buildStructuredMessages()` in `context.ts` assigns roles based on `webhook_messages` lookup.
+- [x] **JSON blob storage**: `data TEXT` column on `messages` table stores `MessageData` JSON (is_bot, embeds, stickers, attachments). SQLite `json_extract()` used for `$user`/`$bot` classification.
+- [x] **Template integration**: Templates get rich history objects (`msg.is_bot`, `msg.embeds`, `msg.stickers`, `msg.attachments`).
 - [ ] **API-specific formatting via `{% extends %}`**: Template inheritance with entity-name-based loader (`{% extends "base-prompt" %}` resolves to that entity's template). Enables API-specific message/attachment blocks.
-- [ ] **`$user`/`$char`/`$bot` classification**: Currently `$user` filter misclassifies bot messages. With `is_bot` stored, fix classification.
-- [ ] **Embed serialization**: Embed-only messages (currently dropped at `client.ts:223`) should be serialized minimally into the `data` blob.
+- [x] **`$user`/`$char`/`$bot` classification**: `$user` excludes bot messages via `json_extract(data, '$.is_bot')`. New `$bot` filter for other Discord bot messages.
+- [x] **Embed serialization**: Embed-only messages serialized into content (`title — description`) and stored with full embed data in `data` blob.
 
 ---
 

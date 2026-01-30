@@ -7,7 +7,7 @@ import { InferenceError } from "../ai/models";
 import type { EvaluatedEntity } from "../ai/context";
 import { isModelAllowed } from "../ai/models";
 import { retrieveRelevantMemories, type MemoryScope } from "../db/memories";
-import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, updateMessageByDiscordId, deleteMessageByDiscordId, trackWebhookMessage, getWebhookMessageEntity, getMessages, getFilteredMessages, formatMessagesForContext, recordEvalError } from "../db/discord";
+import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, updateMessageByDiscordId, deleteMessageByDiscordId, trackWebhookMessage, getWebhookMessageEntity, getMessages, getFilteredMessages, formatMessagesForContext, recordEvalError, type MessageData } from "../db/discord";
 import { getEntity, getEntityWithFacts, getSystemEntity, getFactsForEntity, type EntityWithFacts } from "../db/entities";
 import { evaluateFacts, createBaseContext, parsePermissionDirectives, isUserBlacklisted, isUserAllowed } from "../logic/expr";
 import { executeWebhook, editWebhookMessage, setBot } from "./webhooks";
@@ -31,6 +31,7 @@ export const bot = createBot({
       id: true,
       username: true,
       globalName: true,
+      toggles: true,
     },
     message: {
       id: true,
@@ -44,6 +45,7 @@ export const bot = createBot({
       messageSnapshots: true as const,
       webhookId: true as const,
       stickerItems: true as const,
+      embeds: true as const,
     },
     interaction: {
       id: true,
@@ -221,7 +223,8 @@ bot.events.ready = async (payload) => {
 bot.events.messageCreate = async (message) => {
   // Ignore own messages
   if (botUserId && message.author.id === botUserId) return;
-  if (!message.content && !message.stickerItems?.length) return;
+  const hasEmbeds = (message.embeds?.length ?? 0) > 0;
+  if (!message.content && !message.stickerItems?.length && !hasEmbeds) return;
   if (!markProcessed(message.id)) return;
 
   // Serialize stickers as action text appended to content
@@ -232,6 +235,17 @@ bot.events.messageCreate = async (message) => {
       .map(s => `*sent a sticker: ${s.name}*`)
       .join(" ");
     content = content ? `${content} ${stickerText}` : stickerText;
+  }
+
+  // Serialize embed-only messages into content
+  if (!content && hasEmbeds) {
+    content = message.embeds!.map(e => {
+      const parts: string[] = [];
+      if (e.title) parts.push(e.title);
+      if (e.description) parts.push(e.description);
+      return parts.join(" — ");
+    }).filter(Boolean).join("; ");
+    if (!content) return; // embeds with no text
   }
 
   // mentionedUserIds is unreliable in Discordeno, parse from content as fallback
@@ -294,8 +308,24 @@ bot.events.messageCreate = async (message) => {
     is_forward: isForward,
   });
 
+  // Build structured message data blob
+  const isBot = !!message.author.toggles?.bot;
+  const msgData: MessageData = {};
+  if (isBot) msgData.is_bot = true;
+  if (hasEmbeds) {
+    msgData.embeds = message.embeds!.map(e => ({
+      ...(e.title && { title: e.title }),
+      ...(e.description && { description: e.description }),
+      ...(e.fields?.length && { fields: e.fields.map(f => ({ name: f.name, value: f.value })) }),
+    }));
+  }
+  if (message.stickerItems?.length) {
+    msgData.stickers = message.stickerItems.map(s => s.name);
+  }
+  const hasData = Object.keys(msgData).length > 0;
+
   // Store message in history (before response decision so context builds up)
-  addMessage(channelId, authorId, authorName, content, message.id.toString());
+  addMessage(channelId, authorId, authorName, content, message.id.toString(), hasData ? msgData : undefined);
 
   // Get ALL channel entities (supports multiple characters)
   const channelEntityIds = resolveDiscordEntities(channelId, "channel", guildId, channelId);

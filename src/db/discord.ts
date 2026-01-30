@@ -281,7 +281,21 @@ export interface Message {
   author_name: string;
   content: string;
   discord_message_id: string | null;
+  data: string | null;
   created_at: string;
+}
+
+export interface MessageData {
+  is_bot?: boolean;
+  embeds?: Array<{ title?: string; description?: string; fields?: Array<{ name: string; value: string }> }>;
+  stickers?: string[];
+  attachments?: Array<{ filename: string; url: string; content_type?: string }>;
+}
+
+export function parseMessageData(raw: string | null): MessageData | null {
+  if (!raw) return null;
+  try { return JSON.parse(raw) as MessageData; }
+  catch { return null; }
 }
 
 export function addMessage(
@@ -289,14 +303,15 @@ export function addMessage(
   authorId: string,
   authorName: string,
   content: string,
-  discordMessageId?: string
+  discordMessageId?: string,
+  data?: MessageData
 ): Message {
   const db = getDb();
   return db.prepare(`
-    INSERT INTO messages (channel_id, author_id, author_name, content, discord_message_id)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO messages (channel_id, author_id, author_name, content, discord_message_id, data)
+    VALUES (?, ?, ?, ?, ?, ?)
     RETURNING *
-  `).get(channelId, authorId, authorName, content, discordMessageId ?? null) as Message;
+  `).get(channelId, authorId, authorName, content, discordMessageId ?? null, data ? JSON.stringify(data) : null) as Message;
 }
 
 export function updateMessageByDiscordId(
@@ -371,11 +386,24 @@ export function getFilteredMessages(
   }
 
   if (filter === "$user") {
-    // Only messages that do NOT have a webhook_messages entry
+    // Non-entity, non-bot messages
     return db.prepare(`
       SELECT m.* FROM messages m
       LEFT JOIN webhook_messages wm ON wm.message_id = m.discord_message_id
-      WHERE m.channel_id = ? AND wm.message_id IS NULL${timeClause}
+      WHERE m.channel_id = ? AND wm.message_id IS NULL
+        AND COALESCE(json_extract(m.data, '$.is_bot'), 0) = 0${timeClause}
+      ORDER BY m.created_at DESC
+      LIMIT ?
+    `).all(channelId, ...timeParams, limit) as Message[];
+  }
+
+  if (filter === "$bot") {
+    // Bot messages that aren't our entities
+    return db.prepare(`
+      SELECT m.* FROM messages m
+      LEFT JOIN webhook_messages wm ON wm.message_id = m.discord_message_id
+      WHERE m.channel_id = ? AND wm.message_id IS NULL
+        AND json_extract(m.data, '$.is_bot') = 1${timeClause}
       ORDER BY m.created_at DESC
       LIMIT ?
     `).all(channelId, ...timeParams, limit) as Message[];

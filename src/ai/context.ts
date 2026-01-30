@@ -1,4 +1,5 @@
 import type { EntityWithFacts } from "../db/entities";
+import type { Message } from "../db/discord";
 import type { ExprContext } from "../logic/expr";
 
 // =============================================================================
@@ -90,6 +91,8 @@ export function formatRawEntity(entity: EntityWithFacts): string {
  * Build message history up to a character limit.
  * Messages should be in DESC order (newest first) from the database.
  * Returns formatted string in chronological order (oldest first).
+ *
+ * Legacy: used by /debug history command. Non-template LLM calls now use buildStructuredMessages().
  */
 export function buildMessageHistory(
   messages: Array<{ author_name: string; content: string }>,
@@ -113,4 +116,57 @@ export function buildMessageHistory(
 
   // Reverse to chronological order (oldest first)
   return lines.reverse().join("\n");
+}
+
+// =============================================================================
+// Structured Messages (Role-Based)
+// =============================================================================
+
+export interface StructuredMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/**
+ * Build role-based messages for LLM API from DB message history.
+ * Messages should be in DESC order (newest first) from the database.
+ * Returns chronological array with proper user/assistant roles.
+ *
+ * @param messages - Messages in DESC order from DB
+ * @param charLimit - Maximum total characters to include
+ * @param entityNames - Names of responding entities (for role assignment)
+ * @param isEntityMessage - Callback to check if a message was sent by an entity
+ */
+export function buildStructuredMessages(
+  messages: Message[],
+  charLimit: number,
+  entityNames: string[],
+  isEntityMessage: (m: Message) => boolean,
+): StructuredMessage[] {
+  const result: StructuredMessage[] = [];
+  let totalChars = 0;
+  const isMultiEntity = entityNames.length > 1;
+
+  for (const m of messages) {
+    const isEntity = isEntityMessage(m);
+    const role: "user" | "assistant" = isEntity ? "assistant" : "user";
+    // assistant in multi-entity: "Name: content" (LLM needs to know who)
+    // assistant in single-entity: bare content (LLM already knows)
+    // user: always "Author: content"
+    const content = (isEntity && !isMultiEntity) ? m.content : `${m.author_name}: ${m.content}`;
+
+    const len = content.length + 1;
+    if (totalChars + len > charLimit && result.length > 0) break;
+    result.push({ role, content });
+    totalChars += len;
+  }
+
+  result.reverse(); // chronological
+
+  // AI SDK requires first message to be user role
+  if (result.length > 0 && result[0].role === "assistant") {
+    result.unshift({ role: "user", content: "(continued)" });
+  }
+
+  return result;
 }

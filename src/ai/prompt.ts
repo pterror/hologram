@@ -9,7 +9,7 @@ import {
   DEFAULT_CONTEXT_LIMIT,
   type EvaluatedEntity,
 } from "./context";
-import { getMessages } from "../db/discord";
+import { getMessages, parseMessageData } from "../db/discord";
 import { evalMacroValue, formatDuration, rollDice, type ExprContext } from "../logic/expr";
 import { DEFAULT_MODEL } from "./models";
 import { renderEntityTemplate } from "./template";
@@ -344,15 +344,22 @@ function renderWithTemplate(
   templateCtx.entity_names = respondingEntities.map(e => e.name).join(", ");
   templateCtx.freeform = respondingEntities.some(e => e.isFreeform);
 
-  // Structured messages for template use
+  // Structured messages for template use (enriched with message data)
   if (channelId) {
     const history = getMessages(channelId, MESSAGE_FETCH_LIMIT);
-    templateCtx.history = history.reverse().map(m => ({
-      author: m.author_name,
-      content: m.content,
-      author_id: m.author_id,
-      created_at: m.created_at,
-    }));
+    templateCtx.history = history.reverse().map(m => {
+      const data = parseMessageData(m.data);
+      return {
+        author: m.author_name,
+        content: m.content,
+        author_id: m.author_id,
+        created_at: m.created_at,
+        is_bot: data?.is_bot ?? false,
+        embeds: data?.embeds ?? [],
+        stickers: data?.stickers ?? [],
+        attachments: data?.attachments ?? [],
+      };
+    });
   } else {
     templateCtx.history = [];
   }

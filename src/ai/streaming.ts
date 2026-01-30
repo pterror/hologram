@@ -2,13 +2,14 @@ import { streamText, stepCountIs } from "ai";
 import { getLanguageModel, DEFAULT_MODEL, InferenceError } from "./models";
 import { debug, error } from "../logger";
 import { getEntityWithFacts, type EntityWithFacts } from "../db/entities";
-import { resolveDiscordEntity, getMessages } from "../db/discord";
+import { resolveDiscordEntity, getMessages, getWebhookMessageEntity } from "../db/discord";
 import {
   applyStripPatterns,
-  buildMessageHistory,
+  buildStructuredMessages,
   DEFAULT_CONTEXT_LIMIT,
   type EvaluatedEntity,
   type MessageContext,
+  type StructuredMessage,
 } from "./context";
 import { expandEntityRefs, buildSystemPrompt } from "./prompt";
 import { createTools } from "./tools";
@@ -139,14 +140,6 @@ export async function* handleMessageStreaming(
   // Build prompts
   const template = entities[0]?.template ?? null;
   const systemPrompt = buildSystemPrompt(entities, other, ctx.entityMemories, template, channelId);
-  let userMessage: string;
-  if (template) {
-    // Template controls full prompt — user message is just the latest
-    const latest = history[0]; // newest first
-    userMessage = latest ? `${latest.author_name}: ${latest.content}` : "";
-  } else {
-    userMessage = buildMessageHistory(history, contextLimit);
-  }
 
   // Apply strip patterns to message history
   const entityStripPatterns = entities[0]?.stripPatterns;
@@ -156,14 +149,35 @@ export async function* handleMessageStreaming(
     : modelSpec_.includes("gemini-2.5-flash-preview")
       ? ["</blockquote>"]
       : [];
-  if (effectiveStripPatterns.length > 0) {
-    userMessage = applyStripPatterns(userMessage, effectiveStripPatterns);
+
+  // Build structured messages (role-based) or single user message for templates
+  let llmMessages: StructuredMessage[];
+  if (template) {
+    // Template controls full prompt — user message is just the latest
+    const latest = history[0]; // newest first
+    let latestContent = latest ? `${latest.author_name}: ${latest.content}` : "";
+    if (effectiveStripPatterns.length > 0) {
+      latestContent = applyStripPatterns(latestContent, effectiveStripPatterns);
+    }
+    llmMessages = [{ role: "user", content: latestContent }];
+  } else {
+    const entityNames = entities.map(e => e.name);
+    llmMessages = buildStructuredMessages(
+      history, contextLimit, entityNames,
+      (m) => !!m.discord_message_id && !!getWebhookMessageEntity(m.discord_message_id),
+    );
+    if (effectiveStripPatterns.length > 0) {
+      for (const msg of llmMessages) {
+        msg.content = applyStripPatterns(msg.content, effectiveStripPatterns);
+      }
+    }
   }
 
   debug("Calling LLM (streaming)", {
     entities: entities.map(e => e.name),
     streamMode,
     contextLimit,
+    messageCount: llmMessages.length,
     hasMemories: !!ctx.entityMemories?.size,
   });
 
@@ -176,7 +190,7 @@ export async function* handleMessageStreaming(
     const result = streamText({
       model,
       system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
+      messages: llmMessages,
       tools,
       stopWhen: stepCountIs(5),
     });

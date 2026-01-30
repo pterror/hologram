@@ -182,6 +182,7 @@ function initSchema(db: Database) {
   migrateDiscordEntitiesConstraint(db);
   migrateMessagesDiscordId(db);
   migrateEntityTemplate(db);
+  migrateMessagesData(db);
 }
 
 /**
@@ -218,6 +219,15 @@ function migrateEntityTemplate(db: Database) {
   if (columns.some(c => c.name === "template")) return;
 
   db.exec(`ALTER TABLE entities ADD COLUMN template TEXT`);
+}
+
+/**
+ * Add data column to messages table for structured message metadata (JSON blob).
+ */
+function migrateMessagesData(db: Database) {
+  const columns = db.prepare(`PRAGMA table_info(messages)`).all() as Array<{ name: string }>;
+  if (columns.some(c => c.name === "data")) return;
+  db.exec(`ALTER TABLE messages ADD COLUMN data TEXT`);
 }
 
 /**

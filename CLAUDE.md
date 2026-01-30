@@ -73,7 +73,7 @@ entities         -- id, name, owned_by, created_at, template
 facts            -- id, entity_id, content, created_at, updated_at
 discord_entities -- discord_id, discord_type, entity_id, scope_guild_id, scope_channel_id
 fact_embeddings  -- (planned) vector search
-messages         -- channel_id, user_id, author_name, content, discord_message_id, created_at
+messages         -- channel_id, user_id, author_name, content, discord_message_id, data, created_at
 welcomed_users   -- discord_id, welcomed_at (onboarding DM tracking)
 webhook_messages -- message_id, entity_id, entity_name (for reply detection)
 eval_errors      -- entity_id, owner_id, error_message, condition (deduped error notifications)
@@ -88,7 +88,7 @@ Channel Entity Lookup (via discord_entities)
     ↓
 Fact Evaluation ($if conditions, $respond directives)
     ↓
-LLM Call (system: entity facts, user: recent messages)
+LLM Call (system: entity facts, messages: role-based user/assistant history)
     ↓
 Tool Calls (add_fact, update_fact, remove_fact)
     ↓
@@ -191,7 +191,7 @@ Override the default system prompt formatting per entity using custom templates 
 - `memories` — object mapping entity ID to array of memory strings
 - `entity_names` — comma-separated names of responding entities
 - `freeform` — boolean, true if any entity has `$freeform`
-- `history` — array of structured messages `[{author, content, author_id, created_at}]` (chronological order)
+- `history` — array of structured messages `[{author, content, author_id, created_at, is_bot, embeds, stickers, attachments}]` (chronological order)
 
 **Full prompt control:** When a template is active, its output IS the system prompt. The user message sent to the LLM is only the latest message (not full history), since the template can include history via `{% for msg in history %}`.
 
@@ -241,7 +241,7 @@ Stickers are serialized as `*sent a sticker: name*` and appended to message cont
 
 **Functions:** `random(n)`, `has_fact(pattern)`, `roll(dice)`, `mentioned_in_dialogue(name)`, `messages(n, format, filter)`, `duration(ms)`, `date_str(offset?)`, `time_str(offset?)`, `isodate(offset?)`, `isotime(offset?)`, `weekday(offset?)`
 
-The `messages(n, format, filter)` function returns the last N messages (default 1). Format string uses `%a` for author and `%m` for message (default `"%a: %m"`). Filter: `"$user"` for human messages, `"$char"` for entity messages, or an author name. The `content` and `author` variables are aliases for `messages(1, "%m")` and `messages(1, "%a")`.
+The `messages(n, format, filter)` function returns the last N messages (default 1). Format string uses `%a` for author and `%m` for message (default `"%a: %m"`). Filter: `"$user"` for human messages (excludes bots), `"$char"` for entity messages, `"$bot"` for other Discord bot messages, or an author name. The `content` and `author` variables are aliases for `messages(1, "%m")` and `messages(1, "%a")`.
 
 The `roll(dice)` function supports roll20-style syntax: basic (`2d6+3`), keep highest/lowest (`4d6kh3`, `4d6kl1`), drop highest/lowest (`4d6dh1`, `4d6dl1`), exploding (`1d6!`), and success counting (`8d6>=5`).
 
