@@ -257,7 +257,7 @@ export function buildPromptAndMessages(
   channelId: string,
   contextExpr: string,
   stripPatterns: string[],
-): { systemPrompt: string; messages: StructuredMessage[] } {
+): { messages: StructuredMessage[] } {
   // Fetch history from DB (DESC order, newest first)
   const rawHistory = getMessages(channelId, MESSAGE_FETCH_LIMIT);
 
@@ -288,7 +288,7 @@ export function buildPromptAndMessages(
     const role = isEntity ? "assistant" as const : "user" as const;
 
     // Calculate char length for context expression
-    const formattedContent = (isEntity && isSingleEntity) ? m.content : `${m.author_name}: ${m.content}`;
+    const formattedContent = `${m.author_name}: ${m.content}`;
     const len = formattedContent.length + 1; // +1 for newline
     const msgAge = now - new Date(m.created_at).getTime();
 
@@ -366,38 +366,26 @@ export function buildPromptAndMessages(
   const output = renderStructuredTemplate(templateSource, templateCtx);
 
   // Convert to StructuredMessage[]
-  let messages: StructuredMessage[];
-  if (output.messages.length > 0) {
-    // Template used _msg() → use structured messages
-    // Fold system-role messages into the system prompt
-    const systemParts = output.systemPrompt ? [output.systemPrompt] : [];
-    messages = [];
-    for (const m of output.messages) {
-      if (m.role === "system") {
-        systemParts.push(m.content);
-      } else {
-        messages.push({ role: m.role, content: m.content });
-      }
-    }
-    const systemPrompt = systemParts.join("\n\n");
+  let messages: StructuredMessage[] = output.messages.map(m => ({ role: m.role, content: m.content }));
 
-    // AI SDK requires first message to be user role
-    if (messages.length > 0 && messages[0].role === "assistant") {
-      messages.unshift({ role: "user", content: "(continued)" });
+  if (messages.length === 0) {
+    // Template didn't use _msg() → legacy behavior: latest message as user content
+    // (parseStructuredOutput already wrapped the output as a system message)
+    const latest = rawHistory[0];
+    let latestContent = latest ? `${latest.author_name}: ${latest.content}` : "";
+    if (stripPatterns.length > 0) {
+      latestContent = applyStripPatterns(latestContent, stripPatterns);
     }
-
-    return { systemPrompt, messages };
+    messages.push({ role: "user", content: latestContent });
   }
 
-  // Template didn't use _msg() → legacy behavior: latest message as user content
-  const latest = rawHistory[0];
-  let latestContent = latest ? `${latest.author_name}: ${latest.content}` : "";
-  if (stripPatterns.length > 0) {
-    latestContent = applyStripPatterns(latestContent, stripPatterns);
+  // AI SDK requires first non-system message to be user role
+  const firstNonSystem = messages.findIndex(m => m.role !== "system");
+  if (firstNonSystem >= 0 && messages[firstNonSystem].role === "assistant") {
+    messages.splice(firstNonSystem, 0, { role: "user", content: "(continued)" });
   }
-  messages = [{ role: "user", content: latestContent }];
 
-  return { systemPrompt: output.systemPrompt, messages };
+  return { messages };
 }
 
 // =============================================================================
@@ -405,7 +393,6 @@ export function buildPromptAndMessages(
 // =============================================================================
 
 export interface PreparedPromptContext {
-  systemPrompt: string;
   messages: StructuredMessage[];
   other: EntityWithFacts[];
   contextExpr: string;
@@ -462,11 +449,11 @@ export function preparePromptContext(
       ? ["</blockquote>"]
       : [];
 
-  // Build prompts and messages via template engine
+  // Build messages via template engine
   const template = entities[0]?.template ?? null;
-  const { systemPrompt, messages } = buildPromptAndMessages(
+  const { messages } = buildPromptAndMessages(
     entities, other, entityMemories, template, channelId, contextExpr, effectiveStripPatterns,
   );
 
-  return { systemPrompt, messages, other, contextExpr, effectiveStripPatterns };
+  return { messages, other, contextExpr, effectiveStripPatterns };
 }

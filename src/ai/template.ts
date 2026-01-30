@@ -318,9 +318,7 @@ export interface ParsedTemplateMessage {
 }
 
 export interface ParsedTemplateOutput {
-  /** Content before first _msg() marker (system prompt) */
-  systemPrompt: string;
-  /** Content between _msg() markers (structured messages) */
+  /** All messages including system-role segments */
   messages: ParsedTemplateMessage[];
 }
 
@@ -341,11 +339,12 @@ function makeMsgFunction(nonce: string): (role: string, opts?: { author?: string
 
 /**
  * Parse structured output from a rendered template.
- * Splits on nonce-based markers to extract system prompt + messages.
+ * Splits on nonce-based markers to extract a flat list of messages.
+ * Content outside markers is treated as system-role; bare newlines are elided.
  */
 export function parseStructuredOutput(rendered: string, nonce: string): ParsedTemplateOutput {
   const markerPattern = new RegExp(
-    `<<<HMSG:${nonce}:([A-Za-z0-9+/=]+)>>>`,
+    `${escapeRegExp(MARKER_PREFIX)}${escapeRegExp(nonce)}:([A-Za-z0-9+/=]+)${escapeRegExp(MARKER_SUFFIX)}`,
     "g",
   );
 
@@ -360,16 +359,21 @@ export function parseStructuredOutput(rendered: string, nonce: string): ParsedTe
     });
   }
 
-  // No markers → entire output is systemPrompt (legacy compat)
+  // No markers → entire output is a single system message (legacy compat)
   if (markers.length === 0) {
-    return { systemPrompt: rendered.trim(), messages: [] };
+    const trimmed = rendered.trim();
+    return { messages: trimmed ? [{ role: "system", content: trimmed }] : [] };
   }
 
-  // Content before first marker → systemPrompt
-  const systemPrompt = rendered.slice(0, markers[0].index).trim();
+  const messages: ParsedTemplateMessage[] = [];
+
+  // Content before first marker → system message
+  const preamble = rendered.slice(0, markers[0].index).trim();
+  if (preamble) {
+    messages.push({ role: "system", content: preamble });
+  }
 
   // Content between markers → messages
-  const messages: ParsedTemplateMessage[] = [];
   for (let i = 0; i < markers.length; i++) {
     const marker = markers[i];
     const contentStart = marker.index + marker.length;
@@ -380,7 +384,7 @@ export function parseStructuredOutput(rendered: string, nonce: string): ParsedTe
     const decoded = JSON.parse(Buffer.from(marker.payload, "base64").toString("utf-8"));
     const role = decoded.role as "system" | "user" | "assistant";
 
-    // Skip empty-content messages
+    // Skip empty-content messages (bare newlines between markers)
     if (!content) continue;
 
     const msg: ParsedTemplateMessage = { role, content };
@@ -389,13 +393,17 @@ export function parseStructuredOutput(rendered: string, nonce: string): ParsedTe
     messages.push(msg);
   }
 
-  return { systemPrompt, messages };
+  return { messages };
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
  * Render a template and parse structured output.
  * Injects _msg() into the template context for structured message emission.
- * Returns parsed system prompt + messages.
+ * Returns a flat list of messages (system, user, assistant).
  */
 // =============================================================================
 // Default Template (Nunjucks)

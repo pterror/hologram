@@ -84,6 +84,6 @@ export function formatEvaluatedEntity(entity: EvaluatedEntity): string {
 // =============================================================================
 
 export interface StructuredMessage {
-  role: "user" | "assistant";
+  role: "system" | "user" | "assistant";
   content: string;
 }
