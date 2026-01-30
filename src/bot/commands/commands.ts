@@ -22,6 +22,8 @@ import {
   type EntityWithFacts,
   getPermissionDefaults,
   getEntityEvalDefaults,
+  getEntityConfig,
+  setEntityConfig,
 } from "../../db/entities";
 import {
   getMemoriesForEntity,
@@ -303,6 +305,8 @@ registerCommand({
         { name: "Facts only", value: "facts" },
         { name: "Memories only", value: "memories" },
         { name: "Template", value: "template" },
+        { name: "Config", value: "config" },
+        { name: "Permissions", value: "permissions" },
       ],
     },
   ],
@@ -376,6 +380,116 @@ registerCommand({
           }];
 
       await respondWithModal(ctx.bot, ctx.interaction, `edit-template:${entity.id}`, `Edit Template: ${entity.name}`, templateFields);
+      return;
+    }
+
+    if (editType === "config") {
+      // Config editing - 5 text fields for entity settings
+      const config = getEntityConfig(entity.id);
+
+      // Format stream config for display
+      let streamDisplay = "";
+      if (config?.config_stream_mode) {
+        streamDisplay = config.config_stream_mode;
+        if (config.config_stream_delimiters) {
+          const delims = JSON.parse(config.config_stream_delimiters) as string[];
+          streamDisplay += " " + delims.map(d => `"${d}"`).join(" ");
+        }
+      }
+
+      const configFields = [
+        {
+          customId: "model",
+          label: "Model",
+          style: TextStyles.Short,
+          value: config?.config_model ?? "",
+          required: false,
+          placeholder: "provider:model (e.g. google:gemini-3-flash-preview)",
+        },
+        {
+          customId: "context",
+          label: "Context",
+          style: TextStyles.Short,
+          value: config?.config_context ?? "",
+          required: false,
+          placeholder: "(chars < 4000 || count < 20) && age_h < 12",
+        },
+        {
+          customId: "stream",
+          label: "Stream",
+          style: TextStyles.Short,
+          value: streamDisplay,
+          required: false,
+          placeholder: 'lines, full, full "\\n", "delimiter"',
+        },
+        {
+          customId: "avatar",
+          label: "Avatar URL",
+          style: TextStyles.Short,
+          value: config?.config_avatar ?? "",
+          required: false,
+          placeholder: "https://example.com/avatar.png",
+        },
+        {
+          customId: "memory",
+          label: "Memory scope",
+          style: TextStyles.Short,
+          value: config?.config_memory ?? "",
+          required: false,
+          placeholder: "none, channel, guild, global",
+        },
+      ];
+
+      await respondWithModal(ctx.bot, ctx.interaction, `edit-config:${entity.id}`, `Config: ${entity.name}`, configFields);
+      return;
+    }
+
+    if (editType === "permissions") {
+      // Permissions editing - 4 text fields for access control
+      const defaults = getPermissionDefaults(entity.id);
+
+      const formatList = (list: string[] | "everyone" | null): string => {
+        if (list === "everyone") return "@everyone";
+        if (list === null || list.length === 0) return "";
+        return list.join(", ");
+      };
+
+      const permFields = [
+        {
+          customId: "perm_view",
+          label: "View ($view)",
+          style: TextStyles.Short,
+          value: formatList(defaults.viewList),
+          required: false,
+          placeholder: "@everyone, or comma-separated usernames/IDs",
+        },
+        {
+          customId: "perm_edit",
+          label: "Edit ($edit)",
+          style: TextStyles.Short,
+          value: formatList(defaults.editList),
+          required: false,
+          placeholder: "@everyone, or comma-separated usernames/IDs",
+        },
+        {
+          customId: "perm_use",
+          label: "Use ($use)",
+          style: TextStyles.Short,
+          value: formatList(defaults.useList),
+          required: false,
+          placeholder: "@everyone, or comma-separated usernames/IDs",
+        },
+        {
+          customId: "perm_blacklist",
+          label: "Blacklist ($blacklist)",
+          style: TextStyles.Short,
+          value: formatList(defaults.blacklist),
+          required: false,
+          placeholder: "Comma-separated usernames/IDs to block",
+        },
+      ];
+
+      await respondWithModal(ctx.bot, ctx.interaction, `edit-permissions:${entity.id}`, `Permissions: ${entity.name}`, permFields);
       return;
     }
 
@@ -616,6 +730,138 @@ registerModalHandler("edit-template", async (bot, interaction, values) => {
   // Save template
   setEntityTemplate(entityId, templateText);
   await respond(bot, interaction, `Updated template for "${entity.name}" (${templateText.length} chars)`, true);
+});
+
+registerModalHandler("edit-config", async (bot, interaction, values) => {
+  const customId = interaction.data?.customId ?? "";
+  const entityId = parseInt(customId.split(":")[1]);
+
+  const entity = getEntityWithFacts(entityId);
+  if (!entity) {
+    await respond(bot, interaction, "Entity not found", true);
+    return;
+  }
+
+  // Check edit permission
+  const userId = interaction.user?.id?.toString() ?? "";
+  const username = interaction.user?.username ?? "";
+  if (!canUserEdit(entity, userId, username)) {
+    await respond(bot, interaction, "You don't have permission to edit this entity", true);
+    return;
+  }
+
+  const model = values.model?.trim() || null;
+  const context = values.context?.trim() || null;
+  const avatar = values.avatar?.trim() || null;
+  const memory = values.memory?.trim() || null;
+
+  // Parse stream config: "lines", "full", 'full "\n"', '"delimiter"'
+  const streamRaw = values.stream?.trim() || "";
+  let streamMode: string | null = null;
+  let streamDelimiters: string | null = null;
+
+  if (streamRaw) {
+    // Extract quoted delimiters
+    const delimRegex = /"([^"]+)"/g;
+    const delims: string[] = [];
+    let match;
+    while ((match = delimRegex.exec(streamRaw)) !== null) {
+      // Process escape sequences
+      delims.push(match[1].replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\\\/g, "\\"));
+    }
+
+    // Extract mode (text before first quote, or the whole string if no quotes)
+    const modeStr = streamRaw.replace(/"[^"]*"/g, "").trim().toLowerCase();
+
+    if (modeStr === "full" || modeStr === "lines" || modeStr === "") {
+      streamMode = modeStr || (delims.length > 0 ? "lines" : "lines");
+      if (modeStr === "") streamMode = "lines";
+    } else {
+      streamMode = modeStr;
+    }
+
+    if (delims.length > 0) {
+      streamDelimiters = JSON.stringify(delims);
+    }
+  }
+
+  // Validate memory scope
+  if (memory && !["none", "channel", "guild", "global"].includes(memory)) {
+    await respond(bot, interaction, `Invalid memory scope: "${memory}". Use: none, channel, guild, global`, true);
+    return;
+  }
+
+  setEntityConfig(entityId, {
+    config_model: model,
+    config_context: context,
+    config_stream_mode: streamMode,
+    config_stream_delimiters: streamDelimiters,
+    config_avatar: avatar,
+    config_memory: memory,
+  });
+
+  const changes: string[] = [];
+  if (model) changes.push(`model: ${model}`);
+  if (context) changes.push(`context: ${context}`);
+  if (streamRaw) changes.push(`stream: ${streamRaw}`);
+  if (avatar) changes.push("avatar: set");
+  if (memory) changes.push(`memory: ${memory}`);
+  if (changes.length === 0) changes.push("all cleared");
+
+  await respond(bot, interaction, `Updated config for "${entity.name}": ${changes.join(", ")}`, true);
+});
+
+registerModalHandler("edit-permissions", async (bot, interaction, values) => {
+  const customId = interaction.data?.customId ?? "";
+  const entityId = parseInt(customId.split(":")[1]);
+
+  const entity = getEntityWithFacts(entityId);
+  if (!entity) {
+    await respond(bot, interaction, "Entity not found", true);
+    return;
+  }
+
+  // Check edit permission
+  const userId = interaction.user?.id?.toString() ?? "";
+  const username = interaction.user?.username ?? "";
+  if (!canUserEdit(entity, userId, username)) {
+    await respond(bot, interaction, "You don't have permission to edit this entity", true);
+    return;
+  }
+
+  const parsePermList = (raw: string): string | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (trimmed === "@everyone") return JSON.stringify("everyone");
+    const entries = trimmed.split(",").map(s => s.trim()).filter(s => s);
+    if (entries.length === 0) return null;
+    return JSON.stringify(entries);
+  };
+
+  const viewRaw = values.perm_view ?? "";
+  const editRaw = values.perm_edit ?? "";
+  const useRaw = values.perm_use ?? "";
+  const blacklistRaw = values.perm_blacklist ?? "";
+
+  const blacklistEntries = blacklistRaw.trim()
+    ? blacklistRaw.split(",").map(s => s.trim()).filter(s => s)
+    : [];
+
+  setEntityConfig(entityId, {
+    config_view: parsePermList(viewRaw),
+    config_edit: parsePermList(editRaw),
+    config_use: parsePermList(useRaw),
+    config_blacklist: blacklistEntries.length > 0 ? JSON.stringify(blacklistEntries) : null,
+  });
+
+  const changes: string[] = [];
+  if (viewRaw.trim()) changes.push(`view: ${viewRaw.trim()}`);
+  if (editRaw.trim()) changes.push(`edit: ${editRaw.trim()}`);
+  if (useRaw.trim()) changes.push(`use: ${useRaw.trim()}`);
+  if (blacklistRaw.trim()) changes.push(`blacklist: ${blacklistRaw.trim()}`);
+  if (changes.length === 0) changes.push("all cleared");
+
+  await respond(bot, interaction, `Updated permissions for "${entity.name}": ${changes.join(", ")}`, true);
 });
 
 registerModalHandler("edit-both", async (bot, interaction, values) => {

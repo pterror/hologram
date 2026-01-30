@@ -314,6 +314,8 @@ $use alice, 123456789              # Restrict who can trigger
 | `/create [name]` | Create entity |
 | `/view <entity>` | View entity facts |
 | `/edit <entity>` | Edit facts + memories (modal) |
+| `/edit <entity> type:config` | Edit model, context, stream, avatar, memory |
+| `/edit <entity> type:permissions` | Edit view, edit, use, blacklist |
 | `/delete <entity>` | Delete entity |
 | `/transfer <entity> <user>` | Transfer ownership |
 | `/bind <target> <entity>` | Bind channel/user |
