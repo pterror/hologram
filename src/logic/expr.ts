@@ -496,7 +496,10 @@ const EXPR_CONTEXT_REFERENCE: ExprContext = {
 const ALLOWED_GLOBALS = new Set(Object.keys(EXPR_CONTEXT_REFERENCE));
 
 // Methods that compile their first string argument into a RegExp
-const REGEX_METHODS = new Set(["match", "search", "replace", "split"]);
+const REGEX_METHODS = new Set(["match", "matchAll", "search", "replace", "split"]);
+
+// Methods that can cause memory exhaustion with large numeric arguments
+const BLOCKED_METHODS = new Set(["repeat", "padStart", "padEnd"]);
 
 // Blocked property names (prevent prototype chain escapes)
 const BLOCKED_PROPERTIES = new Set([
@@ -526,6 +529,10 @@ function generateCode(node: ExprNode): string {
       // Block dangerous property names that could escape the sandbox
       if (BLOCKED_PROPERTIES.has(node.property)) {
         throw new ExprError(`Blocked property access: ${node.property}`);
+      }
+      // Block methods that can cause memory exhaustion
+      if (BLOCKED_METHODS.has(node.property)) {
+        throw new ExprError(`Blocked method: ${node.property}() can cause memory exhaustion`);
       }
       return `(${generateCode(node.object)}?.${node.property})`;
 

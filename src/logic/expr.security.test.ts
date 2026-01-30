@@ -633,6 +633,19 @@ describe("string method abuse", () => {
   test("string fromCharCode not accessible (String not in whitelist)", () => {
     expect(() => compileExpr("String")).toThrow("Unknown identifier: String");
   });
+
+  test("matchAll is regex-validated like match", () => {
+    expect(() => compileExpr('content.matchAll("(?:a+)+")')).toThrow("nested quantifier");
+    expect(() => compileExpr('content.matchAll("(a+)+")')).toThrow("capturing groups");
+  });
+
+  test("matchAll requires string literal pattern", () => {
+    expect(() => compileExpr("content.matchAll(name)")).toThrow("string literal pattern");
+  });
+
+  test("matchAll with safe pattern compiles", () => {
+    expect(() => compileExpr('content.matchAll("\\\\d+")')).not.toThrow();
+  });
 });
 
 // =============================================================================
@@ -701,10 +714,21 @@ describe("denial of service vectors", () => {
     expect(() => compileExpr(`"${longStr}".length > 0`)).not.toThrow();
   });
 
-  test("repeat() could cause memory issues but is bounded by runtime", () => {
-    // This is a runtime concern, not a parser concern
-    // The expression itself is valid; resource limits are enforced externally
-    expect(() => compileExpr('content.repeat(10).length > 0')).not.toThrow();
+  test("repeat() blocked at compile time (memory exhaustion)", () => {
+    expect(() => compileExpr('content.repeat(10).length > 0')).toThrow("Blocked method: repeat()");
+    expect(() => compileExpr("content.repeat(999999)")).toThrow("Blocked method: repeat()");
+  });
+
+  test("padStart() blocked at compile time (memory exhaustion)", () => {
+    expect(() => compileExpr('content.padStart(100000000)')).toThrow("Blocked method: padStart()");
+  });
+
+  test("padEnd() blocked at compile time (memory exhaustion)", () => {
+    expect(() => compileExpr('content.padEnd(100000000)')).toThrow("Blocked method: padEnd()");
+  });
+
+  test("chained repeat() blocked", () => {
+    expect(() => compileExpr("content.repeat(100).repeat(100)")).toThrow("Blocked method: repeat()");
   });
 
   // ---------------------------------------------------------------------------

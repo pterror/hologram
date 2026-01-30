@@ -8,11 +8,11 @@
 
 ### Test Coverage
 
-Current: 528 tests across `src/logic/expr.test.ts`, `src/logic/expr.security.test.ts`, and `src/logic/safe-regex.test.ts`. Covers:
+Current: 537 tests across `src/logic/expr.test.ts`, `src/logic/expr.security.test.ts`, and `src/logic/safe-regex.test.ts`. Covers:
 - Expression evaluator (tokenizer, parser, operators, precedence)
 - Security (identifier whitelist, injection prevention, prototype access)
-- Adversarial sandbox escapes (170 tests): prototype chains, global access, constructors, module system, bracket notation, code injection, statement injection, unsupported syntax, call/apply/bind, string/array method abuse, DoS vectors (incl. ReDoS blocked at compile time), unicode tricks, numeric edge cases, known CVE patterns, combined multi-vector attacks, prototype-less objects, evalMacroValue sandbox
-- Safe regex validation (146 tests): safe patterns accepted, capturing groups/nested quantifiers/backreferences/lookahead rejected, safety invariant exhaustive, integration with expr evaluator, real-world ReDoS patterns
+- Adversarial sandbox escapes (176 tests): prototype chains, global access, constructors, module system, bracket notation, code injection, statement injection, unsupported syntax, call/apply/bind, string/array method abuse, DoS vectors (ReDoS + memory exhaustion blocked at compile time), unicode tricks, numeric edge cases, known CVE patterns, combined multi-vector attacks, prototype-less objects, evalMacroValue sandbox
+- Safe regex validation (149 tests): safe patterns accepted, capturing groups/nested quantifiers/backreferences/lookahead rejected, safety invariant exhaustive, integration with expr evaluator (match/matchAll/search/replace/split), real-world ReDoS patterns
 - Self context parsing
 - Fact parsing and evaluation ($if, $respond, $retry, $locked, $avatar, $stream, $model, $context, $strip)
 - Permission directives ($edit, $view, $use, $blacklist, $locked, role ID matching)
@@ -22,6 +22,15 @@ Current: 528 tests across `src/logic/expr.test.ts`, `src/logic/expr.security.tes
 - messages() with filter ($user, $char)
 - Discord emote edge cases
 - Real-world entity evaluation
+
+---
+
+### Expression Evaluation Timeout
+
+The expression evaluator (`src/logic/expr.ts`) runs `new Function()` synchronously on the event loop with no timeout. Static analysis (regex validation, blocked methods) mitigates most DoS vectors, but defense-in-depth would benefit from a runtime timeout. Options:
+1. Move evaluation to a worker thread with a deadline — comprehensive but adds complexity
+2. `Promise.race` with `setTimeout` — doesn't actually interrupt synchronous JS execution
+3. Accept the risk — static analysis covers regex and memory exhaustion; remaining vectors (quadratic regex like `(?:a|a)+` on bounded Discord messages) are limited by input size
 
 ---
 

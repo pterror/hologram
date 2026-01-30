@@ -746,6 +746,18 @@ describe("integration with expr evaluator", () => {
   test("match with lookahead rejected", () => {
     expect(() => compileExpr('content.match("a(?=b)")')).toThrow("lookahead");
   });
+
+  test("matchAll with safe pattern compiles", () => {
+    expect(() => compileExpr('content.matchAll("\\\\d+")')).not.toThrow();
+  });
+
+  test("matchAll with unsafe pattern throws", () => {
+    expect(() => compileExpr('content.matchAll("(?:a+)+")')).toThrow("nested quantifier");
+  });
+
+  test("matchAll with dynamic pattern throws", () => {
+    expect(() => compileExpr("content.matchAll(name)")).toThrow("string literal pattern");
+  });
 });
 
 // =============================================================================
