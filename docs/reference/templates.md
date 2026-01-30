@@ -90,7 +90,6 @@ All standard expression context variables are available (see `ExprContext`), plu
 | `entity_names` | `string` | Comma-separated names of responding entities |
 | `freeform` | `boolean` | True if any entity has `$freeform` |
 | `history` | `Array<{author, content, author_id, created_at, is_bot, role, embeds, stickers, attachments}>` | Structured message history (chronological) |
-| `_msg` | `function(role, opts?)` | Emit structured message markers (see below) |
 | `_single_entity` | `boolean` | True when exactly one entity is responding |
 
 ### Structured Messages
@@ -109,33 +108,51 @@ The `history` variable provides the raw message history as structured objects:
 | `stickers` | `Array<{id, name, format_type}>` | Sticker data (format_type: 1=PNG, 2=APNG, 3=Lottie, 4=GIF) |
 | `attachments` | `Array<{filename, url, content_type?}>` | File attachments |
 
-### Structured Output Protocol (`_msg()`)
+### Role Blocks
 
-Templates can emit structured chat messages using the `_msg()` function. This produces a proper system prompt + message array sent to the LLM, instead of a single system prompt.
+Templates use named blocks to define structured chat messages. Three role blocks are available:
+
+| Block | LLM Role | Description |
+|-------|----------|-------------|
+| `{% block system %}` | `system` | System-role message (entity defs, instructions) |
+| `{% block user %}` | `user` | User messages |
+| `{% block char %}` | `assistant` | Entity/character messages |
+
+Blocks work inside for loops and conditionals (a Nunjucks extension over Jinja2), so `{% block user %}` and `{% block char %}` can appear inside a history loop:
 
 ```
-{# Content before the first _msg() becomes the system prompt #}
+{% block system %}
 You are {{ entities[0].name }}.
 {{ entities[0].facts | join("\n") }}
+{% endblock %}
 
-{# Emit structured messages with roles #}
 {% for msg in history %}
-{{ _msg(msg.role, {author: msg.author, author_id: msg.author_id}) }}
-{{ msg.author }}: {{ msg.content }}
+  {% if msg.role == "assistant" %}
+    {% block char %}{{ msg.author }}: {{ msg.content }}{% endblock %}
+  {% else %}
+    {% block user %}{{ msg.author }}: {{ msg.content }}{% endblock %}
+  {% endif %}
 {% endfor %}
 ```
 
-**Parameters:**
-- `role` (required): `"system"`, `"user"`, or `"assistant"`
-- `opts` (optional): `{author?: string, author_id?: string}`
-
 **Behavior:**
-- Content before the first `_msg()` call becomes the system prompt
-- Content between `_msg()` calls becomes individual messages with the specified role
-- Empty messages (whitespace-only) are filtered out
-- If no `_msg()` calls are present, the entire output is the system prompt (legacy behavior)
+- Each block renders into a message with the corresponding LLM role
+- Blocks inside for loops produce one message per iteration
+- Empty blocks (whitespace-only) are filtered out
+- Content outside any role block is ignored
+- If no role blocks are present, the entire output is the system prompt (legacy behavior)
 
-**Security:** The `_msg()` function uses a cryptographic nonce (256-bit random hex) to mark message boundaries. Template context values are strings, not template code — Discord user messages containing marker-like text cannot trigger the parser.
+**Overriding blocks via inheritance:** Use `{% extends "entity-name" %}` and `{{ super() }}` to override specific role blocks while inheriting the rest:
+
+```
+{% extends "base-entity" %}
+{% block system %}
+Custom system prompt for {{ entities[0].name }}.
+{{ super() }}
+{% endblock %}
+```
+
+**Security:** Role blocks are wrapped with cryptographic nonce markers (256-bit random hex) at render time. Template context values are strings, not template code — Discord user messages containing marker-like text cannot trigger the parser.
 
 ### Template Inheritance
 
@@ -155,12 +172,18 @@ The parent template is loaded by looking up the entity by name and reading its t
 
 ### Full Prompt Control
 
-When a template uses `_msg()`, its output is parsed into a structured system prompt + message array. Without `_msg()`, the entire output is the system prompt and only the latest message is sent as user content. The built-in default template uses `_msg()` to produce proper role-based chat messages.
+When a template uses role blocks (`{% block system %}`, `{% block user %}`, `{% block char %}`), its output is parsed into a structured system prompt + message array. Without role blocks, the entire output is the system prompt and only the latest message is sent as user content. The built-in default template uses role blocks to produce proper role-based chat messages.
 
 ```
+{% block system %}
+You are {{ entities[0].name }}.
+{% endblock %}
 {% for msg in history %}
-{{ _msg(msg.role) }}
-{{ msg.author }}: {{ msg.content }}
+  {% if msg.role == "assistant" %}
+    {% block char %}{{ msg.author }}: {{ msg.content }}{% endblock %}
+  {% else %}
+    {% block user %}{{ msg.author }}: {{ msg.content }}{% endblock %}
+  {% endif %}
 {% endfor %}
 ```
 

@@ -151,14 +151,22 @@ nunjucks.runtime.fromIterator = function (arr: unknown): unknown {
 
 class EntityTemplateLoader extends nunjucks.Loader {
   cache: Record<string, unknown> = {};
+  private internalTemplates = new Map<string, string>();
 
   getSource(name: string): { src: string; path: string; noCache: boolean } | null {
+    const internal = this.internalTemplates.get(name);
+    if (internal !== undefined) {
+      return { src: internal, path: `internal:${name}`, noCache: true };
+    }
     const entity = getEntityByName(name);
     if (!entity) return null;
     const template = getEntityTemplate(entity.id);
     if (!template) return null;
     return { src: template, path: `entity:${entity.id}:${name}`, noCache: true };
   }
+
+  setInternal(name: string, source: string) { this.internalTemplates.set(name, source); }
+  clearInternal(name: string) { this.internalTemplates.delete(name); }
 }
 
 // =============================================================================
@@ -303,18 +311,13 @@ export function renderEntityTemplate(
 // Nonce-Based Structured Output Protocol
 // =============================================================================
 
-/** Valid roles for _msg() markers */
-const VALID_ROLES = new Set(["system", "user", "assistant"]);
-
-/** Marker format: <<<HMSG:{nonce}:{base64(JSON)}>>> */
+/** Marker format: <<<HMSG:{nonce}:{base64(JSON)}>>> (open) / <<<HMSG:{nonce}:END>>> (close) */
 const MARKER_PREFIX = "<<<HMSG:";
 const MARKER_SUFFIX = ">>>";
 
 export interface ParsedTemplateMessage {
   role: "system" | "user" | "assistant";
   content: string;
-  author?: string;
-  author_id?: string;
 }
 
 export interface ParsedTemplateOutput {
@@ -323,24 +326,9 @@ export interface ParsedTemplateOutput {
 }
 
 /**
- * Create a _msg() function bound to a specific nonce.
- * Emits <<<HMSG:{nonce}:{base64(JSON)}>>> markers in template output.
- */
-function makeMsgFunction(nonce: string): (role: string, opts?: { author?: string; author_id?: string }) => string {
-  return (role: string, opts?: { author?: string; author_id?: string }): string => {
-    if (!VALID_ROLES.has(role)) {
-      throw new ExprError(`_msg() role must be "system", "user", or "assistant", got "${role}"`);
-    }
-    const payload = JSON.stringify({ role, ...opts });
-    const encoded = Buffer.from(payload).toString("base64");
-    return `${MARKER_PREFIX}${nonce}:${encoded}${MARKER_SUFFIX}`;
-  };
-}
-
-/**
  * Parse structured output from a rendered template.
- * Splits on nonce-based markers to extract a flat list of messages.
- * Content outside markers is treated as system-role; bare newlines are elided.
+ * Matches open/close nonce marker pairs to extract a flat list of messages.
+ * Content outside marker pairs is ignored. No markers = legacy single system message.
  */
 export function parseStructuredOutput(rendered: string, nonce: string): ParsedTemplateOutput {
   const markerPattern = new RegExp(
@@ -348,11 +336,11 @@ export function parseStructuredOutput(rendered: string, nonce: string): ParsedTe
     "g",
   );
 
-  // Find all markers
-  const markers: Array<{ index: number; length: number; payload: string }> = [];
+  // Find all markers (both open and close)
+  const allMarkers: Array<{ index: number; length: number; payload: string }> = [];
   let match: RegExpExecArray | null;
   while ((match = markerPattern.exec(rendered)) !== null) {
-    markers.push({
+    allMarkers.push({
       index: match.index,
       length: match[0].length,
       payload: match[1],
@@ -360,37 +348,40 @@ export function parseStructuredOutput(rendered: string, nonce: string): ParsedTe
   }
 
   // No markers → entire output is a single system message (legacy compat)
-  if (markers.length === 0) {
+  if (allMarkers.length === 0) {
     const trimmed = rendered.trim();
     return { messages: trimmed ? [{ role: "system", content: trimmed }] : [] };
   }
 
   const messages: ParsedTemplateMessage[] = [];
 
-  // Content before first marker → system message
-  const preamble = rendered.slice(0, markers[0].index).trim();
-  if (preamble) {
-    messages.push({ role: "system", content: preamble });
-  }
+  // Process open/close pairs sequentially
+  let i = 0;
+  while (i < allMarkers.length) {
+    const marker = allMarkers[i];
 
-  // Content between markers → messages
-  for (let i = 0; i < markers.length; i++) {
-    const marker = markers[i];
+    // Close marker without open → skip
+    if (marker.payload === "END") {
+      i++;
+      continue;
+    }
+
+    // Open marker — expect next marker to be close
     const contentStart = marker.index + marker.length;
-    const contentEnd = i + 1 < markers.length ? markers[i + 1].index : rendered.length;
+    let contentEnd = rendered.length;
+    if (i + 1 < allMarkers.length && allMarkers[i + 1].payload === "END") {
+      contentEnd = allMarkers[i + 1].index;
+      i += 2; // Skip both open and close
+    } else {
+      i++; // Orphaned open marker — take content until next marker or end
+    }
+
     const content = rendered.slice(contentStart, contentEnd).trim();
-
-    // Decode marker payload
-    const decoded = JSON.parse(Buffer.from(marker.payload, "base64").toString("utf-8"));
-    const role = decoded.role as "system" | "user" | "assistant";
-
-    // Skip empty-content messages (bare newlines between markers)
     if (!content) continue;
 
-    const msg: ParsedTemplateMessage = { role, content };
-    if (decoded.author) msg.author = decoded.author;
-    if (decoded.author_id) msg.author_id = decoded.author_id;
-    messages.push(msg);
+    const decoded = JSON.parse(Buffer.from(marker.payload, "base64").toString("utf-8"));
+    const role = decoded.role as "system" | "user" | "assistant";
+    messages.push({ role, content });
   }
 
   return { messages };
@@ -420,16 +411,20 @@ This is the dedicated system prompt for this conversation. Entity definitions, m
 {%- endif -%}`;
 
 /**
- * Default template for structured messages using the _msg() protocol.
+ * Default template using role blocks (system, user, char).
  *
  * Produces system-role messages (entity defs, memories, multi-entity guidance)
  * followed by user/assistant chat messages from history.
  *
  * The Nunjucks env has trimBlocks + lstripBlocks enabled, so block tags on
  * their own lines can be freely indented without affecting output.
+ *
+ * renderStructuredTemplate() generates a child template that wraps each
+ * role block with nonce markers via {{ super() }}.
  */
 export const DEFAULT_TEMPLATE = `\
 {#- Entity definitions -#}
+{% block system -%}
 {%- if entities | length == 0 and others | length == 0 -%}
 You are a helpful assistant. Respond naturally to the user.
 {%- else -%}
@@ -483,16 +478,20 @@ Not everyone needs to respond to every message. Only respond as those who would 
   {%- endif -%}
 
 {%- endif -%}
-
+{%- endblock %}
 {#- Message history -#}
 {%- for msg in history -%}
-{{ _msg(msg.role, {author: msg.author, author_id: msg.author_id}) }}
-{{ msg.author }}: {{ msg.content }}
+  {%- if msg.role == "assistant" %}
+{% block char %}{{ msg.author }}: {{ msg.content }}{% endblock %}
+  {%- else %}
+{% block user %}{{ msg.author }}: {{ msg.content }}{% endblock %}
+  {%- endif -%}
 {%- endfor -%}`;
 
 /**
  * Render a template and parse structured output.
- * Injects _msg() into the template context for structured message emission.
+ * Generates a child template that extends the source and wraps each role block
+ * (system, user, char) with nonce markers via {{ super() }}.
  * Returns a flat list of messages (system, user, assistant).
  */
 export function renderStructuredTemplate(
@@ -500,9 +499,31 @@ export function renderStructuredTemplate(
   ctx: Record<string, unknown>,
 ): ParsedTemplateOutput {
   const nonce = randomBytes(32).toString("hex");
-  ctx._msg = makeMsgFunction(nonce);
-  const rendered = renderEntityTemplate(source, ctx);
-  return parseStructuredOutput(rendered, nonce);
+
+  // Register user template under a unique internal name
+  const parentName = `_render_${nonce}`;
+  loader.setInternal(parentName, source);
+
+  // Generate child that wraps role blocks with nonce markers
+  const open = (role: string): string => {
+    const payload = JSON.stringify({ role });
+    const encoded = Buffer.from(payload).toString("base64");
+    return `${MARKER_PREFIX}${nonce}:${encoded}${MARKER_SUFFIX}`;
+  };
+  const close = `${MARKER_PREFIX}${nonce}:END${MARKER_SUFFIX}`;
+
+  const childSource =
+    `{% extends "${parentName}" %}` +
+    `{% block system %}${open("system")}{{ super() }}${close}{% endblock %}` +
+    `{% block user %}${open("user")}{{ super() }}${close}{% endblock %}` +
+    `{% block char %}${open("assistant")}{{ super() }}${close}{% endblock %}`;
+
+  try {
+    const rendered = renderEntityTemplate(childSource, ctx);
+    return parseStructuredOutput(rendered, nonce);
+  } finally {
+    loader.clearInternal(parentName);
+  }
 }
 
 /**

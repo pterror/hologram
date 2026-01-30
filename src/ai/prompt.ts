@@ -372,7 +372,7 @@ export function buildPromptAndMessages(
   let messages: StructuredMessage[] = output.messages.map(m => ({ role: m.role, content: m.content }));
 
   if (messages.length === 0) {
-    // Template didn't use _msg() → legacy behavior: latest message as user content
+    // Template didn't use role blocks → legacy behavior: latest message as user content
     // (parseStructuredOutput already wrapped the output as a system message)
     const latest = rawHistory[0];
     let latestContent = latest ? `${latest.author_name}: ${latest.content}` : "";

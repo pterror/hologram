@@ -1,9 +1,9 @@
 /**
- * Tests for DEFAULT_TEMPLATE rendering and the _msg() structured output protocol.
+ * Tests for DEFAULT_TEMPLATE rendering and the role block structured output protocol.
  *
  * Message snapshot tests validate that DEFAULT_TEMPLATE produces the expected
  * output for various entity configurations. Adversarial tests verify injection
- * resistance. Protocol tests cover _msg() mechanics.
+ * resistance. Protocol tests cover block mechanics (system, user, char).
  */
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_TEMPLATE, renderStructuredTemplate } from "./template";
@@ -365,12 +365,12 @@ describe("DEFAULT_TEMPLATE: adversarial injection", () => {
 });
 
 // =============================================================================
-// _msg() Protocol Unit Tests
+// Message Block Protocol Unit Tests
 // =============================================================================
 
-describe("_msg() protocol", () => {
-  test("basic structured output with _msg()", () => {
-    const template = `System prompt here{{ _msg("user") }}Hello{{ _msg("assistant") }}Hi there`;
+describe("message block protocol", () => {
+  test("basic structured output with blocks", () => {
+    const template = `{% block system %}System prompt here{% endblock %}{% block user %}Hello{% endblock %}{% block char %}Hi there{% endblock %}`;
     const output = renderStructuredTemplate(template, {});
     expect(output.messages.length).toBe(3);
     expect(output.messages[0]).toEqual({ role: "system", content: "System prompt here" });
@@ -378,41 +378,53 @@ describe("_msg() protocol", () => {
     expect(output.messages[2]).toEqual({ role: "assistant", content: "Hi there" });
   });
 
-  test("_msg() with author metadata", () => {
-    const template = `Prompt{{ _msg("user", {author: "Alice", author_id: "123"}) }}Hello`;
-    const output = renderStructuredTemplate(template, {});
-    expect(output.messages[1].author).toBe("Alice");
-    expect(output.messages[1].author_id).toBe("123");
-  });
-
-  test("no _msg() markers → entire output is system message", () => {
+  test("no blocks → entire output is system message", () => {
     const template = `Just a system prompt`;
     const output = renderStructuredTemplate(template, {});
     expect(output.messages.length).toBe(1);
     expect(output.messages[0]).toEqual({ role: "system", content: "Just a system prompt" });
   });
 
-  test("empty content messages are filtered", () => {
-    const template = `Prompt{{ _msg("user") }}{{ _msg("assistant") }}  {{ _msg("user") }}Content`;
+  test("empty blocks are filtered", () => {
+    const template = `{% block system %}Prompt{% endblock %}{% block char %}   {% endblock %}{% block user %}Content{% endblock %}`;
     const output = renderStructuredTemplate(template, {});
-    // Middle message has only whitespace → filtered
+    // char block has only whitespace → filtered
     expect(output.messages.length).toBe(2);
     expect(output.messages[0]).toEqual({ role: "system", content: "Prompt" });
     expect(output.messages[1]).toEqual({ role: "user", content: "Content" });
   });
 
-  test("invalid role throws", () => {
-    expect(() => {
-      renderStructuredTemplate(`{{ _msg("invalid") }}test`, {});
-    }).toThrow('_msg() role must be "system", "user", or "assistant"');
-  });
-
-  test("system role messages", () => {
-    const template = `{{ _msg("system") }}System instruction{{ _msg("user") }}Hello`;
+  test("system and user blocks only", () => {
+    const template = `{% block system %}System instruction{% endblock %}{% block user %}Hello{% endblock %}`;
     const output = renderStructuredTemplate(template, {});
     expect(output.messages.length).toBe(2);
     expect(output.messages[0]).toEqual({ role: "system", content: "System instruction" });
     expect(output.messages[1]).toEqual({ role: "user", content: "Hello" });
+  });
+
+  test("blocks in for loop produce per-message output", () => {
+    const template = `{% block system %}System{% endblock %}{% for msg in history %}{% if msg.role == "assistant" %}{% block char %}A:{{ msg.content }}{% endblock %}{% else %}{% block user %}U:{{ msg.content }}{% endblock %}{% endif %}{% endfor %}`;
+    const ctx = {
+      history: [
+        { role: "user", content: "Hi" },
+        { role: "assistant", content: "Hello" },
+        { role: "user", content: "Bye" },
+      ],
+    };
+    const output = renderStructuredTemplate(template, ctx);
+    expect(output.messages.length).toBe(4);
+    expect(output.messages[0]).toEqual({ role: "system", content: "System" });
+    expect(output.messages[1]).toEqual({ role: "user", content: "U:Hi" });
+    expect(output.messages[2]).toEqual({ role: "assistant", content: "A:Hello" });
+    expect(output.messages[3]).toEqual({ role: "user", content: "U:Bye" });
+  });
+
+  test("content outside blocks is ignored", () => {
+    const template = `Outside before{% block system %}Inside{% endblock %}Outside after{% block user %}Message{% endblock %}Trailing`;
+    const output = renderStructuredTemplate(template, {});
+    expect(output.messages.length).toBe(2);
+    expect(output.messages[0]).toEqual({ role: "system", content: "Inside" });
+    expect(output.messages[1]).toEqual({ role: "user", content: "Message" });
   });
 });
 

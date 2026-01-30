@@ -193,7 +193,6 @@ Override the default system prompt formatting per entity using custom templates 
 - `entity_names` — comma-separated names of responding entities
 - `freeform` — boolean, true if any entity has `$freeform`
 - `history` — array of structured messages `[{author, content, author_id, created_at, is_bot, role, embeds, stickers, attachments}]` (chronological order). `role` is `"assistant"` for entity messages, `"user"` for human messages. `stickers` are `[{id, name, format_type}]` objects.
-- `_msg(role, opts?)` — function that emits structured message markers. See "Structured Output Protocol" below.
 - `_single_entity` — boolean, true when exactly one entity is responding (used by default template)
 
 **Two-layer system prompt:** The LLM receives two distinct system instruction channels:
@@ -202,25 +201,28 @@ Override the default system prompt formatting per entity using custom templates 
 
 `/debug prompt` shows both layers separated by `---`.
 
-**Full prompt control:** When a template uses `_msg()`, its output is parsed into a flat list of messages (system, user, assistant). Content before the first `_msg()` call becomes a system-role message. Without `_msg()`, the entire output is a single system-role message and only the latest message is sent as user content. The built-in default template uses `_msg()` to produce proper role-based chat messages.
+**Full prompt control:** Templates use role blocks (`{% block system %}`, `{% block user %}`, `{% block char %}`) to produce structured messages. `{% block system %}` maps to system role, `{% block user %}` to user role, `{% block char %}` to assistant role. Blocks work inside for loops (Nunjucks extension). Without role blocks, the entire output is a single system-role message and only the latest message is sent as user content. The built-in default template uses role blocks to produce proper role-based chat messages.
 
-**Structured output protocol (`_msg()`):** Call `_msg(role, opts?)` in templates to emit structured chat messages. `role` must be `"system"`, `"user"`, or `"assistant"`. Optional `opts` can include `{author, author_id}`. Content before the first `_msg()` call becomes a system-role message. Content between calls becomes individual messages.
+**Role blocks:** Define content for each LLM role. Blocks inside for loops produce one message per iteration. Empty blocks are filtered. Content outside blocks is ignored.
 
 ```
-{# Entity definitions become a system-role message #}
+{% block system %}
 You are {{ entities[0].name }}.
-
-{# Then emit structured messages #}
+{{ entities[0].facts | join("\n") }}
+{% endblock %}
 {% for msg in history %}
-{{ _msg(msg.role, {author: msg.author, author_id: msg.author_id}) }}
-{{ msg.author }}: {{ msg.content }}
+  {% if msg.role == "assistant" %}
+    {% block char %}{{ msg.author }}: {{ msg.content }}{% endblock %}
+  {% else %}
+    {% block user %}{{ msg.author }}: {{ msg.content }}{% endblock %}
+  {% endif %}
 {% endfor %}
 ```
 
 **Template inheritance (`{% extends %}`):** Templates can inherit from other entities' templates using `{% extends "entity-name" %}`. The parent template is loaded by looking up the entity by name and reading its template. Override parent blocks with `{% block name %}...{% endblock %}`. Nunjucks has built-in circular inheritance detection.
 
 **Behavior:**
-- `null` template (default) = use built-in `DEFAULT_TEMPLATE` (Nunjucks template that replicates standard formatting with `_msg()` structured output)
+- `null` template (default) = use built-in `DEFAULT_TEMPLATE` (Nunjucks template that replicates standard formatting with role blocks)
 - Empty submission via `/edit type:template` clears template back to default
 - Entities with different templates get separate LLM calls
 - Entities with the same template (including null) share a call as before
