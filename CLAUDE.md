@@ -242,7 +242,7 @@ $view alice, bob                   # Specific users only
 |---------|-------------|
 | `/create [name]` | Create entity |
 | `/view <entity>` | View entity facts |
-| `/edit <entity>` | Edit facts (modal) |
+| `/edit <entity>` | Edit facts + memories (modal) |
 | `/delete <entity>` | Delete entity |
 | `/transfer <entity> <user>` | Transfer ownership |
 | `/bind <target> <entity>` | Bind channel/user |

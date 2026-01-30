@@ -37,8 +37,27 @@ import { parsePermissionDirectives, matchesUserEntry, isUserBlacklisted, evaluat
 import { formatEntityDisplay, formatEvaluatedEntity, buildMessageHistory } from "../../ai/context";
 
 // =============================================================================
-// Text Elision Helper
+// Text Helpers
 // =============================================================================
+
+/**
+ * Split text into chunks fitting maxLen, breaking at newlines when possible.
+ */
+function chunkContent(content: string, maxLen: number): string[] {
+  const chunks: string[] = [];
+  let remaining = content;
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLen) {
+      chunks.push(remaining);
+      break;
+    }
+    let splitAt = remaining.lastIndexOf("\n", maxLen);
+    if (splitAt === -1) splitAt = maxLen;
+    chunks.push(remaining.slice(0, splitAt));
+    remaining = remaining.slice(splitAt + 1);
+  }
+  return chunks;
+}
 
 const MAX_OUTPUT_CHARS = 8000;
 const ELISION_MARKER = "\n... (elided) ...\n";
@@ -256,7 +275,7 @@ registerCommand({
 
 registerCommand({
   name: "edit",
-  description: "Edit an entity's facts or memories",
+  description: "Edit an entity's facts and memories",
   options: [
     {
       name: "entity",
@@ -267,18 +286,19 @@ registerCommand({
     },
     {
       name: "type",
-      description: "What to edit (default: facts)",
+      description: "What to edit (default: both)",
       type: ApplicationCommandOptionTypes.String,
       required: false,
       choices: [
-        { name: "Facts", value: "facts" },
-        { name: "Memories", value: "memories" },
+        { name: "Both", value: "both" },
+        { name: "Facts only", value: "facts" },
+        { name: "Memories only", value: "memories" },
       ],
     },
   ],
   async handler(ctx, options) {
     const input = options.entity as string;
-    const editType = (options.type as string) ?? "facts";
+    const editType = (options.type as string) ?? "both";
 
     let entity: EntityWithFacts | null = null;
     const id = parseInt(input);
@@ -300,39 +320,10 @@ registerCommand({
       return;
     }
 
-    // Get content based on type
-    const currentContent = editType === "memories"
-      ? getMemoriesForEntity(entity.id).map(m => m.content).join("\n")
-      : entity.facts.map(f => f.content).join("\n");
-
-    // Discord modal: max 5 text inputs, 4000 chars each = 20,000 total
+    // Discord modal: max 5 text inputs, 4000 chars each
     const MAX_FIELD_LENGTH = 4000;
     const MAX_FIELDS = 5;
 
-    if (currentContent.length > MAX_FIELD_LENGTH * MAX_FIELDS) {
-      await respond(ctx.bot, ctx.interaction,
-        `Entity "${entity.name}" has too much content to edit via modal (${currentContent.length}/${MAX_FIELD_LENGTH * MAX_FIELDS} chars).`,
-        true
-      );
-      return;
-    }
-
-    // Split content into chunks that fit in 4000 chars, breaking at newlines
-    const chunks: string[] = [];
-    let remaining = currentContent;
-    while (remaining.length > 0) {
-      if (remaining.length <= MAX_FIELD_LENGTH) {
-        chunks.push(remaining);
-        break;
-      }
-      // Find last newline within limit
-      let splitAt = remaining.lastIndexOf("\n", MAX_FIELD_LENGTH);
-      if (splitAt === -1) splitAt = MAX_FIELD_LENGTH; // No newline, hard split
-      chunks.push(remaining.slice(0, splitAt));
-      remaining = remaining.slice(splitAt + 1); // Skip the newline
-    }
-
-    // Build modal fields - name first, then content
     const fields: Array<{
       customId: string;
       label: string;
@@ -342,8 +333,28 @@ registerCommand({
       placeholder?: string;
     }> = [];
 
-    // Name field for renaming (only for facts)
-    if (editType === "facts") {
+    if (editType === "both") {
+      const factsContent = entity.facts.map(f => f.content).join("\n");
+      const memoriesContent = getMemoriesForEntity(entity.id).map(m => m.content).join("\n");
+
+      const factsChunks = factsContent ? chunkContent(factsContent, MAX_FIELD_LENGTH) : [];
+      const memoriesChunks = memoriesContent ? chunkContent(memoriesContent, MAX_FIELD_LENGTH) : [];
+
+      // Ensure at least one field each
+      if (factsChunks.length === 0) factsChunks.push("");
+      if (memoriesChunks.length === 0) memoriesChunks.push("");
+
+      const totalFields = 1 + factsChunks.length + memoriesChunks.length; // 1 for name
+      if (totalFields > MAX_FIELDS) {
+        await respond(ctx.bot, ctx.interaction,
+          `Too much content for combined edit (${totalFields} fields needed, max ${MAX_FIELDS}). ` +
+          `Use \`/edit type:facts\` or \`/edit type:memories\` to edit separately.`,
+          true
+        );
+        return;
+      }
+
+      // Name field
       fields.push({
         customId: "name",
         label: "Name",
@@ -351,34 +362,85 @@ registerCommand({
         value: entity.name,
         required: true,
       });
-    }
 
-    // Content fields
-    const contentLabel = editType === "memories" ? "Memories" : "Facts";
-    const contentFields = chunks.map((chunk, i) => ({
-      customId: `${editType}${i}`,
-      label: chunks.length === 1 ? `${contentLabel} (one per line)` : `${contentLabel} (part ${i + 1}/${chunks.length})`,
-      style: TextStyles.Paragraph,
-      value: chunk,
-      required: false,
-    }));
+      // Facts fields
+      for (let i = 0; i < factsChunks.length; i++) {
+        fields.push({
+          customId: `facts${i}`,
+          label: factsChunks.length === 1 ? "Facts (one per line)" : `Facts (part ${i + 1}/${factsChunks.length})`,
+          style: TextStyles.Paragraph,
+          value: factsChunks[i],
+          required: false,
+        });
+      }
 
-    // If no content, still show one field
-    if (contentFields.length === 0) {
-      contentFields.push({
-        customId: `${editType}0`,
-        label: `${contentLabel} (one per line)`,
+      // Memories fields
+      for (let i = 0; i < memoriesChunks.length; i++) {
+        fields.push({
+          customId: `memories${i}`,
+          label: memoriesChunks.length === 1 ? "Memories (one per line)" : `Memories (part ${i + 1}/${memoriesChunks.length})`,
+          style: TextStyles.Paragraph,
+          value: memoriesChunks[i],
+          required: false,
+          placeholder: memoriesChunks[i] === "" ? "LLM-curated memories (optional)" : undefined,
+        });
+      }
+
+      await respondWithModal(ctx.bot, ctx.interaction, `edit-both:${entity.id}`, `Edit: ${entity.name}`, fields);
+    } else {
+      // Single-type edit (facts or memories)
+      const currentContent = editType === "memories"
+        ? getMemoriesForEntity(entity.id).map(m => m.content).join("\n")
+        : entity.facts.map(f => f.content).join("\n");
+
+      if (currentContent.length > MAX_FIELD_LENGTH * MAX_FIELDS) {
+        await respond(ctx.bot, ctx.interaction,
+          `Entity "${entity.name}" has too much content to edit via modal (${currentContent.length}/${MAX_FIELD_LENGTH * MAX_FIELDS} chars).`,
+          true
+        );
+        return;
+      }
+
+      const chunks = currentContent ? chunkContent(currentContent, MAX_FIELD_LENGTH) : [];
+
+      // Name field for renaming (only for facts)
+      if (editType === "facts") {
+        fields.push({
+          customId: "name",
+          label: "Name",
+          style: TextStyles.Short,
+          value: entity.name,
+          required: true,
+        });
+      }
+
+      // Content fields
+      const contentLabel = editType === "memories" ? "Memories" : "Facts";
+      const contentFields = chunks.map((chunk, i) => ({
+        customId: `${editType}${i}`,
+        label: chunks.length === 1 ? `${contentLabel} (one per line)` : `${contentLabel} (part ${i + 1}/${chunks.length})`,
         style: TextStyles.Paragraph,
-        value: "",
+        value: chunk,
         required: false,
-      });
+      }));
+
+      // If no content, still show one field
+      if (contentFields.length === 0) {
+        contentFields.push({
+          customId: `${editType}0`,
+          label: `${contentLabel} (one per line)`,
+          style: TextStyles.Paragraph,
+          value: "",
+          required: false,
+        });
+      }
+
+      fields.push(...contentFields);
+
+      const modalId = editType === "memories" ? `edit-memories:${entity.id}` : `edit:${entity.id}`;
+      const modalTitle = editType === "memories" ? `Edit Memories: ${entity.name}` : `Edit: ${entity.name}`;
+      await respondWithModal(ctx.bot, ctx.interaction, modalId, modalTitle, fields);
     }
-
-    fields.push(...contentFields);
-
-    const modalId = editType === "memories" ? `edit-memories:${entity.id}` : `edit:${entity.id}`;
-    const modalTitle = editType === "memories" ? `Edit Memories: ${entity.name}` : `Edit: ${entity.name}`;
-    await respondWithModal(ctx.bot, ctx.interaction, modalId, modalTitle, fields);
   },
 });
 
@@ -470,6 +532,68 @@ registerModalHandler("edit-memories", async (bot, interaction, values) => {
   await setMemories(entityId, memories);
 
   await respond(bot, interaction, `Updated "${entity.name}" with ${memories.length} memories`, true);
+});
+
+registerModalHandler("edit-both", async (bot, interaction, values) => {
+  const customId = interaction.data?.customId ?? "";
+  const entityId = parseInt(customId.split(":")[1]);
+
+  const newName = values.name?.trim();
+  if (!newName) {
+    await respond(bot, interaction, `Name cannot be empty (received keys: ${Object.keys(values).join(", ")})`, true);
+    return;
+  }
+
+  // Combine fact fields (facts0, facts1, etc.)
+  const factParts: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const part = values[`facts${i}`];
+    if (part !== undefined) factParts.push(part);
+  }
+  const factsText = factParts.join("\n");
+
+  // Combine memory fields (memories0, memories1, etc.)
+  const memoryParts: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const part = values[`memories${i}`];
+    if (part !== undefined) memoryParts.push(part);
+  }
+  const memoriesText = memoryParts.join("\n");
+
+  const entity = getEntityWithFacts(entityId);
+  if (!entity) {
+    await respond(bot, interaction, "Entity not found", true);
+    return;
+  }
+
+  // Check edit permission (defense in depth)
+  const userId = interaction.user?.id?.toString() ?? "";
+  const username = interaction.user?.username ?? "";
+  if (!canUserEdit(entity, userId, username)) {
+    await respond(bot, interaction, "You don't have permission to edit this entity", true);
+    return;
+  }
+
+  const facts = factsText.split("\n").map(f => f.trim()).filter(f => f);
+  const memories = memoriesText.split("\n").map(m => m.trim()).filter(m => m);
+
+  // Prevent accidentally clearing all facts
+  if (facts.length === 0) {
+    await respond(bot, interaction, "Cannot clear all facts. Use /delete to remove an entity.", true);
+    return;
+  }
+
+  // Update name if changed
+  const nameChanged = newName !== entity.name;
+  if (nameChanged) {
+    updateEntity(entityId, newName);
+  }
+
+  setFacts(entityId, facts);
+  await setMemories(entityId, memories);
+
+  const namePart = nameChanged ? `Renamed "${entity.name}" to "${newName}", updated` : `Updated "${entity.name}"`;
+  await respond(bot, interaction, `${namePart} with ${facts.length} facts and ${memories.length} memories`, true);
 });
 
 // =============================================================================

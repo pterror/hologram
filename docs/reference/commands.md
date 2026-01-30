@@ -37,17 +37,20 @@ View an entity and its facts.
 
 ### `/edit`
 
-Edit an entity's facts.
+Edit an entity's facts and memories.
 
 ```
 /edit <entity>
+/edit <entity> type:facts       # Facts only (more space)
+/edit <entity> type:memories    # Memories only (more space)
 ```
 
-Opens a modal with current facts. Edit them (one per line) and submit.
+Opens a modal with name, facts, and memories. Edit them (one per line) and submit. Use `type:facts` or `type:memories` to edit one at a time when content is too large for the combined modal.
 
 **Examples:**
 ```
-/edit Aria             # Edit Aria's facts
+/edit Aria             # Edit Aria's facts and memories
+/edit Aria type:facts  # Edit only facts (up to 4 fields)
 ```
 
 ---
