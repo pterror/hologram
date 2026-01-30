@@ -190,6 +190,7 @@ function buildPermissionsLabels(entityId: number): unknown[] {
     const select: Record<string, unknown> = {
       type: MessageComponentTypes.MentionableSelect,
       customId: `perm_${field}`,
+      required: false,
       minValues: 0,
       maxValues: 25,
     };

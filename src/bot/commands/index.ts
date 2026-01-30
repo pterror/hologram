@@ -3,7 +3,6 @@ import {
   ApplicationCommandTypes,
   InteractionResponseTypes,
   MessageComponentTypes,
-  MessageFlags,
 } from "@discordeno/bot";
 
 // Use loose types to avoid desiredProperties conflicts
@@ -11,7 +10,7 @@ import {
 type Bot = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Interaction = any;
-import { info, warn, error } from "../../logger";
+import { debug, info, warn, error } from "../../logger";
 import { searchEntities, searchEntitiesOwnedBy, getEntitiesWithFacts, getPermissionDefaults } from "../../db/entities";
 import { parsePermissionDirectives, matchesUserEntry, isUserBlacklisted, isUserAllowed } from "../../logic/expr";
 import { getBoundEntityIds, type DiscordType } from "../../db/discord";
@@ -175,15 +174,16 @@ export async function respondWithV2Modal(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   labels: any[]
 ) {
-  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+  const payload = {
     type: InteractionResponseTypes.Modal,
     data: {
       customId,
       title,
       components: labels,
-      flags: MessageFlags.IsComponentsV2,
     },
-  });
+  };
+  debug("V2 modal payload", { payload: JSON.stringify(payload, null, 2) });
+  await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, payload);
 }
 
 export async function defer(bot: Bot, interaction: Interaction, ephemeral = false) {
