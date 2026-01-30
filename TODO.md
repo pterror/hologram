@@ -8,9 +8,10 @@
 
 ### Test Coverage
 
-Current: 209 tests in `src/logic/expr.test.ts`. Covers:
+Current: 375 tests across `src/logic/expr.test.ts` and `src/logic/expr.security.test.ts`. Covers:
 - Expression evaluator (tokenizer, parser, operators, precedence)
 - Security (identifier whitelist, injection prevention, prototype access)
+- Adversarial sandbox escapes (166 tests): prototype chains, global access, constructors, module system, bracket notation, code injection, statement injection, unsupported syntax, call/apply/bind, string/array method abuse, DoS vectors, unicode tricks, numeric edge cases, known CVE patterns, combined multi-vector attacks, prototype-less objects, evalMacroValue sandbox
 - Self context parsing
 - Fact parsing and evaluation ($if, $respond, $retry, $locked, $avatar, $stream, $model, $context, $strip)
 - Permission directives ($edit, $view, $use, $blacklist, $locked, role ID matching)
