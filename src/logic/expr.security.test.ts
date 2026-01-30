@@ -706,6 +706,77 @@ describe("denial of service vectors", () => {
     // The expression itself is valid; resource limits are enforced externally
     expect(() => compileExpr('content.repeat(10).length > 0')).not.toThrow();
   });
+
+  // ---------------------------------------------------------------------------
+  // ReDoS (Regular Expression Denial of Service)
+  //
+  // JS string methods .match(), .replace(), .search(), .split() implicitly
+  // compile their string argument into a RegExp. An entity author controls
+  // the pattern (via $if expressions), and Discord users control the input
+  // string (message content). Catastrophic backtracking patterns like
+  // (a+)+b, (a|a)+b, (a+){2,}b can hang the event loop.
+  //
+  // Attack surface: entity author writes a vulnerable regex pattern,
+  // then ANY user message matching the pathological input shape hangs the bot.
+  // ---------------------------------------------------------------------------
+
+  test("ReDoS: .match() accepts string that becomes regex", () => {
+    // This demonstrates the attack surface: match() compiles strings as regex
+    const redosCtx = makeContext({ content: "test123" });
+    // Benign pattern works fine
+    expect(evalExpr('content.match("\\\\d+").length > 0', redosCtx)).toBe(true);
+  });
+
+  test("ReDoS: .search() accepts string that becomes regex", () => {
+    const redosCtx = makeContext({ content: "hello" });
+    expect(evalExpr('content.search("ell") == 1', redosCtx)).toBe(true);
+  });
+
+  test("ReDoS: .replace() accepts string that becomes regex", () => {
+    const redosCtx = makeContext({ content: "aaa" });
+    expect(evalExpr('content.replace("a", "b") == "baa"', redosCtx)).toBe(true);
+  });
+
+  test("ReDoS: .split() accepts string that becomes regex", () => {
+    const redosCtx = makeContext({ content: "a,b,c" });
+    expect(evalExpr('content.split(",").length == 3', redosCtx)).toBe(true);
+  });
+
+  test("ReDoS: catastrophic backtracking pattern completes on small input", () => {
+    // (a+)+b is a classic ReDoS pattern. With input "aaaaaaaaaaX" (11 chars)
+    // it's still fast. With 25+ chars it would hang for seconds/minutes.
+    // This test uses small input to verify the pattern IS reachable without
+    // actually causing a hang.
+    const redosCtx = makeContext({ content: "aaaaaX" }); // 6 chars - fast
+    const start = performance.now();
+    // match() returns null (no match), which is falsy
+    expect(evalExpr('content.match("(a+)+b")', redosCtx)).toBe(false);
+    const elapsed = performance.now() - start;
+    // Should complete in under 100ms with this small input
+    expect(elapsed).toBeLessThan(100);
+    // NOTE: with content "a".repeat(30) + "X", this would hang for minutes.
+    // This is a real vulnerability - see TODO.md.
+  });
+
+  test("ReDoS: nested quantifier patterns are reachable", () => {
+    // Other classic ReDoS patterns that are all reachable via match/search
+    const redosCtx = makeContext({ content: "aaa" });
+    // (a|a)+$ - alternation with overlap
+    expect(() => evalExpr('content.match("(a|a)+$")', redosCtx)).not.toThrow();
+    // (a+){2,} - nested quantifiers
+    expect(() => evalExpr('content.match("(a+){2,}")', redosCtx)).not.toThrow();
+    // (.*a){8} - greedy with backreference-like
+    expect(() => evalExpr('content.match("(.*a){8}")', redosCtx)).not.toThrow();
+  });
+
+  test("ReDoS: safe string methods do NOT use regex", () => {
+    // These methods do literal string matching, not regex - safe from ReDoS
+    const redosCtx = makeContext({ content: "aaaaaa" });
+    expect(evalExpr('content.includes("(a+)+b")', redosCtx)).toBe(false); // literal search
+    expect(evalExpr('content.startsWith("(a+)+b")', redosCtx)).toBe(false); // literal
+    expect(evalExpr('content.endsWith("(a+)+b")', redosCtx)).toBe(false); // literal
+    expect(evalExpr('content.indexOf("(a+)+b") == -1', redosCtx)).toBe(true); // literal
+  });
 });
 
 // =============================================================================
