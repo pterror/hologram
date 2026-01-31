@@ -127,11 +127,11 @@ $if mentioned: $stream full
 
 ### Multi-Character Streaming
 
-Streaming works with multiple characters too! The system parses XML tags as they stream:
+Streaming works with multiple characters too! The system detects `Name:` prefixes as they stream:
 
-```xml
-<Aria>*waves* Hello there!</Aria>
-<Marcus>Good to see you.</Marcus>
+```
+Aria: *waves* Hello there!
+Marcus: Good to see you.
 ```
 
 Each character's response streams independently to their own message.

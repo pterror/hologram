@@ -145,54 +145,6 @@ export async function* stripNamePrefixFromStream(
 // =============================================================================
 
 /**
- * Parse LLM response into per-entity segments using XML tags.
- * Format: <Name>content</Name>
- * Returns undefined if no valid tags found.
- */
-export function parseMultiEntityResponse(
-  response: string,
-  entities: EvaluatedEntity[]
-): EntityResponse[] | undefined {
-  if (entities.length <= 1) return undefined;
-
-  type ParsedResponse = EntityResponse & { position: number };
-  const results: ParsedResponse[] = [];
-
-  // Match XML tags for each entity: <Name>content</Name>
-  for (const entity of entities) {
-    // Escape special regex chars in name
-    const escapedName = entity.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const pattern = new RegExp(`<${escapedName}>([\\s\\S]*?)</${escapedName}>`, "gi");
-    let match: RegExpExecArray | null;
-
-    while ((match = pattern.exec(response)) !== null) {
-      const content = match[1].trim();
-      if (content) {
-        results.push({
-          entityId: entity.id,
-          name: entity.name,
-          content: stripNamePrefix(content, entity.name),
-          avatarUrl: entity.avatarUrl ?? undefined,
-          streamMode: entity.streamMode,
-          position: match.index,
-        });
-      }
-    }
-  }
-
-  // No tags found - return undefined to use single response
-  if (results.length === 0) {
-    return undefined;
-  }
-
-  // Sort by position in original response to maintain order
-  results.sort((a, b) => a.position - b.position);
-
-  // Remove position from results
-  return results.map(({ position: _, ...rest }) => rest);
-}
-
-/**
  * Parse LLM response into per-entity segments using "Name:" prefix format.
  * Each entity's content starts with "Name:" at the beginning of a line.
  * Returns undefined if no valid name prefixes found.

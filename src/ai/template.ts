@@ -511,13 +511,13 @@ You are writing as: {{ entity_names }}. They may interact naturally in your resp
     {%- else %}
 
 
-You are: {{ entity_names }}. Format your response with XML tags:
-<{{ entities[0].name }}>*waves* Hello there!</{{ entities[0].name }}>
-<{{ entities[1].name }}>Nice to meet you.</{{ entities[1].name }}>
+You are: {{ entity_names }}. Format your response with name prefixes:
+{{ entities[0].name }}: *waves* Hello there!
+{{ entities[1].name }}: Nice to meet you.
 
-Wrap everyone's dialogue in their name tag. They may interact naturally.
+Start each character's dialogue on a new line with their name followed by a colon. They may interact naturally.
 
-Not everyone needs to respond to every message. Only respond as those who would naturally engage with what was said. If none would respond, reply with only <none/>.
+Not everyone needs to respond to every message. Only respond as those who would naturally engage with what was said. If none would respond, reply with only: none
     {%- endif -%}
   {%- endif -%}
 

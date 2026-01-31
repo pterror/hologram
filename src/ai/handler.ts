@@ -7,7 +7,7 @@ import {
 } from "./context";
 import { preparePromptContext } from "./prompt";
 import { createTools } from "./tools";
-import { stripNamePrefix, parseMultiEntityResponse, parseNamePrefixResponse, type EntityResponse } from "./parsing";
+import { stripNamePrefix, parseNamePrefixResponse, type EntityResponse } from "./parsing";
 
 // =============================================================================
 // Types
@@ -111,8 +111,7 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
     // Parse multi-entity response (skip if any entity has $freeform)
     const isFreeform = evaluated.some(e => e.isFreeform);
     const entityResponses = isFreeform ? undefined
-      : (parseMultiEntityResponse(responseText, evaluated)
-        ?? parseNamePrefixResponse(responseText, evaluated));
+      : parseNamePrefixResponse(responseText, evaluated);
 
     return {
       response: responseText,

@@ -238,6 +238,25 @@ const MESSAGE_FETCH_LIMIT = 100;
 // =============================================================================
 
 /**
+ * Collapse consecutive messages with the same role into a single message.
+ * Content is joined with newline. Empty messages are preserved (they may
+ * carry structural meaning to the template author).
+ */
+function collapseMessages(messages: StructuredMessage[]): StructuredMessage[] {
+  if (messages.length <= 1) return messages;
+  const result: StructuredMessage[] = [messages[0]];
+  for (let i = 1; i < messages.length; i++) {
+    const prev = result[result.length - 1];
+    if (messages[i].role === prev.role) {
+      prev.content += "\n" + messages[i].content;
+    } else {
+      result.push({ ...messages[i] });
+    }
+  }
+  return result;
+}
+
+/**
  * Build system prompt and structured messages from entities and history.
  * Uses renderStructuredTemplate() with either a custom template or DEFAULT_TEMPLATE.
  *
@@ -381,6 +400,9 @@ export function buildPromptAndMessages(
     }
     messages.push({ role: "user", content: latestContent });
   }
+
+  // Collapse consecutive same-role messages into one
+  messages = collapseMessages(messages);
 
   // AI SDK requires first non-system message to be user role
   const firstNonSystem = messages.findIndex(m => m.role !== "system");

@@ -63,24 +63,6 @@ export function findFirstDelimiter(buffer: string, delimiters: string[]): { inde
   return { index: bestIndex, length: bestLength };
 }
 
-/**
- * Split a string on any of multiple delimiters (first match wins at each position).
- */
-export function splitOnDelimiters(content: string, delimiters: string[]): string[] {
-  const results: string[] = [];
-  let remaining = content;
-  while (remaining.length > 0) {
-    const { index, length } = findFirstDelimiter(remaining, delimiters);
-    if (index === -1) {
-      results.push(remaining);
-      break;
-    }
-    results.push(remaining.slice(0, index));
-    remaining = remaining.slice(index + length);
-  }
-  return results;
-}
-
 // =============================================================================
 // Streaming Handler
 // =============================================================================
@@ -141,7 +123,7 @@ export async function* handleMessageStreaming(
     })();
 
     // Use different streaming logic based on single vs multiple entities
-    // In freeform mode, treat multi-entity like single (no XML parsing)
+    // In freeform mode, treat multi-entity like single (no Name: prefix parsing)
     const isFreeform = entities.some(e => e.isFreeform);
     if (entities.length === 1 || isFreeform) {
       yield* streamSingleEntity(trackedStream, streamMode, delimiter, entities[0]?.name);
@@ -276,195 +258,13 @@ async function* streamSingleEntity(
 }
 
 // =============================================================================
-// Multi-Entity Streaming (XML)
-// =============================================================================
-
-/**
- * Stream events for multiple entities with heuristic XML parsing.
- * Parses <Name>content</Name> tags as they stream.
- *
- * Modes:
- * - "lines": new message per delimiter, sent when complete (emits "char_line" events)
- * - "full" without delimiter: single message per entity, edited progressively (emits "char_delta" events)
- * - "full" with delimiter: new message per delimiter, each edited progressively
- *   (emits "char_line_start", "char_line_delta", "char_line_end" events)
- */
-async function* streamMultiEntity(
-  textStream: AsyncIterable<string>,
-  entities: EvaluatedEntity[],
-  streamMode: "lines" | "full",
-  delimiter: string[] | undefined
-): AsyncGenerator<StreamEvent, void, unknown> {
-  let buffer = "";
-  let currentChar: { name: string; entityId: number; avatarUrl?: string; content: string; lineContent: string; lineStarted: boolean } | null = null;
-
-  const hasDelimiter = delimiter !== undefined;
-
-  // Build entity lookup map (case-insensitive)
-  const entityMap = new Map<string, EvaluatedEntity>();
-  for (const entity of entities) {
-    entityMap.set(entity.name.toLowerCase(), entity);
-  }
-
-  // Build regex for opening tags
-  const names = entities.map(e => e.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const openTagPattern = new RegExp(`<(${names.join("|")})>`, "i");
-  const closeTagPattern = (name: string) => new RegExp(`</${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}>`, "i");
-
-  for await (const delta of textStream) {
-    buffer += delta;
-
-    // Process buffer
-    while (buffer.length > 0) {
-      if (currentChar === null) {
-        // Look for opening tag
-        const match = buffer.match(openTagPattern);
-        if (match) {
-          const tagEnd = match.index! + match[0].length;
-          buffer = buffer.slice(tagEnd);
-          const charName = match[1];
-          const entity = entityMap.get(charName.toLowerCase());
-          if (entity) {
-            currentChar = {
-              name: entity.name,
-              entityId: entity.id,
-              avatarUrl: entity.avatarUrl ?? undefined,
-              content: "",
-              lineContent: "",
-              lineStarted: false,
-            };
-            yield { type: "char_start", name: entity.name, entityId: entity.id, avatarUrl: entity.avatarUrl ?? undefined };
-          }
-        } else {
-          // No tag found yet, might be partial - keep minimal buffer
-          const maxTagLen = Math.max(...names.map(n => n.length)) + 2; // <Name>
-          if (buffer.length > maxTagLen && !buffer.includes("<")) {
-            buffer = "";
-          }
-          break;
-        }
-      } else {
-        // Inside an entity tag - look for closing tag
-        const closeMatch = buffer.match(closeTagPattern(currentChar.name));
-        if (closeMatch) {
-          // Found closing tag
-          const content = buffer.slice(0, closeMatch.index!);
-          buffer = buffer.slice(closeMatch.index! + closeMatch[0].length);
-
-          // Emit remaining content
-          if (content.trim()) {
-            currentChar.content += content;
-            if (streamMode === "lines") {
-              // Emit any remaining chunks
-              const effectiveDelims = delimiter ?? ["\n"];
-              const chunks = splitOnDelimiters(content, effectiveDelims);
-              for (const chunk of chunks) {
-                const trimmed = chunk.trim();
-                if (trimmed) {
-                  yield { type: "char_line", name: currentChar.name, content: trimmed };
-                }
-              }
-            } else if (streamMode === "full" && hasDelimiter) {
-              // Full mode with delimiter: emit final line
-              currentChar.lineContent += content;
-              const trimmed = currentChar.lineContent.trim();
-              if (trimmed) {
-                if (!currentChar.lineStarted) {
-                  yield { type: "char_line_start", name: currentChar.name };
-                }
-                yield { type: "char_line_end", name: currentChar.name, content: trimmed };
-              }
-            } else {
-              // Full mode without delimiter: emit delta
-              yield { type: "char_delta", name: currentChar.name, delta: content, content: currentChar.content };
-            }
-          }
-
-          yield { type: "char_end", name: currentChar.name, content: currentChar.content.trim() };
-          currentChar = null;
-        } else {
-          // No closing tag yet - emit content progressively
-          if (streamMode === "lines") {
-            // Lines mode: emit complete chunks
-            const effectiveDelims = delimiter ?? ["\n"];
-            let delimMatch: { index: number; length: number };
-            while ((delimMatch = findFirstDelimiter(buffer, effectiveDelims)).index !== -1) {
-              const chunk = buffer.slice(0, delimMatch.index);
-              const matchedDelim = buffer.slice(delimMatch.index, delimMatch.index + delimMatch.length);
-              buffer = buffer.slice(delimMatch.index + delimMatch.length);
-              currentChar.content += chunk + matchedDelim;
-
-              const trimmed = chunk.trim();
-              if (trimmed) {
-                yield { type: "char_line", name: currentChar.name, content: trimmed };
-              }
-            }
-          } else if (streamMode === "full" && hasDelimiter) {
-            // Full mode with delimiter: emit deltas within each line
-            let delimMatch: { index: number; length: number };
-            while ((delimMatch = findFirstDelimiter(buffer, delimiter)).index !== -1) {
-              const chunk = buffer.slice(0, delimMatch.index);
-              const matchedDelim = buffer.slice(delimMatch.index, delimMatch.index + delimMatch.length);
-              buffer = buffer.slice(delimMatch.index + delimMatch.length);
-              currentChar.content += chunk + matchedDelim;
-
-              // Complete current line
-              currentChar.lineContent += chunk;
-              const trimmed = currentChar.lineContent.trim();
-              if (trimmed) {
-                if (!currentChar.lineStarted) {
-                  yield { type: "char_line_start", name: currentChar.name };
-                }
-                yield { type: "char_line_end", name: currentChar.name, content: trimmed };
-              }
-              currentChar.lineContent = "";
-              currentChar.lineStarted = false;
-            }
-
-            // Emit delta for partial line content
-            if (buffer && !buffer.includes("<")) {
-              if (!currentChar.lineStarted) {
-                yield { type: "char_line_start", name: currentChar.name };
-                currentChar.lineStarted = true;
-              }
-              currentChar.content += buffer;
-              currentChar.lineContent += buffer;
-              const trimmed = currentChar.lineContent.trim();
-              if (trimmed) {
-                yield { type: "char_line_delta", name: currentChar.name, delta: buffer, content: trimmed };
-              }
-              buffer = "";
-            }
-          } else {
-            // Full mode without delimiter: emit deltas
-            // Check if this might be a partial closing tag
-            const mightBeClosing = buffer.includes("<");
-            if (!mightBeClosing) {
-              currentChar.content += buffer;
-              yield { type: "char_delta", name: currentChar.name, delta: buffer, content: currentChar.content };
-              buffer = "";
-            }
-          }
-          break;
-        }
-      }
-    }
-  }
-
-  // Handle any remaining content in currentChar
-  if (currentChar && currentChar.content.trim()) {
-    yield { type: "char_end", name: currentChar.name, content: currentChar.content.trim() };
-  }
-}
-
-// =============================================================================
 // Multi-Entity Streaming (Name Prefix)
 // =============================================================================
 
 /**
  * Stream events for multiple entities using "Name:" prefix format.
  * Detects "Name:" at start of text or after newline to switch between entities.
- * Falls back to XML-based streaming if no Name: prefixes are detected.
+ * Falls back to emitting as first entity if no Name: prefixes are detected.
  *
  * Modes:
  * - "lines": new message per delimiter, sent when complete (emits "char_line" events)
@@ -480,7 +280,7 @@ async function* streamMultiEntityNamePrefix(
 ): AsyncGenerator<StreamEvent, void, unknown> {
   let buffer = "";
   let currentChar: { name: string; entityId: number; avatarUrl?: string; content: string; lineContent: string; lineStarted: boolean } | null = null;
-  let detectedFormat: "name_prefix" | "xml" | "first_entity_fallback" | null = null;
+  let detectedFormat: "name_prefix" | "first_entity_fallback" | null = null;
 
   const hasDelimiter = delimiter !== undefined;
 
@@ -493,8 +293,6 @@ async function* streamMultiEntityNamePrefix(
   // Build regex for "Name:" at line start (case-insensitive, handles bold/italic)
   const names = entities.map(e => e.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const namePrefixPattern = new RegExp(`^${namePrefixSource(`(${names.join("|")})`)}\\s*`, "im");
-  // Also build XML tag pattern for fallback detection
-  const xmlOpenPattern = new RegExp(`<(${names.join("|")})>`, "i");
 
   /** Emit content for current character based on stream mode */
   function* emitCharContent(
@@ -583,29 +381,15 @@ async function* streamMultiEntityNamePrefix(
       if (namePrefixPattern.test(buffer)) {
         detectedFormat = "name_prefix";
         debug("Multi-entity format detected: name_prefix");
-      } else if (xmlOpenPattern.test(buffer)) {
-        // Fall back to XML streaming
-        detectedFormat = "xml";
-        debug("Multi-entity format detected: xml");
-        // Re-yield using XML-based streaming with remaining buffer + stream
-        async function* prependBuffer(buf: string, stream: AsyncIterable<string>): AsyncIterable<string> {
-          yield buf;
-          yield* stream;
-        }
-        yield* streamMultiEntity(prependBuffer(buffer, textStream), entities, streamMode, delimiter);
-        return;
-      }
-      // If neither detected yet and buffer exceeds threshold, fall back to first entity
-      if (detectedFormat === null) {
-        if (buffer.length > maxDetectionLen) {
-          debug("Multi-entity format detection threshold exceeded, falling back to first entity", {
-            bufferLen: buffer.length,
-            threshold: maxDetectionLen,
-          });
-          detectedFormat = "first_entity_fallback";
-        } else {
-          continue;
-        }
+      } else if (buffer.length > maxDetectionLen) {
+        // Buffer exceeds threshold without Name: prefix, fall back to first entity
+        debug("Multi-entity format detection threshold exceeded, falling back to first entity", {
+          bufferLen: buffer.length,
+          threshold: maxDetectionLen,
+        });
+        detectedFormat = "first_entity_fallback";
+      } else {
+        continue;
       }
     }
 

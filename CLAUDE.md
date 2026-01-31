@@ -25,7 +25,7 @@ src/
 │   ├── models.ts         # Provider abstraction (provider:model spec)
 │   ├── context.ts        # EvaluatedEntity, MessageContext, formatting utils
 │   ├── handler.ts        # handleMessage() + re-exports
-│   ├── parsing.ts        # Response parsing (XML + Name prefix), name stripping
+│   ├── parsing.ts        # Response parsing (Name prefix), name stripping
 │   ├── prompt.ts         # expandEntityRefs(), buildPromptAndMessages()
 │   ├── streaming.ts      # handleMessageStreaming(), stream generators
 │   ├── template.ts       # Nunjucks template engine, DEFAULT_TEMPLATE, runtime security patches
@@ -132,7 +132,7 @@ $if mentioned: $stream             # Conditional streaming
 
 **Name: prefix handling:** When an LLM response includes `EntityName:` prefixes at line starts, they are stripped. For single entities in streaming mode, each `Name:` prefix creates a message boundary (separate Discord messages). For non-streaming single entities, all prefixes are stripped into one message.
 
-**Multi-character streaming:** When streaming with multiple characters bound to a channel, the system uses XML tag parsing (`<CharName>...</CharName>`) as the primary format (matching the system prompt). Falls back to `Name:` prefix detection at line starts if the LLM doesn't use XML tags.
+**Multi-character streaming:** When streaming with multiple characters bound to a channel, the system uses `Name:` prefix detection at line starts to split responses per entity. Falls back to emitting as first entity if no prefixes are detected.
 
 ### Model Selection
 
@@ -156,7 +156,7 @@ Comma-separated. Supports `provider:*` wildcards. If unset, all models are allow
 
 ### Freeform Multi-Character
 
-By default, when multiple entities are bound to a channel, responses are split using XML tags (`<Name>...</Name>`, with `Name:` prefix format as fallback). Use `$freeform` to allow natural prose responses without structured formatting:
+By default, when multiple entities are bound to a channel, responses are split using `Name:` prefix format at line starts. Use `$freeform` to allow natural prose responses without structured formatting:
 
 ```
 $freeform                          # Enable freeform multi-char responses
