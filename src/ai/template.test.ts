@@ -593,12 +593,30 @@ describe("template: denial of service", () => {
     expect(render('{{ s.repeat(3) }}', { s: "ab" })).toBe("ababab");
   });
 
-  test("repeat() with excessive count throws (post-check)", () => {
-    // count (200000) > MAX_STRING_OUTPUT (100000) → caught by pre-check
+  test("repeat() rejects based on exact output size", () => {
+    // 200000 * 1 = 200,000 > MAX_STRING_OUTPUT → pre-check with exact length
     expectThrow(
       "{{ s.repeat(200000) }}",
       { s: "x" },
-      "count",
+      "would produce",
+    );
+  });
+
+  test("repeat() rejects short string * large count", () => {
+    // 3 * 50000 = 150,000 > MAX_STRING_OUTPUT → caught by exact pre-check
+    expectThrow(
+      "{{ s.repeat(50000) }}",
+      { s: "abc" },
+      "would produce",
+    );
+  });
+
+  test("repeat() rejects long string * small count", () => {
+    // 10000 * 20 = 200,000 > MAX_STRING_OUTPUT → caught by exact pre-check
+    expectThrow(
+      "{{ s.repeat(20) }}",
+      { s: "x".repeat(10000) },
+      "would produce",
     );
   });
 
@@ -607,16 +625,7 @@ describe("template: denial of service", () => {
     expectThrow(
       "{{ s.repeat(1000000000) }}",
       { s: "x" },
-      "count",
-    );
-  });
-
-  test("repeat() near limit still caught by post-check", () => {
-    // count (50000) < MAX_STRING_OUTPUT but 50000 * 3 = 150,000 > 100,000
-    expectThrow(
-      "{{ s.repeat(50000) }}",
-      { s: "abc" },
-      "produced",
+      "would produce",
     );
   });
 

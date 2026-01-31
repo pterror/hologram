@@ -49,7 +49,10 @@ const BLOCKED_PROPS = new Set([
   "__lookupSetter__",
 ]);
 
-// Patch memberLookup: block dangerous property access
+/** Symbol used to thread the method receiver from memberLookup to callWrap */
+const RECEIVER_SYM = Symbol("hologram.receiver");
+
+// Patch memberLookup: block dangerous property access, tag receivers for wrapped methods
 const origMemberLookup = nunjucks.runtime.memberLookup;
 nunjucks.runtime.memberLookup = function (
   obj: unknown,
@@ -58,7 +61,13 @@ nunjucks.runtime.memberLookup = function (
   if (typeof val === "string" && BLOCKED_PROPS.has(val)) {
     return undefined; // Silent block — matches expr.ts behavior
   }
-  return origMemberLookup.call(this, obj, val);
+  const result = origMemberLookup.call(this, obj, val);
+  // Tag wrapped method wrappers with their receiver so callWrap can
+  // compute exact output sizes before allocating (e.g. str.length * count)
+  if (typeof result === "function" && typeof val === "string" && WRAPPED_METHODS.has(val)) {
+    (result as unknown as Record<symbol, unknown>)[RECEIVER_SYM] = obj;
+  }
+  return result;
 };
 
 /** Methods blocked entirely */
@@ -118,17 +127,34 @@ nunjucks.runtime.callWrap = function (
     }
   }
 
-  // Wrap memory-dangerous methods — pre-validate args where possible to
-  // avoid allocating huge strings that would OOM before the post-check runs
+  // Wrap memory-dangerous methods — pre-validate using exact output size
+  // where possible to reject before the JS engine allocates the string
   if (WRAPPED_METHODS.has(methodName)) {
+    let receiver: unknown;
+    if (typeof obj === "function") {
+      const tagged = obj as unknown as Record<symbol, unknown>;
+      receiver = tagged[RECEIVER_SYM];
+      delete tagged[RECEIVER_SYM];
+    }
+
     if (methodName === "repeat") {
-      const count = args[0];
-      if (typeof count === "number" && count > MAX_STRING_OUTPUT) {
+      const count = typeof args[0] === "number" ? args[0] : 0;
+      if (typeof receiver === "string") {
+        // Exact: output is receiver.length * count
+        const outputLen = receiver.length * count;
+        if (outputLen > MAX_STRING_OUTPUT) {
+          throw new ExprError(
+            `repeat() would produce ${outputLen.toLocaleString()} characters (limit: ${MAX_STRING_OUTPUT.toLocaleString()})`,
+          );
+        }
+      } else if (count > MAX_STRING_OUTPUT) {
+        // Fallback: no receiver info, at least block absurd counts
         throw new ExprError(
           `repeat() count ${count.toLocaleString()} exceeds limit (${MAX_STRING_OUTPUT.toLocaleString()})`,
         );
       }
     } else if (methodName === "padStart" || methodName === "padEnd") {
+      // Exact: output is max(receiver.length, targetLength)
       const targetLength = args[0];
       if (typeof targetLength === "number" && targetLength > MAX_STRING_OUTPUT) {
         throw new ExprError(
