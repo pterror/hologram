@@ -17,6 +17,23 @@ import {
 } from "./context";
 
 // =============================================================================
+// JSON Serialization Helpers
+// =============================================================================
+
+export type WithToJSON<T> = T & { toJSON(): string };
+
+/** Add toJSON() to an array and each element within it (closures reference original plain objects to avoid infinite recursion) */
+export function withToJSON<T extends object>(arr: T[]): WithToJSON<T>[] & { toJSON(): string } {
+  const result = arr.map(item => {
+    const copy = { ...item } as WithToJSON<T>;
+    copy.toJSON = () => JSON.stringify(item);
+    return copy;
+  }) as WithToJSON<T>[] & { toJSON(): string };
+  result.toJSON = () => JSON.stringify(arr);
+  return result;
+}
+
+// =============================================================================
 // Entity Reference Expansion
 // =============================================================================
 
@@ -300,19 +317,6 @@ export function buildPromptAndMessages(
     stickers: StickerData[] & { toJSON(): string };
     attachments: AttachmentData[] & { toJSON(): string };
     toJSON(): string;
-  }
-
-  /** Add toJSON() to an object that returns its JSON string for template use */
-  function addToJSON<T extends object>(obj: T): T & { toJSON(): string } {
-    (obj as T & { toJSON(): string }).toJSON = () => JSON.stringify(obj);
-    return obj as T & { toJSON(): string };
-  }
-
-  /** Add toJSON() to an array and each element within it */
-  function withToJSON<T extends object>(arr: T[]): (T & { toJSON(): string })[] & { toJSON(): string } {
-    const result = arr.map(item => addToJSON({ ...item })) as (T & { toJSON(): string })[] & { toJSON(): string };
-    result.toJSON = () => JSON.stringify(arr);
-    return result;
   }
 
   const history: HistoryEntry[] = [];
