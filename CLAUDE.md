@@ -47,28 +47,13 @@ docs/
 └── archive/              # Old docs from previous architecture
 
 editors/
-└── vscode/
-    ├── package.json              # VS Code extension manifest
+└── vscode/               # VS Code extension: .holo + .njk syntax highlighting
+    ├── README.md
+    ├── package.json
     └── syntaxes/
-        ├── hologram.tmLanguage.json           # TextMate grammar for .holo files
-        └── hologram-template.tmLanguage.json  # TextMate grammar for .njk templates
+        ├── hologram.tmLanguage.json
+        └── hologram-template.tmLanguage.json
 ```
-
-## Editor Support
-
-### VS Code
-
-Syntax highlighting for `.holo` (entity facts) and `.njk` (Nunjucks templates) files.
-
-**Install** (symlink for development):
-
-```bash
-ln -s $(pwd)/editors/vscode ~/.vscode/extensions/hologram-syntax
-```
-
-**`.holo` highlights:** `$if` conditionals, directives (`$respond`, `$model`, `$stream`, etc.), `{{macros}}`, key-value facts, strings, numbers, booleans, operators, `$#` comments.
-
-**`.njk` highlights:** Nunjucks tags (`{% if %}`, `{% for %}`, `{% block %}`, `{% extends %}`, `{% call %}`), expression blocks (`{{ }}`), comments (`{# #}`), all Hologram template context variables (`entities`, `others`, `memories`, `history`, `char`, `user`, `freeform`, `_single_entity`, expression context), filters (`join`, `length`, `default`, `first`, `last`, `upper`, `lower`, `trim`, `int`, `float`, `abs`, `round`, `reverse`, `sort`, `batch`, `nl2br`), functions (`random`, `has_fact`, `roll`, `messages`, `duration`, `mentioned_in_dialogue`, `date_str`, `time_str`, `isodate`, `isotime`, `weekday`, `send_as`, `caller`), loop variables (`loop.index`, `loop.first`, etc.), context objects (`self.*`, `channel.*`, `server.*`, `time.*`), XML semantic tags (`<defs>`, `<memories>`).
 
 ## Architecture
 
