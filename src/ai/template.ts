@@ -447,12 +447,7 @@ function escapeRegExp(s: string): string {
  * entity definitions, memories, and instructions. This top-level system field
  * provides framing context that the LLM sees before any messages.
  */
-export const SYSTEM_PROMPT_TEMPLATE = `\
-{%- if entities | length == 0 and others | length == 0 -%}
-You are a helpful assistant. Respond naturally to the user.
-{%- else -%}
-This is the dedicated system prompt for this conversation. Entity definitions, memories, and response instructions are provided as system-role messages. Respond in character.
-{%- endif -%}`;
+export const SYSTEM_PROMPT_TEMPLATE = "";
 
 /**
  * Default template using role blocks (system, user, char).
