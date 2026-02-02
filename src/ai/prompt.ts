@@ -302,9 +302,15 @@ export function buildPromptAndMessages(
     toJSON(): string;
   }
 
-  /** Add toJSON() that returns a JSON string for template use */
-  function withToJSON<T>(arr: T[]): T[] & { toJSON(): string } {
-    const result = arr as T[] & { toJSON(): string };
+  /** Add toJSON() to an object that returns its JSON string for template use */
+  function addToJSON<T extends object>(obj: T): T & { toJSON(): string } {
+    (obj as T & { toJSON(): string }).toJSON = () => JSON.stringify(obj);
+    return obj as T & { toJSON(): string };
+  }
+
+  /** Add toJSON() to an array and each element within it */
+  function withToJSON<T extends object>(arr: T[]): (T & { toJSON(): string })[] & { toJSON(): string } {
+    const result = arr.map(item => addToJSON({ ...item })) as (T & { toJSON(): string })[] & { toJSON(): string };
     result.toJSON = () => JSON.stringify(arr);
     return result;
   }
