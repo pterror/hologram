@@ -47,6 +47,7 @@ export const bot = createBot({
       webhookId: true as const,
       stickerItems: true as const,
       embeds: true as const,
+      attachments: true as const,
     },
     interaction: {
       id: true,
@@ -290,29 +291,12 @@ bot.events.messageCreate = async (message) => {
   // Ignore own messages
   if (botUserId && message.author.id === botUserId) return;
   const hasEmbeds = (message.embeds?.length ?? 0) > 0;
-  if (!message.content && !message.stickerItems?.length && !hasEmbeds) return;
+  const hasAttachments = (message.attachments?.length ?? 0) > 0;
+  if (!message.content && !message.stickerItems?.length && !hasEmbeds && !hasAttachments) return;
   if (!markProcessed(message.id)) return;
 
-  // Serialize stickers as action text appended to content
-  let content = message.content ?? "";
-
-  if (message.stickerItems?.length) {
-    const stickerText = message.stickerItems
-      .map(s => `*sent a sticker: ${s.name}*`)
-      .join(" ");
-    content = content ? `${content} ${stickerText}` : stickerText;
-  }
-
-  // Serialize embed-only messages into content
-  if (!content && hasEmbeds) {
-    content = message.embeds!.map(e => {
-      const parts: string[] = [];
-      if (e.title) parts.push(e.title);
-      if (e.description) parts.push(e.description);
-      return parts.join(" — ");
-    }).filter(Boolean).join("; ");
-    if (!content) return; // embeds with no text
-  }
+  // Store raw content — sticker/embed/attachment serialization happens at prompt time
+  const content = message.content ?? "";
 
   // mentionedUserIds is unreliable in Discordeno, parse from content as fallback
   const isBotMentioned = botUserId !== null && (
@@ -403,6 +387,13 @@ bot.events.messageCreate = async (message) => {
       id: s.id.toString(),
       name: s.name,
       format_type: (s as any).formatType ?? 0,
+    }));
+  }
+  if (hasAttachments) {
+    msgData.attachments = message.attachments!.map(a => ({
+      filename: (a as any).filename ?? "unknown",
+      url: (a as any).url ?? "",
+      ...((a as any).contentType && { content_type: (a as any).contentType }),
     }));
   }
   const hasData = Object.keys(msgData).length > 0;

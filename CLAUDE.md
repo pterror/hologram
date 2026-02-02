@@ -293,12 +293,13 @@ $if mentioned: $strip "</blockquote>"  # Conditional stripping
 
 Supports escape sequences in patterns: `\n`, `\t`, `\\`.
 
-Other preprocessing:
-- **Sticker serialization:** Stickers become `*sent a sticker: name*` appended to message content
-
 ### Stickers
 
-Stickers are stored as structured objects `{id, name, format_type}` in the message `data` JSON column (`format_type`: 1=PNG, 2=APNG, 3=Lottie, 4=GIF). Legacy string-only sticker names are migrated to structured format on DB init. Stickers are serialized as `*sent a sticker: name*` and appended to message content for LLM context. A sticker-only message becomes just the sticker text, e.g. `*sent a sticker: catwave*`.
+Stickers are stored as structured objects `{id, name, format_type}` in the message `data` JSON column (`format_type`: 1=PNG, 2=APNG, 3=Lottie, 4=GIF). Legacy string-only sticker names are migrated to structured format on DB init. Sticker data is available in template history objects via `msg.stickers`. Raw message content is never modified — sticker/embed/attachment serialization for LLM context is the template's responsibility.
+
+### Attachments
+
+Attachments are stored as structured objects `{filename, url, content_type?}` in the message `data` JSON column. Available in template history objects via `msg.attachments`.
 
 **Functions:** `random(n)`, `has_fact(pattern)`, `roll(dice)`, `mentioned_in_dialogue(name)`, `messages(n, format, filter)`, `duration(ms)`, `date_str(offset?)`, `time_str(offset?)`, `isodate(offset?)`, `isotime(offset?)`, `weekday(offset?)`
 
