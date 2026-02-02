@@ -45,7 +45,27 @@ docs/
 ├── reference/            # Fact patterns, triggers reference
 ├── guide/                # Migration guides (SillyTavern)
 └── archive/              # Old docs from previous architecture
+
+editors/
+└── vscode/
+    ├── package.json              # VS Code extension manifest
+    └── syntaxes/
+        └── hologram.tmLanguage.json  # TextMate grammar for .holo files
 ```
+
+## Editor Support
+
+### VS Code
+
+Syntax highlighting for `.holo` files (entity facts, directives, macros).
+
+**Install** (symlink for development):
+
+```bash
+ln -s $(pwd)/editors/vscode ~/.vscode/extensions/hologram-syntax
+```
+
+**Highlights:** `$if` conditionals, directives (`$respond`, `$model`, `$stream`, etc.), `{{macros}}`, key-value facts, strings, numbers, booleans, operators, `$#` comments.
 
 ## Architecture
 
