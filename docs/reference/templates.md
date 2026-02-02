@@ -63,7 +63,7 @@ By default, `trimBlocks` and `lstripBlocks` are enabled — the newline after a 
 |--------|-------|-------------|
 | `default` | `{{ x \| default("none") }}` | Return default if null/undefined/empty |
 | `length` | `{{ arr \| length }}` | Array or string length |
-| `join` | `{{ arr \| join(", ") }}` | Join array (100KB cap) |
+| `join` | `{{ arr \| join(", ", "name") }}` | Join array, optional attr pluck (100KB cap) |
 | `first` | `{{ arr \| first }}` | First element |
 | `last` | `{{ arr \| last }}` | Last element |
 | `upper` | `{{ s \| upper }}` | Uppercase |

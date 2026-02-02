@@ -188,7 +188,7 @@ Override the default system prompt formatting per entity using custom templates 
 
 **Operators:** `and`, `or`, `not`, `in`, `is`, `~` (concat), `**` (power), `//` (floor div)
 
-**Filters:** `default(val)`, `length`, `join(sep)`, `first`, `last`, `upper`, `lower`, `trim`, `nl2br`, `int`, `float`, `abs`, `round(precision)`, `reverse`, `sort`, `batch(n)`
+**Filters:** `default(val)`, `length`, `join(sep, attr?)`, `first`, `last`, `upper`, `lower`, `trim`, `nl2br`, `int`, `float`, `abs`, `round(precision)`, `reverse`, `sort`, `batch(n)`
 
 **Template context variables** (in addition to standard expr context):
 - `entities` — array of responding entities `[{id, name, facts}]` (facts have `toString() → join('\n')`)
