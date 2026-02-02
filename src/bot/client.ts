@@ -588,6 +588,7 @@ bot.events.messageCreate = async (message) => {
           modelSpec: result.modelSpec,
           stripPatterns: result.stripPatterns,
           template: entity.template,
+          systemTemplate: entity.system_template,
           exprContext: ctx,
         });
       }
@@ -738,6 +739,7 @@ async function processEntityRetry(
     modelSpec: result.modelSpec,
     stripPatterns: result.stripPatterns,
     template: entity.template,
+    systemTemplate: entity.system_template,
     exprContext: ctx,
   }]);
 }

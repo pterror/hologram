@@ -12,6 +12,7 @@ export interface Entity {
   owned_by: string | null;
   created_at: string;
   template: string | null;
+  system_template: string | null;
 }
 
 export function createEntity(name: string, ownedBy?: string): Entity {
@@ -171,6 +172,17 @@ export function getEntityTemplate(id: number): string | null {
 export function setEntityTemplate(id: number, template: string | null): void {
   const db = getDb();
   db.prepare(`UPDATE entities SET template = ? WHERE id = ?`).run(template, id);
+}
+
+export function getEntitySystemTemplate(id: number): string | null {
+  const db = getDb();
+  const row = db.prepare(`SELECT system_template FROM entities WHERE id = ?`).get(id) as { system_template: string | null } | null;
+  return row?.system_template ?? null;
+}
+
+export function setEntitySystemTemplate(id: number, template: string | null): void {
+  const db = getDb();
+  db.prepare(`UPDATE entities SET system_template = ? WHERE id = ?`).run(template, id);
 }
 
 // =============================================================================

@@ -31,6 +31,7 @@ function mockEntity(overrides: Partial<EvaluatedEntity> & { id: number; name: st
     modelSpec: null,
     stripPatterns: null,
     template: null,
+    systemTemplate: null,
     ...overrides,
   };
 }
@@ -43,6 +44,7 @@ function mockRawEntity(id: number, name: string, facts: string[]): EntityWithFac
     owned_by: null,
     created_at: "2024-01-01",
     template: null,
+    system_template: null,
     facts: facts.map((content, i) => ({
       id: i + 100,
       entity_id: id,

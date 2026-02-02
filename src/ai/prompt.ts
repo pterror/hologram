@@ -276,6 +276,7 @@ export function buildPromptAndMessages(
   channelId: string,
   contextExpr: string,
   stripPatterns: string[],
+  systemTemplate?: string | null,
 ): { systemPrompt: string; messages: StructuredMessage[] } {
   // Fetch history from DB (DESC order, newest first)
   const rawHistory = getMessages(channelId, MESSAGE_FETCH_LIMIT);
@@ -381,7 +382,7 @@ export function buildPromptAndMessages(
   templateCtx._single_entity = isSingleEntity;
 
   // Render dedicated system prompt (AI SDK `system` parameter)
-  const systemPrompt = renderSystemPrompt(templateCtx);
+  const systemPrompt = renderSystemPrompt(templateCtx, systemTemplate ?? undefined);
 
   // Render structured messages template
   const templateSource = template ?? DEFAULT_TEMPLATE;
@@ -478,8 +479,9 @@ export function preparePromptContext(
 
   // Build messages via template engine
   const template = entities[0]?.template ?? null;
+  const systemTemplate = entities[0]?.systemTemplate ?? null;
   const { systemPrompt, messages } = buildPromptAndMessages(
-    entities, other, entityMemories, template, channelId, contextExpr, effectiveStripPatterns,
+    entities, other, entityMemories, template, channelId, contextExpr, effectiveStripPatterns, systemTemplate,
   );
 
   return { systemPrompt, messages, other, contextExpr, effectiveStripPatterns };

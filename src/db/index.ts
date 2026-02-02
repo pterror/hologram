@@ -34,6 +34,7 @@ function initSchema(db: Database) {
       owned_by TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       template TEXT,
+      system_template TEXT,
       config_context TEXT,
       config_model TEXT,
       config_respond TEXT,
@@ -193,4 +194,12 @@ function initSchema(db: Database) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_memories_frecency ON entity_memories(entity_id, frecency DESC)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_webhooks_channel ON webhooks(channel_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_eval_errors_owner ON eval_errors(owner_id, notified_at)`);
+
+  // Migrations
+  // Add system_template column (per-entity system prompt template)
+  try {
+    db.exec(`ALTER TABLE entities ADD COLUMN system_template TEXT`);
+  } catch {
+    // Column already exists
+  }
 }

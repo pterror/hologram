@@ -41,6 +41,8 @@ export interface EvaluatedEntity {
   stripPatterns: string[] | null;
   /** Custom system prompt template (null = use default formatting) */
   template: string | null;
+  /** Custom system prompt for AI SDK `system` parameter (null = use global default) */
+  systemTemplate: string | null;
   /** Expression context used during fact evaluation (carried to macro expansion) */
   exprContext?: ExprContext;
 }
