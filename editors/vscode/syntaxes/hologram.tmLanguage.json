@@ -1,0 +1,260 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Hologram Facts",
+  "scopeName": "source.hologram",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#conditional" },
+    { "include": "#directive-respond" },
+    { "include": "#directive-model" },
+    { "include": "#directive-stream" },
+    { "include": "#directive-context" },
+    { "include": "#directive-strip" },
+    { "include": "#directive-retry" },
+    { "include": "#directive-avatar" },
+    { "include": "#directive-generic" },
+    { "include": "#macro" },
+    { "include": "#key-value" }
+  ],
+  "repository": {
+    "comment": {
+      "match": "^(\\$#)(.*)$",
+      "name": "comment.line.hologram",
+      "captures": {
+        "1": { "name": "punctuation.definition.comment.hologram" },
+        "2": { "name": "comment.line.hologram" }
+      }
+    },
+    "conditional": {
+      "match": "^(\\$if)\\b(.+?)(:)\\s*(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.conditional.hologram" },
+        "2": { "name": "meta.condition.hologram", "patterns": [{ "include": "#expression" }] },
+        "3": { "name": "punctuation.separator.colon.hologram" },
+        "4": { "name": "meta.directive-or-fact.hologram", "patterns": [{ "include": "#inner-directive" }, { "include": "#macro" }] }
+      }
+    },
+    "inner-directive": {
+      "patterns": [
+        { "include": "#directive-respond-inline" },
+        { "include": "#directive-model-inline" },
+        { "include": "#directive-stream-inline" },
+        { "include": "#directive-context-inline" },
+        { "include": "#directive-strip-inline" },
+        { "include": "#directive-retry-inline" },
+        { "include": "#directive-avatar-inline" },
+        { "include": "#directive-generic-inline" }
+      ]
+    },
+    "directive-respond": {
+      "match": "^(\\$respond)(?:\\s+(true|false))?\\s*$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "constant.language.boolean.hologram" }
+      }
+    },
+    "directive-respond-inline": {
+      "match": "(\\$respond)(?:\\s+(true|false))?\\s*$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "constant.language.boolean.hologram" }
+      }
+    },
+    "directive-model": {
+      "match": "^(\\$model)\\s+([a-zA-Z0-9_-]+:[a-zA-Z0-9._-]+)\\s*$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "entity.name.type.hologram" }
+      }
+    },
+    "directive-model-inline": {
+      "match": "(\\$model)\\s+([a-zA-Z0-9_-]+:[a-zA-Z0-9._-]+)\\s*$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "entity.name.type.hologram" }
+      }
+    },
+    "directive-stream": {
+      "match": "^(\\$stream)(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "meta.stream-args.hologram", "patterns": [{ "include": "#stream-args" }] }
+      }
+    },
+    "directive-stream-inline": {
+      "match": "(\\$stream)(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "meta.stream-args.hologram", "patterns": [{ "include": "#stream-args" }] }
+      }
+    },
+    "stream-args": {
+      "patterns": [
+        {
+          "match": "\\b(full)\\b",
+          "name": "keyword.other.stream-mode.hologram"
+        },
+        { "include": "#quoted-string" }
+      ]
+    },
+    "directive-context": {
+      "match": "^(\\$context)\\s+(.+)$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "meta.context-expr.hologram", "patterns": [{ "include": "#expression" }] }
+      }
+    },
+    "directive-context-inline": {
+      "match": "(\\$context)\\s+(.+)$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "meta.context-expr.hologram", "patterns": [{ "include": "#expression" }] }
+      }
+    },
+    "directive-strip": {
+      "match": "^(\\$strip)(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "meta.strip-args.hologram", "patterns": [{ "include": "#quoted-string" }] }
+      }
+    },
+    "directive-strip-inline": {
+      "match": "(\\$strip)(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "meta.strip-args.hologram", "patterns": [{ "include": "#quoted-string" }] }
+      }
+    },
+    "directive-retry": {
+      "match": "^(\\$retry)\\s+(\\d+)\\s*$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "constant.numeric.hologram" }
+      }
+    },
+    "directive-retry-inline": {
+      "match": "(\\$retry)\\s+(\\d+)\\s*$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "constant.numeric.hologram" }
+      }
+    },
+    "directive-avatar": {
+      "match": "^(\\$avatar)\\s+(\\S+)\\s*$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "string.unquoted.url.hologram" }
+      }
+    },
+    "directive-avatar-inline": {
+      "match": "(\\$avatar)\\s+(\\S+)\\s*$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "string.unquoted.url.hologram" }
+      }
+    },
+    "directive-generic": {
+      "match": "^(\\$(?:freeform|locked|memory))\\b(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "meta.directive-args.hologram", "patterns": [{ "include": "#expression" }] }
+      }
+    },
+    "directive-generic-inline": {
+      "match": "(\\$(?:freeform|locked|memory))\\b(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.hologram" },
+        "2": { "name": "meta.directive-args.hologram", "patterns": [{ "include": "#expression" }] }
+      }
+    },
+    "macro": {
+      "match": "(\\{\\{)(.+?)(\\}\\})",
+      "captures": {
+        "1": { "name": "punctuation.definition.macro.begin.hologram" },
+        "2": { "name": "meta.macro.inner.hologram", "patterns": [{ "include": "#macro-inner" }] },
+        "3": { "name": "punctuation.definition.macro.end.hologram" }
+      }
+    },
+    "macro-inner": {
+      "patterns": [
+        {
+          "match": "entity:\\d+",
+          "name": "entity.name.tag.hologram"
+        },
+        {
+          "match": "\\b(char|user|date|time|weekday|isodate|isotime|group|model|maxPrompt|idle_duration|lastMessage|lastUserMessage|lastCharMessage|charIfNotGroup|notChar|groupNotMuted|newline|space|noop|trim)\\b",
+          "name": "support.constant.macro.hologram"
+        },
+        {
+          "match": "(random|roll)(:)",
+          "captures": {
+            "1": { "name": "support.function.macro.hologram" },
+            "2": { "name": "punctuation.separator.macro.hologram" }
+          }
+        },
+        {
+          "match": "(self|channel|server|time)(\\.)",
+          "captures": {
+            "1": { "name": "variable.other.object.hologram" },
+            "2": { "name": "punctuation.accessor.hologram" }
+          }
+        },
+        {
+          "match": "[^}]+",
+          "name": "variable.other.macro.hologram"
+        }
+      ]
+    },
+    "key-value": {
+      "match": "^([a-z_][a-z0-9_]*)(\\s*:\\s*)(.+)$",
+      "captures": {
+        "1": { "name": "variable.other.property.hologram" },
+        "2": { "name": "punctuation.separator.key-value.hologram" },
+        "3": { "name": "meta.fact-value.hologram", "patterns": [{ "include": "#macro" }, { "include": "#quoted-string" }] }
+      }
+    },
+    "expression": {
+      "patterns": [
+        { "include": "#quoted-string" },
+        { "include": "#numeric" },
+        { "include": "#boolean" },
+        { "include": "#operator" },
+        { "include": "#function-call" },
+        { "include": "#dot-access" },
+        { "include": "#template-tag" },
+        { "include": "#macro" }
+      ]
+    },
+    "quoted-string": {
+      "match": "\"(?:[^\"\\\\]|\\\\.)*\"",
+      "name": "string.quoted.double.hologram"
+    },
+    "numeric": {
+      "match": "\\b\\d+(?:\\.\\d+)?[kK]?\\b",
+      "name": "constant.numeric.hologram"
+    },
+    "boolean": {
+      "match": "\\b(true|false)\\b",
+      "name": "constant.language.boolean.hologram"
+    },
+    "operator": {
+      "match": "<=|>=|==|!=|\\|\\||&&|[<>!]",
+      "name": "keyword.operator.hologram"
+    },
+    "function-call": {
+      "match": "\\b(random|has_fact|roll|messages|duration|mentioned_in_dialogue|date_str|time_str|isodate|isotime|weekday)\\s*(?=\\()",
+      "name": "support.function.hologram"
+    },
+    "dot-access": {
+      "match": "\\b(self|channel|server|time)(\\.)",
+      "captures": {
+        "1": { "name": "variable.other.object.hologram" },
+        "2": { "name": "punctuation.accessor.hologram" }
+      }
+    },
+    "template-tag": {
+      "match": "</?\\s*(defs|memories)\\b[^>]*>",
+      "name": "entity.name.tag.hologram"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "hologram-syntax",
+  "displayName": "Hologram Facts",
+  "description": "Syntax highlighting for Hologram entity facts, directives, and macros",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "hologram",
+        "aliases": [
+          "Hologram Facts",
+          "hologram"
+        ],
+        "extensions": [
+          ".holo"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "hologram",
+        "scopeName": "source.hologram",
+        "path": "./syntaxes/hologram.tmLanguage.json"
+      }
+    ]
+  }
+}
