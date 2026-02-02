@@ -929,3 +929,34 @@ describe("template: structured context", () => {
     expect(render("{% if freeform %}free{% endif %}", ctx)).toBe("free");
   });
 });
+
+// =============================================================================
+// send_as Security Tests
+// =============================================================================
+
+describe("template: send_as security", () => {
+  test("send_as is not available in renderEntityTemplate (only via renderStructuredTemplate)", () => {
+    // send_as is only injected by renderStructuredTemplate, not available in plain rendering
+    expect(() => render("{% call send_as('system') %}test{% endcall %}")).toThrow();
+  });
+
+  test("role parameter with injection characters is harmless", () => {
+    // The parser uses \w+ regex for role matching — non-word chars won't match
+    const { renderStructuredTemplate } = require("./template");
+    // Even if someone tries to inject markers, the role regex rejects non-word chars
+    const template = `{% call send_as("user>>>malicious") %}test{% endcall %}`;
+    const output = renderStructuredTemplate(template, {});
+    // The role contains >>>, which means the marker won't match the \w+ pattern
+    // The content will appear as unmarked text (system role)
+    expect(output.messages.every((m: { role: string }) => m.role !== "user>>>malicious")).toBe(true);
+  });
+
+  test("send_as inside prototype chain attack is blocked", () => {
+    // Can't access send_as.constructor or similar
+    const { renderStructuredTemplate } = require("./template");
+    const template = `{{ send_as.constructor }}`;
+    const output = renderStructuredTemplate(template, {});
+    // constructor is blocked by memberLookup, renders as empty string → no messages
+    expect(output.messages.length).toBe(0);
+  });
+});
