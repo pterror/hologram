@@ -110,6 +110,9 @@ export const bot = createBot({
       ephemeral: true,
       duration_secs: true,
     },
+    member: {
+      roles: true,
+    },
   },
 });
 

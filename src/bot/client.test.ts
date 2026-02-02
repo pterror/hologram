@@ -1,18 +1,19 @@
 /**
  * Tests for Discordeno desiredProperties configuration.
  *
- * Validates that the transformer config produces the expected object shapes.
- * Regression test: missing `desiredProperties.attachment` caused all attachment
- * properties to be stripped, producing `{filename: "unknown", url: ""}`.
+ * Validates that transformer configs produce the expected object shapes.
+ * Regression tests: missing desiredProperties entries caused transformers to
+ * silently strip all properties, producing empty objects.
  */
 import { describe, expect, test } from "bun:test";
 
+// =============================================================================
+// Transformer replicas (can't import from @discordeno/bot due to single export)
+// =============================================================================
+
 /**
- * Replicates Discordeno's transformAttachment logic (from @discordeno/bot/dist/transformers/attachment.js).
- * The actual function can't be imported directly due to package export restrictions.
- *
- * The transformer conditionally copies properties based on `desiredProperties.attachment`.
- * If a property isn't listed, it's silently dropped — producing empty objects.
+ * Replicates Discordeno's transformAttachment logic
+ * (from @discordeno/bot/dist/transformers/attachment.js).
  */
 function transformAttachment(bot: any, payload: any): any {
   const props = bot.transformers.desiredProperties.attachment;
@@ -34,7 +35,25 @@ function transformAttachment(bot: any, payload: any): any {
   return bot.transformers.customizers.attachment(bot, payload, attachment);
 }
 
-/** Maps a Discordeno attachment to our AttachmentData shape (mirrors client.ts extraction) */
+/**
+ * Replicates Discordeno's transformMember logic (roles portion only)
+ * (from @discordeno/bot/dist/transformers/member.js).
+ */
+function transformMember(bot: any, payload: any): any {
+  const props = bot.transformers.desiredProperties.member;
+  const member: any = {};
+  if (props.id && payload.user?.id) member.id = bot.transformers.snowflake(payload.user.id);
+  if (props.roles && payload.roles) member.roles = payload.roles.map((id: string) => bot.transformers.snowflake(id));
+  if (props.nick && payload.nick) member.nick = payload.nick;
+  if (props.joinedAt && payload.joined_at) member.joinedAt = Date.parse(payload.joined_at);
+  return bot.transformers.customizers.member(bot, payload, member);
+}
+
+// =============================================================================
+// Extraction helpers (mirror client.ts logic)
+// =============================================================================
+
+/** Maps a Discordeno attachment to our AttachmentData shape (mirrors client.ts) */
 function extractAttachment(a: any) {
   return {
     filename: a.filename ?? "unknown",
@@ -50,7 +69,32 @@ function extractAttachment(a: any) {
   };
 }
 
-// Our desiredProperties.attachment config (must match client.ts)
+/** Extracts member roles to string[] (mirrors client.ts) */
+function extractMemberRoles(member: any): string[] {
+  return (member?.roles ?? []).map((r: bigint) => r.toString());
+}
+
+// =============================================================================
+// Mock bot factory
+// =============================================================================
+
+function mockBot(desiredProps: Record<string, Record<string, boolean>>) {
+  return {
+    transformers: {
+      desiredProperties: desiredProps,
+      snowflake: (id: string) => BigInt(id),
+      customizers: {
+        attachment: (_bot: any, _payload: any, result: any) => result,
+        member: (_bot: any, _payload: any, result: any) => result,
+      },
+    },
+  };
+}
+
+// =============================================================================
+// Configs (must match client.ts desiredProperties)
+// =============================================================================
+
 const ATTACHMENT_PROPS = {
   id: true,
   filename: true,
@@ -65,17 +109,15 @@ const ATTACHMENT_PROPS = {
   duration_secs: true,
 };
 
-function mockBot(attachmentProps: Record<string, boolean>) {
-  return {
-    transformers: {
-      desiredProperties: { attachment: attachmentProps },
-      snowflake: (id: string) => BigInt(id),
-      customizers: { attachment: (_bot: any, _payload: any, attachment: any) => attachment },
-    },
-  };
-}
+const MEMBER_PROPS = {
+  roles: true,
+};
 
-const SAMPLE_PAYLOAD = {
+// =============================================================================
+// Attachment tests
+// =============================================================================
+
+const SAMPLE_ATTACHMENT = {
   id: "123456",
   filename: "photo.png",
   url: "https://cdn.discordapp.com/attachments/1/2/photo.png",
@@ -85,8 +127,8 @@ const SAMPLE_PAYLOAD = {
 
 describe("desiredProperties.attachment", () => {
   test("with correct config, attachment properties are preserved", () => {
-    const bot = mockBot(ATTACHMENT_PROPS);
-    const transformed = transformAttachment(bot, SAMPLE_PAYLOAD);
+    const bot = mockBot({ attachment: ATTACHMENT_PROPS });
+    const transformed = transformAttachment(bot, SAMPLE_ATTACHMENT);
     const result = extractAttachment(transformed);
 
     expect(result.filename).toBe("photo.png");
@@ -95,9 +137,9 @@ describe("desiredProperties.attachment", () => {
   });
 
   test("with correct config, optional fields are preserved", () => {
-    const bot = mockBot(ATTACHMENT_PROPS);
+    const bot = mockBot({ attachment: ATTACHMENT_PROPS });
     const payload = {
-      ...SAMPLE_PAYLOAD,
+      ...SAMPLE_ATTACHMENT,
       content_type: "audio/ogg",
       description: "Voice message",
       duration_secs: 5.2,
@@ -118,13 +160,41 @@ describe("desiredProperties.attachment", () => {
   });
 
   test("without attachment config, properties are stripped (the bug)", () => {
-    const bot = mockBot({}); // no properties enabled — the original bug
-    const transformed = transformAttachment(bot, SAMPLE_PAYLOAD);
+    const bot = mockBot({ attachment: {} }); // no properties enabled
+    const transformed = transformAttachment(bot, SAMPLE_ATTACHMENT);
     const result = extractAttachment(transformed);
 
-    // All fields fall back to defaults
     expect(result.filename).toBe("unknown");
     expect(result.url).toBe("");
     expect(result.size).toBeUndefined();
+  });
+});
+
+// =============================================================================
+// Member tests
+// =============================================================================
+
+const SAMPLE_MEMBER = {
+  user: { id: "111" },
+  roles: ["222", "333"],
+  nick: "Nickname",
+  joined_at: "2024-01-01T00:00:00Z",
+};
+
+describe("desiredProperties.member", () => {
+  test("with correct config, member.roles is preserved", () => {
+    const bot = mockBot({ member: MEMBER_PROPS });
+    const transformed = transformMember(bot, SAMPLE_MEMBER);
+    const roles = extractMemberRoles(transformed);
+
+    expect(roles).toEqual(["222", "333"]);
+  });
+
+  test("without member config, roles are stripped (same class of bug)", () => {
+    const bot = mockBot({ member: {} }); // no properties enabled
+    const transformed = transformMember(bot, SAMPLE_MEMBER);
+    const roles = extractMemberRoles(transformed);
+
+    expect(roles).toEqual([]); // silently empty — permission checks would fail
   });
 });
