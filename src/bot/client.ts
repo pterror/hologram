@@ -97,6 +97,19 @@ export const bot = createBot({
       name: true,
       formatType: true,
     },
+    attachment: {
+      id: true,
+      filename: true,
+      url: true,
+      contentType: true,
+      title: true,
+      description: true,
+      size: true,
+      height: true,
+      width: true,
+      ephemeral: true,
+      duration_secs: true,
+    },
   },
 });
 
