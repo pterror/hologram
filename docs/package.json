@@ -9,5 +9,9 @@
   },
   "devDependencies": {
     "vitepress": "^1.6.4"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.55.1",
+    "nunjucks": "^3.2.4"
   }
 }

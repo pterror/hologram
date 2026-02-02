@@ -44,6 +44,18 @@ docs/
 ├── README.md             # User documentation
 ├── reference/            # Fact patterns, triggers reference
 ├── guide/                # Migration guides (SillyTavern)
+├── playground/           # Interactive playground pages (facts.md, templates.md)
+├── .vitepress/
+│   ├── config.ts         # VitePress config (sidebar, Vite aliases for playground)
+│   ├── theme/            # Custom theme extending default (playground styles)
+│   └── playground/       # Playground implementation
+│       ├── shims/        # Browser shims (ai-context.ts)
+│       ├── languages/    # Monarch tokenizers for Monaco (hologram, hologram-template)
+│       ├── presets/      # Preset examples for fact and template playgrounds
+│       ├── components/   # Vue components (editors, output, presets)
+│       ├── fact-evaluator.ts      # Browser wrapper for evaluateFacts()
+│       ├── template-engine.ts     # Browser-compatible Nunjucks renderer
+│       └── template-evaluator.ts  # Template context builder for playground
 └── archive/              # Old docs from previous architecture
 
 editors/

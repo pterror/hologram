@@ -16,6 +16,8 @@ Restart VS Code after linking. The extension activates for `.holo` and `.njk` fi
 
 ### `.holo` — Entity Facts
 
+<div v-pre>
+
 Syntax highlighting for entity fact files, with support for:
 
 - **Directives** — `$respond`, `$model`, `$stream`, `$context`, `$strip`, `$freeform`, `$locked`, `$memory`, `$retry`, `$avatar`
@@ -25,7 +27,11 @@ Syntax highlighting for entity fact files, with support for:
 - **Comments** — `$#` lines
 - **Expressions** — strings, numbers, booleans, operators, functions, dot access
 
+</div>
+
 ### `.njk` — Nunjucks Templates
+
+<div v-pre>
 
 Syntax highlighting for custom templates (the files in `src/templates/` and templates edited via `/edit entity type:Template`), with Hologram-specific awareness of:
 
@@ -38,6 +44,8 @@ Syntax highlighting for custom templates (the files in `src/templates/` and temp
 - **Functions** — `random()`, `has_fact()`, `roll()`, `messages()`, `duration()`, `mentioned_in_dialogue()`, `date_str()`, `time_str()`, `isodate()`, `isotime()`, `weekday()`, `send_as()`, `caller()`
 - **Loop variables** — `loop.index`, `loop.index0`, `loop.first`, `loop.last`, `loop.length`
 - **XML tags** — `<defs>`, `<memories>` with attributes
+
+</div>
 
 ::: tip
 See [Custom Templates](/reference/templates) for full template documentation, and [Triggers](/reference/triggers) for the complete expression context reference.

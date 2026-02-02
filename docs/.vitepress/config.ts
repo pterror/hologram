@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress'
+import path from 'node:path'
 
 export default defineConfig({
   title: 'Hologram',
@@ -6,11 +7,36 @@ export default defineConfig({
   base: '/hologram/',
   srcExclude: ['archive/**'],
 
+  vite: {
+    resolve: {
+      alias: {
+        // Redirect expr.ts's import of src/ai/context to browser shim
+        [path.resolve(__dirname, '../../src/ai/context')]:
+          path.resolve(__dirname, 'playground/shims/ai-context.ts'),
+      },
+    },
+    optimizeDeps: {
+      include: ['monaco-editor/esm/vs/editor/editor.api.js'],
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('monaco-editor')) return 'monaco'
+            if (id.includes('nunjucks')) return 'nunjucks'
+            if (id.includes('playground') || id.includes('src/logic/expr')) return 'playground'
+          },
+        },
+      },
+    },
+  },
+
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Guide', link: '/guide/' },
       { text: 'Reference', link: '/reference/commands' },
+      { text: 'Playground', link: '/playground/facts' },
     ],
 
     sidebar: [
@@ -38,6 +64,13 @@ export default defineConfig({
           { text: 'Custom Templates', link: '/reference/templates' },
           { text: 'Expression Security', link: '/reference/expression-security' },
           { text: 'Safe Regex', link: '/reference/safe-regex' },
+        ]
+      },
+      {
+        text: 'Playground',
+        items: [
+          { text: 'Fact Evaluation', link: '/playground/facts' },
+          { text: 'Template Rendering', link: '/playground/templates' },
         ]
       },
       {

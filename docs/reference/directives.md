@@ -196,3 +196,7 @@ Without `$retry`, rate limiting (`$if response_ms > X`) only works reactively. `
 - Overlapping scope between directives
 
 The current set avoids these patterns.
+
+::: tip Try it out
+Test fact evaluation and directives interactively in the [Fact Evaluation Playground](/playground/facts).
+:::

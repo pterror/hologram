@@ -304,4 +304,8 @@ Templates are per-entity and control the entire system prompt. A template on one
 - Only the entity owner/editors can set a template (same permission model as facts)
 - Entities sharing a template are presumed to be managed by the same owner
 
+::: tip Try it out
+Test template rendering interactively in the [Template Rendering Playground](/playground/templates).
+:::
+
 </div>

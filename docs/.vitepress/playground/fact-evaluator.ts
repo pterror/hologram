@@ -1,0 +1,89 @@
+/**
+ * Browser-safe wrapper around evaluateFacts + createBaseContext from src/logic/expr.ts.
+ * Vite resolves the import via alias (src/ai/context → shim).
+ */
+import {
+  evaluateFacts,
+  createBaseContext,
+  type EvaluatedFacts,
+} from '../../../src/logic/expr'
+
+export interface FactContextOverrides {
+  mentioned?: boolean
+  replied?: boolean
+  is_forward?: boolean
+  is_self?: boolean
+  content?: string
+  author?: string
+  name?: string
+  chars?: string[]
+  response_ms?: number
+  idle_ms?: number
+  retry_ms?: number
+}
+
+export interface FactEvalResult {
+  result: EvaluatedFacts
+  error: string | null
+}
+
+export function evaluateFactsInBrowser(
+  factsText: string,
+  overrides: FactContextOverrides,
+): FactEvalResult {
+  const lines = factsText.split('\n').filter(l => l.trim() !== '')
+
+  try {
+    const ctx = createBaseContext({
+      facts: lines,
+      has_fact: (pattern: string) => {
+        try {
+          const regex = new RegExp(pattern, 'i')
+          return lines.some(f => regex.test(f))
+        } catch {
+          return lines.some(f => f.toLowerCase().includes(pattern.toLowerCase()))
+        }
+      },
+      messages: (n?: number, format?: string, _filter?: string) => {
+        const content = overrides.content ?? 'Hello!'
+        const author = overrides.author ?? 'User'
+        const fmt = format ?? '%a: %m'
+        return fmt.replace(/%a/g, author).replace(/%m/g, content)
+      },
+      mentioned: overrides.mentioned ?? false,
+      replied: overrides.replied ?? false,
+      is_forward: overrides.is_forward ?? false,
+      is_self: overrides.is_self ?? false,
+      name: overrides.name ?? 'Entity',
+      chars: overrides.chars ?? ['Entity'],
+      response_ms: overrides.response_ms ?? 0,
+      idle_ms: overrides.idle_ms ?? 0,
+      retry_ms: overrides.retry_ms ?? 0,
+    })
+
+    const result = evaluateFacts(lines, ctx)
+    return { result, error: null }
+  } catch (err) {
+    return {
+      result: {
+        facts: [],
+        shouldRespond: null,
+        respondSource: null,
+        retryMs: null,
+        avatarUrl: null,
+        isLocked: false,
+        lockedFacts: new Set(),
+        streamMode: null,
+        streamDelimiter: null,
+        memoryScope: 'none',
+        contextExpr: null,
+        isFreeform: false,
+        modelSpec: null,
+        stripPatterns: null,
+      },
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+
+export type { EvaluatedFacts }
