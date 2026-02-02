@@ -9,6 +9,7 @@ import { describe, expect, test } from "bun:test";
 import { DEFAULT_TEMPLATE, renderStructuredTemplate, renderSystemPrompt } from "./template";
 import type { EvaluatedEntity } from "./context";
 import type { EntityWithFacts } from "../db/entities";
+import { withToJSON } from "./prompt";
 
 // =============================================================================
 // Helpers
@@ -657,6 +658,89 @@ describe("template access to embeds/stickers/attachments", () => {
     expect(content).toContain("color=65280");
     expect(content).toContain("HP=100 (inline)");
     expect(content).toContain("MP=50");
+  });
+
+  test("real-world template with send_as, embed.toJSON(), attachments, stickers", () => {
+    const template = [
+      `{#- Message history -#}`,
+      `{% block history %}`,
+      `  {{- "\\n" -}}`,
+      `  [Currently in the {{ channel.mention }} channel]`,
+      `  {% for msg in history %}`,
+      `    {{- "\\n" if not loop.first -}}`,
+      `    {% call send_as(msg.role) %}`,
+      `      {% if msg.content or msg.embeds | length > 0 or msg.attachments | length > 0 -%}`,
+      `        [{{ msg.created_at }}] {{ msg.author }}: {{ msg.content }}`,
+      `        {% for embed in msg.embeds -%}`,
+      `          <embed type="application/json">{{ embed.toJSON() }}</embed>`,
+      `        {% endfor %}`,
+      `        {% for attachment in msg.attachments -%}`,
+      `          <attachment name="{{ attachment.filename }}" {{- ' type="'+attachment.content_type+'"' if attachment.content_type }} url="{{ attachment.url }}" />`,
+      `        {% endfor %}`,
+      `      {% endif %}`,
+      `      {% for sticker in msg.stickers -%}`,
+      `        [{{ msg.created_at }}] {{ msg.author }}: https://media.discordapp.net/stickers/{{ sticker.id }}.png?name={{ sticker.name }}`,
+      `      {% endfor %}`,
+      `    {%- endcall %}`,
+      `  {% endfor %}`,
+      `{% endblock history %}`,
+      `[Current Time: 12:00 PM]`,
+    ].join("\n");
+
+    const ctx = buildTemplateContext(
+      [mockEntity({ id: 1, name: "Aria", facts: ["is a character"] })],
+      [],
+      undefined,
+      [],
+    );
+    ctx.channel = { id: "123", name: "general", mention: "<#123>", type: "text" };
+
+    // Build history with withToJSON so embed.toJSON() works
+    const embedData = [{ title: "Link Preview", description: "A cool page", url: "https://example.com", type: "rich" as const }];
+    const attachmentData = [{ filename: "image.png", url: "https://cdn.example.com/image.png", content_type: "image/png", size: 5000 }];
+    const stickerData = [{ id: "99999", name: "thumbsup", format_type: 1 }];
+
+    ctx.history = [
+      {
+        author: "User", content: "check this out", author_id: "1", created_at: "2024-06-15T12:00:00Z",
+        is_bot: false, role: "user" as const,
+        embeds: withToJSON(embedData),
+        stickers: withToJSON([] as typeof stickerData),
+        attachments: withToJSON(attachmentData),
+      },
+      {
+        author: "User", content: "", author_id: "1", created_at: "2024-06-15T12:01:00Z",
+        is_bot: false, role: "user" as const,
+        embeds: withToJSON([] as typeof embedData),
+        stickers: withToJSON(stickerData),
+        attachments: withToJSON([] as typeof attachmentData),
+      },
+    ];
+
+    const output = renderStructuredTemplate(template, ctx);
+
+    // Should have system message (channel mention + time) and user messages
+    const allContent = output.messages.map(m => `[${m.role}] ${m.content}`).join("\n");
+
+    // System-role content includes channel mention
+    expect(allContent).toContain("[Currently in the <#123> channel]");
+
+    // First user message: content + embed JSON + attachment tag
+    const userMessages = output.messages.filter(m => m.role === "user");
+    expect(userMessages.length).toBe(2);
+
+    const msg1 = userMessages[0].content;
+    expect(msg1).toContain("User: check this out");
+    expect(msg1).toContain('<embed type="application/json">');
+    expect(msg1).toContain('"title":"Link Preview"');
+    expect(msg1).toContain('<attachment name="image.png" type="image/png" url="https://cdn.example.com/image.png" />');
+
+    // Second user message: sticker URL
+    const msg2 = userMessages[1].content;
+    expect(msg2).toContain("https://media.discordapp.net/stickers/99999.png?name=thumbsup");
+
+    // Trailing system content includes time
+    expect(allContent).toContain("[Current Time: 12:00 PM]");
   });
 
   test("empty embeds/stickers/attachments don't affect rendering", () => {
