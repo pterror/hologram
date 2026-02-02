@@ -8,7 +8,7 @@
 
 ### Test Coverage
 
-Current: 732 tests across `src/logic/expr.test.ts`, `src/logic/expr.security.test.ts`, `src/logic/safe-regex.test.ts`, `src/ai/template.test.ts`, `src/ai/template-output.test.ts`, and `src/ai/template-parity.test.ts`. Covers:
+Current: 736 tests across `src/logic/expr.test.ts`, `src/logic/expr.security.test.ts`, `src/logic/safe-regex.test.ts`, `src/ai/template.test.ts`, `src/ai/template-output.test.ts`, and `src/ai/template-parity.test.ts`. Covers:
 - Expression evaluator (tokenizer, parser, operators, precedence)
 - Security (identifier whitelist, injection prevention, prototype access)
 - Adversarial sandbox escapes (184 tests): prototype chains, global access, constructors, module system, bracket notation, code injection, statement injection, unsupported syntax, call/apply/bind, string/array method abuse, DoS vectors (ReDoS + memory exhaustion runtime-bounded: repeat, padStart, padEnd, replaceAll, join), unicode tricks, numeric edge cases, known CVE patterns, combined multi-vector attacks, prototype-less objects, evalMacroValue sandbox
@@ -24,7 +24,7 @@ Current: 732 tests across `src/logic/expr.test.ts`, `src/logic/expr.security.tes
 - Discord emote edge cases
 - Real-world entity evaluation
 - Template engine (Nunjucks) security (148 tests): prototype chain escapes, RCE via constructor chains, global object access blocked, built-in constructor access blocked, call/apply/bind blocked, matchAll blocked, string method memory limits, loop iteration cap (1000), output size cap (1MB), ReDoS regex validation, context prototype leakage contained, known CVE patterns, multi-vector combined attacks, filter functionality, whitespace control, structured context rendering, send_as security (not available in plain render, role injection safe, prototype chain blocked)
-- Template tests (39 tests): DEFAULT_TEMPLATE snapshot tests (system prompt + messages for single/multi entity, freeform, memories, others, no entities, empty history), adversarial injection (nonce-like markers, template syntax in content), send_as protocol tests (role designation, for-loop, unmarked text interleaving, empty filtering, legacy compat), block invisibility tests (blocks are organizational only), template inheritance
+- Template tests (43 tests): DEFAULT_TEMPLATE snapshot tests (system prompt + messages for single/multi entity, freeform, memories, others, no entities, empty history), adversarial injection (nonce-like markers, template syntax in content), send_as protocol tests (role designation, for-loop, unmarked text interleaving, empty filtering, legacy compat), block invisibility tests (blocks are organizational only), renderSystemPrompt tests, template inheritance
 
 ---
 
@@ -116,6 +116,7 @@ Current state: message history uses role-based `user`/`assistant` messages via `
 
 ## Low Priority
 
+- [ ] In-memory test DB — `buildPromptAndMessages()` and the full prompt pipeline (`preparePromptContext` → handler/streaming) require DB access (`getMessages`, `getWebhookMessageEntity`, etc.) and can't be tested statically. A `:memory:` SQLite instance with test fixtures would enable integration tests for edge cases like the 0-messages fallback and empty-history scenarios
 - [ ] Regex literal support in `$if` expressions - `/pattern/` syntax as alternative to string-based `.match()`. Low priority since `.match("pattern")` now works with safe regex validation
 - [ ] `$emojis` macro - expand to list of custom guild emojis for LLM context
 - [ ] Hearing distance / proximity awareness between entities
