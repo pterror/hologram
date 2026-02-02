@@ -296,10 +296,19 @@ export function buildPromptAndMessages(
     created_at: string;
     is_bot: boolean;
     role: "user" | "assistant";
-    embeds: EmbedData[];
-    stickers: StickerData[];
-    attachments: AttachmentData[];
+    embeds: EmbedData[] & { toJSON(): string };
+    stickers: StickerData[] & { toJSON(): string };
+    attachments: AttachmentData[] & { toJSON(): string };
+    toJSON(): string;
   }
+
+  /** Add toJSON() that returns a JSON string for template use */
+  function withToJSON<T>(arr: T[]): T[] & { toJSON(): string } {
+    const result = arr as T[] & { toJSON(): string };
+    result.toJSON = () => JSON.stringify(arr);
+    return result;
+  }
+
   const history: HistoryEntry[] = [];
   let totalChars = 0;
 
@@ -330,17 +339,22 @@ export function buildPromptAndMessages(
       content = applyStripPatterns(content, stripPatterns);
     }
 
-    history.push({
+    const embeds = withToJSON(data?.embeds ?? []);
+    const stickers = withToJSON(data?.stickers ?? []);
+    const attachments = withToJSON(data?.attachments ?? []);
+    const entry: HistoryEntry = {
       author: m.author_name,
       content,
       author_id: m.author_id,
       created_at: m.created_at,
       is_bot: data?.is_bot ?? false,
       role,
-      embeds: data?.embeds ?? [],
-      stickers: data?.stickers ?? [],
-      attachments: data?.attachments ?? [],
-    });
+      embeds,
+      stickers,
+      attachments,
+      toJSON: () => JSON.stringify({ author: entry.author, content: entry.content, author_id: entry.author_id, created_at: entry.created_at, is_bot: entry.is_bot, role: entry.role, embeds: data?.embeds ?? [], stickers: data?.stickers ?? [], attachments: data?.attachments ?? [] }),
+    };
+    history.push(entry);
     totalChars += len;
   }
 

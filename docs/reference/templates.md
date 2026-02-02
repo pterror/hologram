@@ -109,6 +109,15 @@ The `history` variable provides the raw message history as structured objects:
 | `embeds` | `EmbedData[]` | Discord embed data (see below) |
 | `stickers` | `Array<{id, name, format_type}>` | Sticker data (format_type: 1=PNG, 2=APNG, 3=Lottie, 4=GIF) |
 | `attachments` | `AttachmentData[]` | File attachments (see below) |
+| `toJSON()` | `string` | JSON string of the full message object |
+
+All history entries and their `embeds`, `stickers`, and `attachments` arrays have a `toJSON()` method that returns a JSON string, for use in templates:
+
+```
+{{ msg.toJSON() }}              {# Full message as JSON #}
+{{ msg.embeds.toJSON() }}       {# Just embeds as JSON #}
+{{ msg.attachments.toJSON() }}  {# Just attachments as JSON #}
+```
 
 #### Embed Fields
 
