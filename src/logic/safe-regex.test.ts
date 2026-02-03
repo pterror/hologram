@@ -67,6 +67,7 @@ function makeContext(overrides: Partial<ExprContext> = {}): ExprContext {
     isodate: () => "",
     isotime: () => "",
     weekday: () => "",
+    pick: <T>(arr: T[]) => (Array.isArray(arr) && arr.length > 0 ? arr[Math.floor(Math.random() * arr.length)] : undefined),
     channel: Object.assign(Object.create(null), { id: "", name: "", description: "", mention: "" }),
     server: Object.assign(Object.create(null), { id: "", name: "", description: "" }),
     Date: Object.freeze(Object.assign(Object.create(null), {

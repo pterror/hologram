@@ -94,6 +94,8 @@ export interface ExprContext {
   isotime: (offset?: string) => string;
   /** Weekday name "Thursday", with optional offset */
   weekday: (offset?: string) => string;
+  /** Pick a random element from an array */
+  pick: <T>(arr: T[]) => T | undefined;
   /**
    * Safe Date constructor and static methods.
    * - Date.new() or Date.new(timestamp) or Date.new(dateString) or Date.new(year, month, ...)
@@ -519,6 +521,7 @@ const EXPR_CONTEXT_REFERENCE: ExprContext = {
   isodate: () => "",
   isotime: () => "",
   weekday: () => "",
+  pick: () => undefined,
   interaction_type: "",
   channel: { id: "", name: "", description: "", is_nsfw: false, type: "text", mention: "" },
   server: { id: "", name: "", description: "", nsfw_level: "default" },
@@ -1978,6 +1981,10 @@ export function createBaseContext(options: BaseContextOptions): ExprContext {
     weekday: (offset?: string) => {
       const d = offset ? applyOffset(now, offset) : now;
       return d.toLocaleDateString("en-US", { weekday: "long" });
+    },
+    pick: <T>(arr: T[]) => {
+      if (!Array.isArray(arr) || arr.length === 0) return undefined;
+      return arr[Math.floor(Math.random() * arr.length)];
     },
     channel: Object.assign(Object.create(null), options.channel ?? { id: "", name: "", description: "", is_nsfw: false, type: "text", mention: "" }),
     server: Object.assign(Object.create(null), options.server ?? { id: "", name: "", description: "", nsfw_level: "default" }),

@@ -417,6 +417,11 @@ export function buildPromptAndMessages(
   templateCtx.history = history;
   templateCtx._single_entity = isSingleEntity;
 
+  // Evaluation metadata (computed during fact evaluation, available to templates)
+  templateCtx.model = respondingEntities[0]?.modelSpec ?? DEFAULT_MODEL;
+  templateCtx.maxPrompt = contextExpr;
+  templateCtx.respondingNames = respondingEntities.map(e => e.name);
+
   // char = first responding entity, user = user entity from others
   if (respondingEntities.length > 0) {
     const first = respondingEntities[0];

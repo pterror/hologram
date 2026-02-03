@@ -95,6 +95,7 @@ function makeContext(overrides: Partial<ExprContext> = {}): ExprContext {
       return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     },
     weekday: () => new Date().toLocaleDateString("en-US", { weekday: "long" }),
+    pick: <T>(arr: T[]) => (Array.isArray(arr) && arr.length > 0 ? arr[Math.floor(Math.random() * arr.length)] : undefined),
     channel: Object.assign(Object.create(null), { id: "", name: "", description: "", mention: "" }),
     server: Object.assign(Object.create(null), { id: "", name: "", description: "" }),
     Date: Object.freeze(Object.assign(Object.create(null), {
@@ -1817,6 +1818,45 @@ describe("new ExprContext functions", () => {
     const result = evalMacroValue("weekday()", ctx);
     const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
     expect(days).toContain(result);
+  });
+
+  test("pick returns element from array", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    const arr = ["a", "b", "c"];
+    const result = ctx.pick(arr);
+    expect(result).toBeDefined();
+    expect(arr).toContain(result as string);
+  });
+
+  test("pick returns undefined for empty array", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    expect(ctx.pick([])).toBeUndefined();
+  });
+
+  test("pick returns undefined for non-array", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+    });
+    expect(ctx.pick("not an array" as unknown as string[])).toBeUndefined();
+    expect(ctx.pick(null as unknown as string[])).toBeUndefined();
+    expect(ctx.pick(undefined as unknown as string[])).toBeUndefined();
+  });
+
+  test("pick works in expressions with chars array", () => {
+    const ctx = createBaseContext({
+      facts: [],
+      has_fact: () => false,
+      chars: ["Alice", "Bob", "Carol"],
+    });
+    const result = evalMacroValue("pick(chars)", ctx);
+    expect(["Alice", "Bob", "Carol"]).toContain(result);
   });
 });
 

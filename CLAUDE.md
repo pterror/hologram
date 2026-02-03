@@ -115,6 +115,32 @@ Tool Calls (add_fact, update_fact, remove_fact)
 Response
 ```
 
+### Variable Unification
+
+Variables are shared between `$if` expressions and templates via `ExprContext` (`src/logic/expr.ts`):
+
+**Unified (available to both):**
+- Properties: `self`, `channel`, `server`, `time`, `name`, `chars`, `group`, `content`, `author`
+- Booleans: `mentioned`, `replied`, `is_forward`, `is_self`
+- Timing: `response_ms`, `retry_ms`, `idle_ms`, `replied_to`
+- Functions: `random()`, `pick()`, `has_fact()`, `roll()`, `messages()`, `duration()`, `date_str()`, `time_str()`, `isodate()`, `isotime()`, `weekday()`, `mentioned_in_dialogue()`
+- Objects: `Date` (safe wrapper)
+
+**Template-only** (computed after fact evaluation):
+- `entities`, `others`, `memories`, `history` — rich structured data
+- `char`, `user` — entity objects with facts and `toString()` overrides
+- `entity_names`, `freeform`, `_single_entity` — rendering helpers
+- `model`, `maxPrompt`, `respondingNames` — evaluation metadata
+
+**Fact macro-only** (special syntax):
+- `{{entity:ID}}` — DB lookup for entity name
+- `{{char}}`, `{{user}}` — entity name substitution
+- `{{random:A,B,C}}`, `{{roll:2d6}}` — parameterized macros
+- `{{newline}}`, `{{space}}`, `{{noop}}`, `{{trim}}` — formatting helpers
+- `{{charIfNotGroup}}`, `{{notChar}}`, `{{groupNotMuted}}` — group helpers
+
+The unification is one-directional: templates receive everything from `ExprContext` plus template-specific additions. Adding a variable to `createBaseContext()` makes it available to both `$if` expressions and templates automatically.
+
 ### Response Control
 
 Response behavior is controlled via `$respond` directives and `$if` conditionals. Expressions are JavaScript (strings need quotes):
@@ -216,6 +242,9 @@ Override the default system prompt formatting per entity using custom templates 
 - `memories` — object mapping entity ID to array of memory strings (arrays have `toString() → join('\n')`)
 - `entity_names` — comma-separated names of responding entities
 - `freeform` — boolean, true if any entity has `$freeform`
+- `model` — effective model spec string (from `$model` directive or default)
+- `maxPrompt` — context expression string (from `$context` directive or default)
+- `respondingNames` — array of responding entity names
 - `history` — array of structured messages `[{author, content, author_id, created_at, is_bot, role, embeds, stickers, attachments}]` (chronological order). `role` is `"assistant"` for entity messages, `"user"` for human messages. `stickers` are `[{id, name, format_type}]` objects. `embeds` are full Discord embed objects (`{title?, type?, description?, url?, timestamp?, color?, footer?, image?, thumbnail?, video?, provider?, author?, fields?}`). `attachments` are `{filename, url, content_type?, title?, description?, size?, height?, width?, ephemeral?, duration_secs?}`.
 - `char` — first responding entity: `{ id, name, facts, toString() → name }`
 - `user` — user entity from others: `{ id, name, facts, toString() → name }` (defaults to `{ name: "user" }`)
@@ -301,7 +330,7 @@ Stickers are stored as structured objects `{id, name, format_type}` in the messa
 
 Attachments are stored as structured objects `{filename, url, content_type?, title?, description?, size?, height?, width?, ephemeral?, duration_secs?}` in the message `data` JSON column. Available in template history objects via `msg.attachments`.
 
-**Functions:** `random(n)`, `has_fact(pattern)`, `roll(dice)`, `mentioned_in_dialogue(name)`, `messages(n, format, filter)`, `duration(ms)`, `date_str(offset?)`, `time_str(offset?)`, `isodate(offset?)`, `isotime(offset?)`, `weekday(offset?)`
+**Functions:** `random(n)`, `pick(array)`, `has_fact(pattern)`, `roll(dice)`, `mentioned_in_dialogue(name)`, `messages(n, format, filter)`, `duration(ms)`, `date_str(offset?)`, `time_str(offset?)`, `isodate(offset?)`, `isotime(offset?)`, `weekday(offset?)`
 
 The `messages(n, format, filter)` function returns the last N messages (default 1). Format string uses `%a` for author and `%m` for message (default `"%a: %m"`). Filter: `"$user"` for human messages (excludes bots), `"$char"` for entity messages, `"$bot"` for other Discord bot messages, or an author name. The `content` and `author` variables are aliases for `messages(1, "%m")` and `messages(1, "%a")`.
 
