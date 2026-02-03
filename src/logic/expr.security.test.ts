@@ -61,6 +61,25 @@ function makeContext(overrides: Partial<ExprContext> = {}): ExprContext {
     weekday: () => "",
     channel: Object.assign(Object.create(null), { id: "", name: "", description: "", mention: "" }),
     server: Object.assign(Object.create(null), { id: "", name: "", description: "" }),
+    Date: Object.freeze(Object.assign(Object.create(null), {
+      new: (...args: unknown[]) => {
+        if (args.length === 0) return new globalThis.Date();
+        if (args.length === 1) return new globalThis.Date(args[0] as string | number);
+        const [year, month, ...rest] = args as number[];
+        return new globalThis.Date(year, month, ...rest);
+      },
+      now: () => globalThis.Date.now(),
+      parse: (dateString: string) => globalThis.Date.parse(String(dateString)),
+      UTC: (year: number, monthIndex?: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number) => {
+        const args: number[] = [year, monthIndex ?? 0];
+        if (date !== undefined) args.push(date);
+        if (hours !== undefined) args.push(hours);
+        if (minutes !== undefined) args.push(minutes);
+        if (seconds !== undefined) args.push(seconds);
+        if (ms !== undefined) args.push(ms);
+        return (globalThis.Date.UTC as (...args: number[]) => number)(...args);
+      },
+    })),
     ...overrides,
   };
 }
@@ -1064,8 +1083,12 @@ describe("known sandbox escape patterns", () => {
     expect(() => compileExpr("Math")).toThrow("Unknown identifier: Math");
   });
 
-  test("Date not accessible", () => {
-    expect(() => compileExpr("Date")).toThrow("Unknown identifier: Date");
+  test("Date is accessible (safe wrapper)", () => {
+    // Date is intentionally accessible via a safe wrapper (see expr.date.test.ts for security tests)
+    expect(() => compileExpr("Date")).not.toThrow();
+    // But Date.constructor is blocked
+    expect(() => compileExpr("Date.constructor")).toThrow("Blocked property: .constructor");
+    expect(() => compileExpr("Date.new().constructor")).toThrow("Blocked property: .constructor");
   });
 
   test("console not accessible", () => {

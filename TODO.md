@@ -8,7 +8,7 @@
 
 ### Test Coverage
 
-Current: 736 tests across `src/logic/expr.test.ts`, `src/logic/expr.security.test.ts`, `src/logic/safe-regex.test.ts`, `src/ai/template.test.ts`, `src/ai/template-output.test.ts`, and `src/ai/template-parity.test.ts`. Covers:
+Current: 869 tests across `src/logic/expr.test.ts`, `src/logic/expr.security.test.ts`, `src/logic/expr.date.test.ts`, `src/logic/safe-regex.test.ts`, `src/ai/template.test.ts`, `src/ai/template-output.test.ts`, and `src/ai/template-parity.test.ts`. Covers:
 - Expression evaluator (tokenizer, parser, operators, precedence)
 - Security (identifier whitelist, injection prevention, prototype access)
 - Adversarial sandbox escapes (184 tests): prototype chains, global access, constructors, module system, bracket notation, code injection, statement injection, unsupported syntax, call/apply/bind, string/array method abuse, DoS vectors (ReDoS + memory exhaustion runtime-bounded: repeat, padStart, padEnd, replaceAll, join), unicode tricks, numeric edge cases, known CVE patterns, combined multi-vector attacks, prototype-less objects, evalMacroValue sandbox
@@ -20,6 +20,7 @@ Current: 736 tests across `src/logic/expr.test.ts`, `src/logic/expr.security.tes
 - Roll20 dice (kh, kl, dh, dl, exploding, success counting)
 - Utility functions (formatDuration, parseOffset)
 - New ExprContext functions (duration, date_str, time_str, isodate, isotime, weekday, group)
+- Safe Date wrapper (78 tests): Date.new(), Date.now(), Date.parse(), Date.UTC(), instance methods, prototype chain escape prevention, RCE via constructor blocked, edge cases, real-world use cases
 - messages() with filter ($user, $char)
 - Discord emote edge cases
 - Real-world entity evaluation

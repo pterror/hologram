@@ -18,6 +18,23 @@ import { validateRegexPattern } from "./safe-regex";
 /** Parsed fact values accessible via self.* in expressions */
 export type SelfContext = Record<string, string | number | boolean>;
 
+/**
+ * Safe Date wrapper for sandboxed expressions.
+ *
+ * Exposes Date constructor and static methods without allowing prototype chain escapes.
+ * All properties are frozen and use Object.create(null) for nested objects.
+ */
+export interface SafeDate {
+  /** Create a Date from no args (now), timestamp (ms), date string, or components */
+  new: (...args: unknown[]) => Date;
+  /** Current timestamp in milliseconds since Unix epoch */
+  now: () => number;
+  /** Parse a date string, returns timestamp in ms or NaN if invalid */
+  parse: (dateString: string) => number;
+  /** Create UTC timestamp from year, month, and optional day/hour/min/sec/ms */
+  UTC: (year: number, monthIndex?: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number) => number;
+}
+
 export interface ExprContext {
   /** Entity's own parsed fact values (from "key: value" facts) */
   self: SelfContext;
@@ -77,6 +94,14 @@ export interface ExprContext {
   isotime: (offset?: string) => string;
   /** Weekday name "Thursday", with optional offset */
   weekday: (offset?: string) => string;
+  /**
+   * Safe Date constructor and static methods.
+   * - Date.new() or Date.new(timestamp) or Date.new(dateString) or Date.new(year, month, ...)
+   * - Date.now() returns current timestamp in ms
+   * - Date.parse(string) parses date string to timestamp
+   * - Date.UTC(...) creates UTC timestamp from components
+   */
+  Date: SafeDate;
   /** Channel metadata */
   channel: {
     id: string;
@@ -497,6 +522,7 @@ const EXPR_CONTEXT_REFERENCE: ExprContext = {
   interaction_type: "",
   channel: { id: "", name: "", description: "", is_nsfw: false, type: "text", mention: "" },
   server: { id: "", name: "", description: "", nsfw_level: "default" },
+  Date: { new: () => new globalThis.Date(), now: () => 0, parse: () => 0, UTC: () => 0 },
 };
 const ALLOWED_GLOBALS = new Set(Object.keys(EXPR_CONTEXT_REFERENCE));
 
@@ -504,9 +530,10 @@ const ALLOWED_GLOBALS = new Set(Object.keys(EXPR_CONTEXT_REFERENCE));
 const REGEX_METHODS = new Set(["match", "search", "replace", "split"]);
 
 // Methods blocked entirely (no useful expression-language interaction)
-const BLOCKED_METHODS: Record<string, string> = {
-  matchAll: "matchAll() is not available — use match() instead",
-};
+// Uses Map to avoid prototype chain lookup issues (e.g. "toString" in {})
+const BLOCKED_METHODS = new Map([
+  ["matchAll", "matchAll() is not available — use match() instead"],
+]);
 
 // Methods rewritten to use safe wrappers at runtime (memory exhaustion prevention)
 const WRAPPED_METHODS = new Set(["repeat", "padStart", "padEnd", "replaceAll", "join"]);
@@ -634,8 +661,9 @@ function generateCode(node: ExprNode, extraGlobals?: Set<string>): string {
         throw new ExprError(blockedMsg);
       }
       // Block methods that are unusable or dangerous
-      if (node.property in BLOCKED_METHODS) {
-        throw new ExprError(BLOCKED_METHODS[node.property]);
+      const blockedMethodMsg = BLOCKED_METHODS.get(node.property);
+      if (blockedMethodMsg) {
+        throw new ExprError(blockedMethodMsg);
       }
       return `(${generateCode(node.object, extraGlobals)}?.${node.property})`;
     }
@@ -771,6 +799,20 @@ export function evalMacroValue(expr: string, context: ExprContext): string {
   } catch (err) {
     if (err instanceof ExprError) throw err;
     throw new ExprError(`Failed to evaluate macro "${expr}": ${err}`);
+  }
+}
+
+/**
+ * Evaluate an expression and return the raw result without type conversion.
+ * Used for testing and cases where the actual value type matters.
+ */
+export function evalRaw(expr: string, context: ExprContext): unknown {
+  try {
+    const fn = compileMacroExpr(expr);
+    return fn(context);
+  } catch (err) {
+    if (err instanceof ExprError) throw err;
+    throw new ExprError(`Failed to evaluate expression "${expr}": ${err}`);
   }
 }
 
@@ -1939,6 +1981,29 @@ export function createBaseContext(options: BaseContextOptions): ExprContext {
     },
     channel: Object.assign(Object.create(null), options.channel ?? { id: "", name: "", description: "", is_nsfw: false, type: "text", mention: "" }),
     server: Object.assign(Object.create(null), options.server ?? { id: "", name: "", description: "", nsfw_level: "default" }),
+    // Safe Date wrapper with null prototype to prevent prototype chain escapes
+    Date: Object.freeze(Object.assign(Object.create(null), {
+      new: (...args: unknown[]) => {
+        if (args.length === 0) return new globalThis.Date();
+        if (args.length === 1) return new globalThis.Date(args[0] as string | number);
+        // Component-based: Date(year, month, day?, hours?, minutes?, seconds?, ms?)
+        const [year, month, ...rest] = args as number[];
+        return new globalThis.Date(year, month, ...rest);
+      },
+      now: () => globalThis.Date.now(),
+      parse: (dateString: string) => globalThis.Date.parse(String(dateString)),
+      UTC: (year: number, monthIndex?: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number) => {
+        // Date.UTC doesn't like undefined values, so only pass defined args
+        const args: number[] = [year, monthIndex ?? 0];
+        if (date !== undefined) args.push(date);
+        if (hours !== undefined) args.push(hours);
+        if (minutes !== undefined) args.push(minutes);
+        if (seconds !== undefined) args.push(seconds);
+        if (ms !== undefined) args.push(ms);
+        // Use spread to avoid passing undefined values
+        return (globalThis.Date.UTC as (...args: number[]) => number)(...args);
+      },
+    })) as SafeDate,
   };
 }
 

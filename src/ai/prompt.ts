@@ -151,25 +151,31 @@ export function expandEntityRefs(
         return TRIM_SENTINEL;
       }
 
+      // Date/time macros - delegate to ExprContext when available for consistency
       if (lower === "date") {
+        if (exprContext) return exprContext.date_str();
         const now = new Date();
         return now.toLocaleDateString("en-US", { weekday: "short", year: "numeric", month: "short", day: "numeric" });
       }
 
       if (lower === "time") {
+        if (exprContext) return exprContext.time_str();
         return new Date().toLocaleTimeString("en-US");
       }
 
       if (lower === "weekday") {
+        if (exprContext) return exprContext.weekday();
         return new Date().toLocaleDateString("en-US", { weekday: "long" });
       }
 
       if (lower === "isodate") {
+        if (exprContext) return exprContext.isodate();
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
       }
 
       if (lower === "isotime") {
+        if (exprContext) return exprContext.isotime();
         const now = new Date();
         return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
       }

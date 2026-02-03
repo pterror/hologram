@@ -309,6 +309,17 @@ The `roll(dice)` function supports roll20-style syntax: basic (`2d6+3`), keep hi
 
 Date/time functions accept optional offset strings: `"1d"`, `"-1w"`, `"3y2mo"`, `"1h30m"`, `"3 years 2 months"`.
 
+**Date object:** A safe `Date` wrapper is available for more complex date operations:
+- `Date.new()` — current date
+- `Date.new(timestamp)` — date from milliseconds since epoch
+- `Date.new(dateString)` — parse date string (e.g., `"2024-01-15"`)
+- `Date.new(year, month, ...)` — from components (month is 0-indexed)
+- `Date.now()` — current timestamp in milliseconds
+- `Date.parse(string)` — parse string to timestamp (returns NaN if invalid)
+- `Date.UTC(year, month, ...)` — UTC timestamp from components
+
+Date instances have all standard methods: `getFullYear()`, `getMonth()`, `getDate()`, `getDay()`, `getHours()`, `getMinutes()`, `getSeconds()`, `getTime()`, `toISOString()`, `toLocaleDateString()`, `toString()`, etc.
+
 **Safe regex validation:** String methods `.match()`, `.search()`, `.replace()`, `.split()` compile patterns to RegExp. All patterns are validated at compile time by `src/logic/safe-regex.ts` — capturing groups, nested quantifiers, backreferences, and lookahead/behind are rejected to prevent ReDoS. Patterns must be string literals (no dynamic patterns). See `docs/reference/safe-regex.md`.
 
 ### Bindings

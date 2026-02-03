@@ -975,3 +975,137 @@ describe("template: send_as security", () => {
     expect(() => renderStructuredTemplate(template, {})).toThrow();
   });
 });
+
+// =============================================================================
+// Safe Date Access (when provided in context)
+// =============================================================================
+
+describe("template: safe Date access", () => {
+  // The global Date is NOT accessible (tested in "built-in constructor access")
+  // But a safe Date wrapper can be provided in context
+
+  // Create a safe Date wrapper matching what ExprContext provides
+  const SafeDate = Object.freeze(Object.assign(Object.create(null), {
+    new: (...args: unknown[]) => {
+      if (args.length === 0) return new globalThis.Date();
+      if (args.length === 1) return new globalThis.Date(args[0] as string | number);
+      const [year, month, ...rest] = args as number[];
+      return new globalThis.Date(year, month, ...rest);
+    },
+    now: () => globalThis.Date.now(),
+    parse: (dateString: string) => globalThis.Date.parse(String(dateString)),
+    UTC: (year: number, monthIndex?: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number) => {
+      const args: number[] = [year, monthIndex ?? 0];
+      if (date !== undefined) args.push(date);
+      if (hours !== undefined) args.push(hours);
+      if (minutes !== undefined) args.push(minutes);
+      if (seconds !== undefined) args.push(seconds);
+      if (ms !== undefined) args.push(ms);
+      return (globalThis.Date.UTC as (...args: number[]) => number)(...args);
+    },
+  }));
+
+  test("Date.new() returns current date when in context", () => {
+    const result = render("{{ Date.new().getFullYear() }}", { Date: SafeDate });
+    expect(parseInt(result)).toBe(new Date().getFullYear());
+  });
+
+  test("Date.new(timestamp) creates date from milliseconds", () => {
+    expect(render("{{ Date.new(0).toISOString() }}", { Date: SafeDate })).toBe("1970-01-01T00:00:00.000Z");
+  });
+
+  test("Date.new(dateString) parses date strings", () => {
+    expect(render('{{ Date.new("2024-01-15").getFullYear() }}', { Date: SafeDate })).toBe("2024");
+  });
+
+  test("Date.new(year, month, ...) creates date from components", () => {
+    expect(render("{{ Date.new(2024, 0, 15).getFullYear() }}", { Date: SafeDate })).toBe("2024");
+    expect(render("{{ Date.new(2024, 0, 15).getMonth() }}", { Date: SafeDate })).toBe("0");
+  });
+
+  test("Date.now() returns timestamp", () => {
+    const result = parseInt(render("{{ Date.now() }}", { Date: SafeDate }));
+    expect(result).toBeGreaterThan(0);
+    expect(result).toBeLessThanOrEqual(Date.now() + 1000);
+  });
+
+  test("Date.parse() parses date strings", () => {
+    expect(render('{{ Date.parse("2024-01-15T12:00:00.000Z") }}', { Date: SafeDate })).toBe("1705320000000");
+  });
+
+  test("Date.UTC() creates UTC timestamp", () => {
+    expect(render("{{ Date.UTC(2024, 0, 15, 12, 0, 0, 0) }}", { Date: SafeDate })).toBe("1705320000000");
+  });
+
+  test("Date instance methods work", () => {
+    expect(render("{{ Date.new(0).getTime() }}", { Date: SafeDate })).toBe("0");
+    expect(render("{{ Date.new(0).toISOString() }}", { Date: SafeDate })).toBe("1970-01-01T00:00:00.000Z");
+  });
+});
+
+describe("template: Date prototype chain escapes BLOCKED", () => {
+  const SafeDate = Object.freeze(Object.assign(Object.create(null), {
+    new: (...args: unknown[]) => {
+      if (args.length === 0) return new globalThis.Date();
+      if (args.length === 1) return new globalThis.Date(args[0] as string | number);
+      const [year, month, ...rest] = args as number[];
+      return new globalThis.Date(year, month, ...rest);
+    },
+    now: () => globalThis.Date.now(),
+    parse: (dateString: string) => globalThis.Date.parse(String(dateString)),
+    UTC: (year: number, monthIndex?: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number) => {
+      const args: number[] = [year, monthIndex ?? 0];
+      if (date !== undefined) args.push(date);
+      if (hours !== undefined) args.push(hours);
+      if (minutes !== undefined) args.push(minutes);
+      if (seconds !== undefined) args.push(seconds);
+      if (ms !== undefined) args.push(ms);
+      return (globalThis.Date.UTC as (...args: number[]) => number)(...args);
+    },
+  }));
+
+  test("Date.constructor is blocked (returns undefined → throws with throwOnUndefined)", () => {
+    // memberLookup returns undefined for blocked props, throwOnUndefined throws
+    expect(() => render("{{ Date.constructor }}", { Date: SafeDate })).toThrow();
+  });
+
+  test("Date.__proto__ is blocked", () => {
+    expect(() => render("{{ Date.__proto__ }}", { Date: SafeDate })).toThrow();
+  });
+
+  test("Date.prototype is blocked", () => {
+    expect(() => render("{{ Date.prototype }}", { Date: SafeDate })).toThrow();
+  });
+
+  test("Date.new.constructor is blocked", () => {
+    expect(() => render("{{ Date.new.constructor }}", { Date: SafeDate })).toThrow();
+  });
+
+  test("Date.now.constructor is blocked", () => {
+    expect(() => render("{{ Date.now.constructor }}", { Date: SafeDate })).toThrow();
+  });
+
+  test("Date.new().constructor is blocked", () => {
+    expect(() => render("{{ Date.new().constructor }}", { Date: SafeDate })).toThrow();
+  });
+
+  test("Date.new().__proto__ is blocked", () => {
+    expect(() => render("{{ Date.new().__proto__ }}", { Date: SafeDate })).toThrow();
+  });
+
+  test("Date.new().toString.constructor is blocked", () => {
+    expect(() => render("{{ Date.new().toString.constructor }}", { Date: SafeDate })).toThrow();
+  });
+
+  test("Date.new().getTime.constructor is blocked", () => {
+    expect(() => render("{{ Date.new().getTime.constructor }}", { Date: SafeDate })).toThrow();
+  });
+
+  test("cannot access Function via Date.new().constructor.constructor", () => {
+    expect(() => render("{{ Date.new().constructor.constructor }}", { Date: SafeDate })).toThrow();
+  });
+
+  test("cannot execute RCE payload via Date", () => {
+    expect(() => render('{{ Date.new().constructor.constructor("return process")() }}', { Date: SafeDate })).toThrow();
+  });
+});

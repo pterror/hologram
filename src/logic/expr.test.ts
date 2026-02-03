@@ -97,6 +97,25 @@ function makeContext(overrides: Partial<ExprContext> = {}): ExprContext {
     weekday: () => new Date().toLocaleDateString("en-US", { weekday: "long" }),
     channel: Object.assign(Object.create(null), { id: "", name: "", description: "", mention: "" }),
     server: Object.assign(Object.create(null), { id: "", name: "", description: "" }),
+    Date: Object.freeze(Object.assign(Object.create(null), {
+      new: (...args: unknown[]) => {
+        if (args.length === 0) return new globalThis.Date();
+        if (args.length === 1) return new globalThis.Date(args[0] as string | number);
+        const [year, month, ...rest] = args as number[];
+        return new globalThis.Date(year, month, ...rest);
+      },
+      now: () => globalThis.Date.now(),
+      parse: (dateString: string) => globalThis.Date.parse(String(dateString)),
+      UTC: (year: number, monthIndex?: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number) => {
+        const args: number[] = [year, monthIndex ?? 0];
+        if (date !== undefined) args.push(date);
+        if (hours !== undefined) args.push(hours);
+        if (minutes !== undefined) args.push(minutes);
+        if (seconds !== undefined) args.push(seconds);
+        if (ms !== undefined) args.push(ms);
+        return (globalThis.Date.UTC as (...args: number[]) => number)(...args);
+      },
+    })),
     ...overrides,
   };
 }
