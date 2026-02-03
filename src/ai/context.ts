@@ -89,3 +89,42 @@ export interface StructuredMessage {
   role: "system" | "user" | "assistant";
   content: string;
 }
+
+// =============================================================================
+// Provider-Specific Message Normalization
+// =============================================================================
+
+/**
+ * Normalize messages for providers with system message restrictions.
+ *
+ * Google/Gemini: The messages array doesn't support system role at all - Gemini
+ * only has user/model roles. The separate `system` parameter (system instruction)
+ * is handled differently by the SDK. Convert all system-role messages to user-role.
+ *
+ * @param messages - The structured messages array
+ * @param providerName - The provider name (e.g. "google", "anthropic")
+ * @returns Normalized messages array
+ */
+export function normalizeMessagesForProvider(
+  messages: StructuredMessage[],
+  providerName: string
+): StructuredMessage[] {
+  // Only Google requires this normalization
+  if (providerName !== "google" && providerName !== "google-vertex") {
+    return messages;
+  }
+
+  // Check if there are any system messages
+  const hasSystemMessage = messages.some(m => m.role === "system");
+  if (!hasSystemMessage) {
+    return messages;
+  }
+
+  // Convert all system messages to user messages
+  return messages.map(msg => {
+    if (msg.role === "system") {
+      return { ...msg, role: "user" as const };
+    }
+    return msg;
+  });
+}

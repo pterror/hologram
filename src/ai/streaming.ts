@@ -1,9 +1,10 @@
 import { streamText, stepCountIs } from "ai";
-import { getLanguageModel, DEFAULT_MODEL, InferenceError } from "./models";
+import { getLanguageModel, DEFAULT_MODEL, InferenceError, parseModelSpec } from "./models";
 import { debug, error } from "../logger";
 import {
   type EvaluatedEntity,
   type MessageContext,
+  normalizeMessagesForProvider,
 } from "./context";
 import { preparePromptContext } from "./prompt";
 import { createTools } from "./tools";
@@ -99,15 +100,19 @@ export async function* handleMessageStreaming(
   });
 
   const modelSpec = entities[0]?.modelSpec ?? DEFAULT_MODEL;
+  const { providerName } = parseModelSpec(modelSpec);
 
   try {
     const model = getLanguageModel(modelSpec);
     const tools = createTools(channelId, guildId);
 
+    // Normalize messages for provider-specific restrictions (e.g., Google doesn't have system role)
+    const normalizedMessages = normalizeMessagesForProvider(llmMessages, providerName);
+
     const result = streamText({
       model,
       system: systemPrompt || undefined,
-      messages: llmMessages,
+      messages: normalizedMessages,
       tools,
       stopWhen: stepCountIs(5),
     });
