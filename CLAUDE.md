@@ -123,7 +123,7 @@ Variables are shared between `$if` expressions and templates via `ExprContext` (
 **Unified (available to both):**
 - Properties: `self`, `channel`, `server`, `time`, `name`, `chars`, `group`, `content`, `author`
 - Booleans: `mentioned`, `replied`, `is_forward`, `is_self`
-- Timing: `response_ms`, `retry_ms`, `idle_ms`, `replied_to`
+- Timing: `response_ms`, `retry_ms`, `idle_ms`, `unread_count`, `replied_to`
 - Functions: `random()`, `pick()`, `has_fact()`, `roll()`, `messages()`, `duration()`, `date_str()`, `time_str()`, `isodate()`, `isotime()`, `weekday()`, `mentioned_in_dialogue()`
 - Objects: `Date` (safe wrapper)
 
@@ -212,7 +212,7 @@ $if mentioned: $freeform           # Conditional freeform
 
 With `$freeform`, the LLM can write naturally with multiple characters interacting in the same response. The response is sent as a single message (using the first entity's webhook identity) rather than being split per character.
 
-**Context variables:** `mentioned`, `replied`, `is_forward`, `is_self`, `content`, `author`, `response_ms`, `retry_ms`, `idle_ms`, `time.is_night`, `self.*`, `channel.*`, `server.*`, `group`, `name`, `chars`
+**Context variables:** `mentioned`, `replied`, `is_forward`, `is_self`, `content`, `author`, `response_ms`, `retry_ms`, `idle_ms`, `unread_count`, `time.is_night`, `self.*`, `channel.*`, `server.*`, `group`, `name`, `chars`
 
 **Channel object:** `channel.id`, `channel.name`, `channel.description`, `channel.is_nsfw`, `channel.type` (`"text"` | `"vc"` | `"thread"` | `"forum"` | `"announcement"` | `"dm"` | `"category"` | `"directory"` | `"media"`), `channel.mention`
 

@@ -56,6 +56,8 @@ export interface ExprContext {
   retry_ms: number;
   /** Milliseconds since any message in channel */
   idle_ms: number;
+  /** Number of messages in channel since this entity's last reply */
+  unread_count: number;
   /** Whether the bot was @mentioned */
   mentioned: boolean;
   /** Whether the message is a reply to the bot */
@@ -503,6 +505,7 @@ const EXPR_CONTEXT_REFERENCE: ExprContext = {
   response_ms: 0,
   retry_ms: 0,
   idle_ms: 0,
+  unread_count: 0,
   mentioned: false,
   replied: false,
   replied_to: "",
@@ -1865,6 +1868,7 @@ export interface BaseContextOptions {
   response_ms?: number;
   retry_ms?: number;
   idle_ms?: number;
+  unread_count?: number;
   mentioned?: boolean;
   replied?: boolean;
   /** Name of entity that was replied to (for webhook replies) */
@@ -1948,6 +1952,7 @@ export function createBaseContext(options: BaseContextOptions): ExprContext {
     response_ms: options.response_ms ?? 0,
     retry_ms: options.retry_ms ?? 0,
     idle_ms: options.idle_ms ?? 0,
+    unread_count: options.unread_count ?? 0,
     mentioned: options.mentioned ?? false,
     replied: options.replied ?? false,
     replied_to: options.replied_to ?? "",

@@ -41,6 +41,7 @@ function makeContext(overrides: Partial<ExprContext> = {}): ExprContext {
     response_ms: 0,
     retry_ms: 0,
     idle_ms: 0,
+    unread_count: 0,
     mentioned: false,
     replied: false,
     replied_to: "",

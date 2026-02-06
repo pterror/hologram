@@ -58,6 +58,7 @@ Inherited from `$if` expression evaluator — available in templates too:
 | `response_ms` | `number` | Ms since last response |
 | `retry_ms` | `number` | Ms since triggering message |
 | `idle_ms` | `number` | Ms since any message |
+| `unread_count` | `number` | Messages since this entity's last reply |
 
 ### Context objects (dot access)
 

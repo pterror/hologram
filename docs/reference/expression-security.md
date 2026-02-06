@@ -43,6 +43,7 @@ All expose `String.prototype` (see [String Methods](#string-methods) below).
 | `response_ms` | System |
 | `retry_ms` | System |
 | `idle_ms` | System |
+| `unread_count` | System |
 
 `Number.prototype` methods (`toString`, `toFixed`, `toExponential`, `toPrecision`, `valueOf`, `toLocaleString`) all produce bounded-length strings. **SAFE.**
 

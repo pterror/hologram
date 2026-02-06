@@ -20,6 +20,7 @@ export interface FactContextOverrides {
   response_ms?: number
   idle_ms?: number
   retry_ms?: number
+  unread_count?: number
   channel_name?: string
   channel_is_nsfw?: boolean
   server_name?: string
@@ -62,6 +63,7 @@ export function evaluateFactsInBrowser(
       response_ms: overrides.response_ms ?? 0,
       idle_ms: overrides.idle_ms ?? 0,
       retry_ms: overrides.retry_ms ?? 0,
+      unread_count: overrides.unread_count ?? 0,
       channel: {
         id: '1234567890',
         name: overrides.channel_name ?? 'general',

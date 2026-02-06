@@ -7,7 +7,7 @@ import { InferenceError } from "../ai/models";
 import type { EvaluatedEntity } from "../ai/context";
 import { isModelAllowed } from "../ai/models";
 import { retrieveRelevantMemories, type MemoryScope } from "../db/memories";
-import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, updateMessageByDiscordId, deleteMessageByDiscordId, trackWebhookMessage, getWebhookMessageEntity, getMessages, getFilteredMessages, formatMessagesForContext, recordEvalError, isOurWebhookUserId, type MessageData } from "../db/discord";
+import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, updateMessageByDiscordId, deleteMessageByDiscordId, trackWebhookMessage, getWebhookMessageEntity, getMessages, getFilteredMessages, formatMessagesForContext, recordEvalError, isOurWebhookUserId, countUnreadMessages, type MessageData } from "../db/discord";
 import { getEntity, getEntityWithFacts, getEntityConfig, getSystemEntity, getFactsForEntity, type EntityWithFacts } from "../db/entities";
 import { evaluateFacts, createBaseContext, parsePermissionDirectives, isUserBlacklisted, isUserAllowed, type EvaluatedFactsDefaults, type PermissionDefaults } from "../logic/expr";
 import type { EntityConfig } from "../db/entities";
@@ -528,6 +528,7 @@ bot.events.messageCreate = async (message) => {
       response_ms: lastResponse > 0 ? messageTime - lastResponse : Infinity,
       retry_ms: 0,
       idle_ms: idleMs,
+      unread_count: countUnreadMessages(channelId, entity.id),
       mentioned: isMentioned ?? false,
       replied: isReplied,
       replied_to: repliedToWebhookEntity?.entityName ?? "",
@@ -689,6 +690,7 @@ async function processEntityRetry(
     response_ms: lastResponse > 0 ? now - lastResponse : Infinity,
     retry_ms: now - messageTime,
     idle_ms: retryIdleMs,
+    unread_count: countUnreadMessages(channelId, entity.id),
     mentioned: false, // Retry is never from a mention
     replied: false,
     replied_to: "",

@@ -110,6 +110,7 @@ export function evaluateTemplate(input: TemplateInput): TemplateEvalResult {
       response_ms: 0,
       idle_ms: 0,
       retry_ms: 0,
+      unread_count: 0,
     }
 
     const source = input.template || DEFAULT_TEMPLATE

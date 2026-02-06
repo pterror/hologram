@@ -269,6 +269,7 @@ interface ExprContext {
   time: { hour: number; is_day: boolean; is_night: boolean };
   response_ms: number;       // ms since last response in channel
   retry_ms: number;  // ms since triggering message
+  unread_count: number;      // messages since this entity's last reply
 
   // Message context
   mentioned: boolean;

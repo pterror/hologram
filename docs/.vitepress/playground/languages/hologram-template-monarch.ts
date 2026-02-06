@@ -25,7 +25,7 @@ export const hologramTemplateLanguage: languages.IMonarchLanguage = {
     'history', 'char', 'user', '_single_entity',
     'mentioned', 'replied', 'replied_to', 'is_forward', 'is_self',
     'content', 'author', 'interaction_type', 'name', 'chars',
-    'group', 'response_ms', 'retry_ms', 'idle_ms',
+    'group', 'response_ms', 'retry_ms', 'idle_ms', 'unread_count',
   ],
 
   contextObjects: ['self', 'channel', 'server', 'time'],
@@ -109,7 +109,7 @@ export const hologramTemplateLanguage: languages.IMonarchLanguage = {
       [/\b(?:self|channel|server|time)(?=\.)/, 'variable.object'],
 
       // Context variables
-      [/\b(?:entities|others|memories|entity_names|freeform|history|char|user|_single_entity|mentioned|replied|replied_to|is_forward|is_self|content|author|interaction_type|name|chars|group|response_ms|retry_ms|idle_ms)\b/, 'variable.context'],
+      [/\b(?:entities|others|memories|entity_names|freeform|history|char|user|_single_entity|mentioned|replied|replied_to|is_forward|is_self|content|author|interaction_type|name|chars|group|response_ms|retry_ms|idle_ms|unread_count)\b/, 'variable.context'],
 
       // send_as (not followed by parens)
       [/\bsend_as\b(?!\s*\()/, 'function.macro'],

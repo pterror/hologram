@@ -13,6 +13,7 @@ export interface ContextValues {
   response_ms: number
   idle_ms: number
   retry_ms: number
+  unread_count: number
   channel_name: string
   channel_is_nsfw: boolean
   server_name: string
@@ -127,6 +128,14 @@ function update(field: keyof ContextValues, value: unknown) {
           type="number"
           :value="modelValue.retry_ms"
           @input="update('retry_ms', parseInt(($event.target as HTMLInputElement).value) || 0)"
+        />
+      </div>
+      <div class="context-field">
+        <label>unread_count</label>
+        <input
+          type="number"
+          :value="modelValue.unread_count"
+          @input="update('unread_count', parseInt(($event.target as HTMLInputElement).value) || 0)"
         />
       </div>
       <div class="context-field">

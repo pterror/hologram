@@ -38,7 +38,7 @@ Syntax highlighting for custom templates (the files in `src/templates/` and temp
 - **Nunjucks syntax** — `{{ expr }}`, `{% tag %}`, `{# comment #}`, whitespace control (`{%- -%}`)
 - **Control flow** — `if`/`elif`/`else`/`endif`, `for`/`endfor`, `block`/`endblock`, `extends`, `call`/`endcall`, `macro`/`endmacro`, `set`
 - **Template context** — `entities`, `others`, `memories`, `history`, `char`, `user`, `entity_names`, `freeform`, `_single_entity`
-- **Expression context** — `mentioned`, `replied`, `replied_to`, `is_forward`, `is_self`, `content`, `author`, `name`, `chars`, `group`, `response_ms`, `retry_ms`, `idle_ms`, `interaction_type`
+- **Expression context** — `mentioned`, `replied`, `replied_to`, `is_forward`, `is_self`, `content`, `author`, `name`, `chars`, `group`, `response_ms`, `retry_ms`, `idle_ms`, `unread_count`, `interaction_type`
 - **Context objects** — `self.*`, `channel.*`, `server.*`, `time.*`
 - **Filters** — `default`, `length`, `join`, `first`, `last`, `upper`, `lower`, `trim`, `nl2br`, `int`, `float`, `abs`, `round`, `reverse`, `sort`, `batch`
 - **Functions** — `random()`, `has_fact()`, `roll()`, `messages()`, `duration()`, `mentioned_in_dialogue()`, `date_str()`, `time_str()`, `isodate()`, `isotime()`, `weekday()`, `send_as()`, `caller()`

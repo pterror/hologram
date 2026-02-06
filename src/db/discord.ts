@@ -615,6 +615,42 @@ export function clearMessages(channelId: string): number {
 // =============================================================================
 
 /**
+ * Count messages in a channel since the given entity's last reply.
+ * Uses webhook_messages to identify which messages belong to the entity.
+ * Returns Infinity if the entity has never replied in the channel.
+ */
+export function countUnreadMessages(channelId: string, entityId: number): number {
+  const db = getDb();
+  const forgetTime = getChannelForgetTime(channelId);
+
+  const timeClause = forgetTime ? ` AND m.created_at > ?` : "";
+  const timeParams = forgetTime ? [forgetTime] : [];
+
+  const row = db.prepare(`
+    SELECT COUNT(*) as count FROM messages m
+    WHERE m.channel_id = ?${timeClause}
+      AND m.created_at > COALESCE(
+        (SELECT MAX(m2.created_at)
+         FROM messages m2
+         JOIN webhook_messages wm ON wm.message_id = m2.discord_message_id
+         WHERE m2.channel_id = ? AND wm.entity_id = ?),
+        ''
+      )
+  `).get(channelId, ...timeParams, channelId, entityId) as { count: number };
+
+  // If entity has never replied, COALESCE produces '' which is < all timestamps,
+  // so count includes all messages — but we want Infinity for "never replied"
+  const hasReplied = db.prepare(`
+    SELECT 1 FROM messages m
+    JOIN webhook_messages wm ON wm.message_id = m.discord_message_id
+    WHERE m.channel_id = ? AND wm.entity_id = ?
+    LIMIT 1
+  `).get(channelId, entityId);
+
+  return hasReplied ? row.count : Infinity;
+}
+
+/**
  * Get the forget timestamp for a channel.
  * Messages before this time are excluded from context.
  */

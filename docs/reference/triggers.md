@@ -49,6 +49,7 @@ $if content.includes(hello): $respond
 | `response_ms` | number | Milliseconds since last response |
 | `retry_ms` | number | Milliseconds since triggering message (for retries) |
 | `idle_ms` | number | Milliseconds since any message in channel |
+| `unread_count` | number | Messages in channel since this entity's last reply |
 | `random()` | function | Float [0,1), or int with `random(max)` [1,max] / `random(min,max)` [min,max] |
 | `has_fact(pattern)` | function | Check if entity has matching fact |
 | `roll(dice)` | function | Dice roll (roll20 syntax: `"2d6+3"`, `"4d6kh3"`, `"1d6!"`, `"8d6>=5"`) |
@@ -177,6 +178,14 @@ $if response_ms > 60000: $respond
 Small chance to respond, with minimum spacing:
 ```
 $if random() < 0.05 && response_ms > 120000: $respond
+```
+
+### Message count threshold
+
+Respond every 5 messages (or when mentioned):
+```
+$if unread_count >= 5: $respond
+$if mentioned: $respond
 ```
 
 ### Night owl

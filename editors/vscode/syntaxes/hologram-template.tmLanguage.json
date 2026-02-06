@@ -127,7 +127,7 @@
       "name": "variable.other.object.hologram-template"
     },
     "context-variable": {
-      "match": "\\b(entities|others|memories|entity_names|freeform|history|char|user|_single_entity|mentioned|replied|replied_to|is_forward|is_self|content|author|interaction_type|name|chars|group|response_ms|retry_ms|idle_ms)\\b",
+      "match": "\\b(entities|others|memories|entity_names|freeform|history|char|user|_single_entity|mentioned|replied|replied_to|is_forward|is_self|content|author|interaction_type|name|chars|group|response_ms|retry_ms|idle_ms|unread_count)\\b",
       "name": "variable.other.context.hologram-template"
     },
     "send-as": {

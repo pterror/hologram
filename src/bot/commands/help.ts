@@ -84,6 +84,7 @@ const HELP_ENTITY_FACTS: Record<string, string[]> = {
     "• `response_ms` - ms since last response",
     "• `retry_ms` - ms since trigger (for $retry)",
     "• `idle_ms` - ms since any message in channel",
+    "• `unread_count` - messages since this entity's last reply",
     "---",
     "**Time:** `time.hour`, `time.is_day`, `time.is_night`",
     "**Self:** `self.key` from `key: value` facts",
