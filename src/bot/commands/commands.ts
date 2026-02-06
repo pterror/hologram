@@ -45,6 +45,7 @@ import {
   getDiscordConfig,
   setDiscordConfig,
   deleteDiscordConfig,
+  countUnreadMessages,
 } from "../../db/discord";
 import { parsePermissionDirectives, matchesUserEntry, isUserBlacklisted, isUserAllowed, evaluateFacts, createBaseContext } from "../../logic/expr";
 import { formatEntityDisplay } from "../../ai/context";
@@ -1794,7 +1795,7 @@ async function handleInfoPrompt(ctx: CommandContext, options: Record<string, unk
   const guildMeta = ctx.guildId ? await getGuildMetadata(ctx.guildId) : undefined;
 
   // Evaluate facts with a mock context (no triggers active)
-  const evaluated = buildEvaluatedEntity(targetEntity, { channel: channelMeta, server: guildMeta });
+  const evaluated = buildEvaluatedEntity(targetEntity, { channel: channelMeta, server: guildMeta, channelId: ctx.channelId });
 
   // Use the actual template pipeline to build messages
   const { systemPrompt } = preparePromptContext(
@@ -1808,6 +1809,7 @@ async function handleInfoPrompt(ctx: CommandContext, options: Record<string, unk
 function buildEvaluatedEntity(entity: EntityWithFacts, options?: {
   channel?: { id: string; name: string; description: string; is_nsfw: boolean; type: string; mention: string };
   server?: { id: string; name: string; description: string; nsfw_level: string };
+  channelId?: string;
 }): EvaluatedEntity {
   const rawFacts = entity.facts.map(f => f.content);
   const mockContext = createBaseContext({
@@ -1816,6 +1818,7 @@ function buildEvaluatedEntity(entity: EntityWithFacts, options?: {
     name: entity.name,
     channel: options?.channel,
     server: options?.server,
+    unread_count: options?.channelId ? countUnreadMessages(options.channelId, entity.id) : 0,
   });
   const result = evaluateFacts(rawFacts, mockContext);
   return {
@@ -1846,7 +1849,7 @@ async function handleInfoContext(ctx: CommandContext, options: Record<string, un
   const guildMeta = ctx.guildId ? await getGuildMetadata(ctx.guildId) : undefined;
 
   // Evaluate facts with a mock context (no triggers active)
-  const evaluated = buildEvaluatedEntity(targetEntity, { channel: channelMeta, server: guildMeta });
+  const evaluated = buildEvaluatedEntity(targetEntity, { channel: channelMeta, server: guildMeta, channelId: ctx.channelId });
 
   // Use the actual template pipeline to build structured messages
   const { messages } = preparePromptContext(

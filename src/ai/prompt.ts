@@ -8,7 +8,7 @@ import {
   type EvaluatedEntity,
 } from "./context";
 import { getMessages, getWebhookMessageEntity, parseMessageData, resolveDiscordEntity, type EmbedData, type AttachmentData, type StickerData } from "../db/discord";
-import { evalMacroValue, formatDuration, rollDice, compileContextExpr, type ExprContext } from "../logic/expr";
+import { evalMacroValue, formatDuration, rollDice, compileContextExpr, parseFact, stripComments, type ExprContext } from "../logic/expr";
 import { DEFAULT_MODEL } from "./models";
 import { DEFAULT_TEMPLATE, renderStructuredTemplate, renderSystemPrompt } from "./template";
 import {
@@ -280,6 +280,30 @@ function collapseMessages(messages: StructuredMessage[]): StructuredMessage[] {
 }
 
 /**
+ * Process raw facts for non-responding entities (others, user persona).
+ * Strips comments, $if prefixes, and directive-only facts.
+ * Responding entities go through evaluateFacts() which handles this,
+ * but others/user entities use raw DB facts and need manual processing.
+ */
+export function processRawFacts(rawFacts: string[]): string[] {
+  const uncommented = stripComments(rawFacts);
+  const result: string[] = [];
+  for (const fact of uncommented) {
+    const parsed = parseFact(fact);
+    // Skip directive-only facts (they're instructions, not descriptive content)
+    if (
+      parsed.isRespond || parsed.isRetry || parsed.isAvatar ||
+      parsed.isLockedDirective || parsed.isStream || parsed.isMemory ||
+      parsed.isContext || parsed.isFreeform || parsed.isModel || parsed.isStrip
+    ) {
+      continue;
+    }
+    result.push(parsed.content);
+  }
+  return result;
+}
+
+/**
  * Build system prompt and structured messages from entities and history.
  * Uses renderStructuredTemplate() with either a custom template or DEFAULT_TEMPLATE.
  *
@@ -401,11 +425,11 @@ export function buildPromptAndMessages(
   });
 
   templateCtx.others = otherEntities.map(e => {
-    const facts = withJoinToString(e.facts.map(f => f.content));
+    const facts = withJoinToString(processRawFacts(e.facts.map(f => f.content)));
     return { id: e.id, name: e.name, facts };
   });
 
-  const memoriesObj: Record<number, string[]> = Object.create(null);
+  const memoriesObj: Record<number, string[]> = {};
   if (entityMemories) {
     for (const [entityId, mems] of entityMemories) {
       memoriesObj[entityId] = withJoinToString(mems.map(m => m.content));
@@ -434,7 +458,7 @@ export function buildPromptAndMessages(
     ? otherEntities.find(e => e.id === userEntityId)
     : undefined;
   if (userEntity) {
-    const userFacts = withJoinToString(userEntity.facts.map(f => f.content));
+    const userFacts = withJoinToString(processRawFacts(userEntity.facts.map(f => f.content)));
     templateCtx.user = { id: userEntity.id, name: userEntity.name, facts: userFacts, toString: () => userEntity.name };
   } else {
     templateCtx.user = { id: 0, name: "user", facts: withJoinToString([]), toString: () => "user" };

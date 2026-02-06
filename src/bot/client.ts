@@ -479,6 +479,13 @@ bot.events.messageCreate = async (message) => {
   const idleMs = lastMsg > 0 ? messageTime - lastMsg : Infinity;
   lastMessageTime.set(channelId, messageTime);
 
+  // Pre-compute unread counts BEFORE async calls to avoid race conditions
+  // (webhook messages from concurrent responses could be processed during awaits)
+  const unreadCounts = new Map<number, number>();
+  for (const entity of channelEntities) {
+    unreadCounts.set(entity.id, countUnreadMessages(channelId, entity.id));
+  }
+
   // Fetch channel/guild metadata (cached)
   const channelMeta = await getChannelMetadata(channelId);
   const guildMeta = guildId
@@ -528,7 +535,7 @@ bot.events.messageCreate = async (message) => {
       response_ms: lastResponse > 0 ? messageTime - lastResponse : Infinity,
       retry_ms: 0,
       idle_ms: idleMs,
-      unread_count: countUnreadMessages(channelId, entity.id),
+      unread_count: unreadCounts.get(entity.id) ?? 0,
       mentioned: isMentioned ?? false,
       replied: isReplied,
       replied_to: repliedToWebhookEntity?.entityName ?? "",
