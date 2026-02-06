@@ -89,21 +89,26 @@ When you bind yourself to an entity:
 - The AI sees you as that character
 - Useful for roleplaying as specific characters
 
-### Scopes
+### Binding Types
 
-Bindings can have different scopes:
+**Channel/Server bindings** - where the entity responds:
+```
+/bind "This channel" Aria       # Aria responds in this channel
+/bind "This server" Narrator    # Narrator responds server-wide
+```
 
-| Scope | Meaning |
-|-------|---------|
-| `channel` | Only in this channel (default) |
-| `guild` | Across the entire server |
-| `global` | Everywhere the bot is |
+**User bindings (personas)** - where you speak as an entity:
+
+| Target | Where it applies |
+|--------|------------------|
+| `Me (this channel)` | Only in this channel |
+| `Me (this server)` | Across the entire server |
+| `Me (global)` | Everywhere the bot is |
 
 ```
-/bind channel Aria              # This channel only
-/bind server Narrator           # All channels in this server
-/bind me Traveler scope:guild   # This server
-/bind me Narrator scope:global  # Everywhere
+/bind "Me (this channel)" Traveler  # Here only
+/bind "Me (this server)" Knight     # Server-wide
+/bind "Me (global)" Narrator        # Everywhere
 ```
 
 ## How It Works

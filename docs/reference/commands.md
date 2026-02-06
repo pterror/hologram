@@ -93,55 +93,49 @@ Only the current owner can transfer an entity.
 
 ### `/bind`
 
-Bind a Discord channel or yourself to an entity.
+Bind a Discord channel, server, or yourself to an entity.
 
 ```
-/bind <target> <entity> [scope]
+/bind <target> <entity>
 ```
 
 **Targets:**
-- `channel` - Bind this channel
-- `server` - Bind this server
-- `me` - Bind yourself
-
-**Scopes:**
-- `channel` - This channel only (default)
-- `guild` - This server
-- `global` - Everywhere
+- `This channel` - Entity responds in this channel
+- `This server` - Entity responds in all channels of this server
+- `Me (this channel)` - Speak as entity in this channel only
+- `Me (this server)` - Speak as entity server-wide
+- `Me (global)` - Speak as entity everywhere
 
 **Examples:**
 ```
-/bind channel Aria              # Aria responds in this channel
-/bind me Traveler               # Speak as Traveler here
-/bind me Knight scope:guild     # Speak as Knight server-wide
-/bind channel Narrator scope:global  # Narrator everywhere
+/bind "This channel" Aria           # Aria responds here
+/bind "This server" Narrator        # Narrator responds server-wide
+/bind "Me (this channel)" Traveler  # Speak as Traveler here
+/bind "Me (this server)" Knight     # Speak as Knight server-wide
 ```
 
 ---
 
 ### `/unbind`
 
-Remove an entity binding from a channel or yourself.
+Remove an entity binding from a channel, server, or yourself.
 
 ```
-/unbind <target> <entity> [scope]
+/unbind <target> <entity>
 ```
 
 **Targets:**
-- `channel` - Unbind from this channel
-- `server` - Unbind from this server
-- `me` - Unbind yourself
-
-**Scopes:**
-- `channel` - This channel only (default)
-- `guild` - This server
-- `global` - Global binding
+- `This channel` - Unbind from this channel
+- `This server` - Unbind from this server
+- `Me (this channel)` - Remove channel-specific persona
+- `Me (this server)` - Remove server-wide persona
+- `Me (global)` - Remove global persona
 
 **Examples:**
 ```
-/unbind channel Aria             # Remove Aria from this channel
-/unbind me Traveler              # Stop speaking as Traveler
-/unbind me Knight scope:guild    # Remove server-wide persona
+/unbind "This channel" Aria           # Remove Aria from this channel
+/unbind "Me (this channel)" Traveler  # Stop speaking as Traveler here
+/unbind "Me (this server)" Knight     # Remove server-wide persona
 ```
 
 ---

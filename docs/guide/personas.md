@@ -42,10 +42,10 @@ Now your messages in this channel come from Traveler's perspective.
 
 ## Scopes
 
-### Channel Scope (Default)
+### Channel Scope
 
 ```
-/bind me Traveler
+/bind "Me (this channel)" Traveler
 ```
 
 You're Traveler only in this channel. In other channels, you're yourself.
@@ -53,7 +53,7 @@ You're Traveler only in this channel. In other channels, you're yourself.
 ### Server Scope
 
 ```
-/bind me Traveler scope:guild
+/bind "Me (this server)" Traveler
 ```
 
 You're Traveler across the entire server.
@@ -61,7 +61,7 @@ You're Traveler across the entire server.
 ### Global Scope
 
 ```
-/bind me Traveler scope:global
+/bind "Me (global)" Traveler
 ```
 
 You're Traveler everywhere the bot is active.
@@ -71,16 +71,14 @@ You're Traveler everywhere the bot is active.
 Just bind to a different entity:
 
 ```
-/bind me Knight
+/bind "Me (this channel)" Knight
 ```
 
 Or remove your persona entirely:
 
 ```
-/unbind me
+/unbind "Me (this channel)" Traveler
 ```
-
-(Note: "none" unbinds you - you'll speak as yourself again)
 
 ## How It Affects Responses
 
