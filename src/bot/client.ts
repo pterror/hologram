@@ -84,8 +84,7 @@ export const bot = createBot({
       parentId: true,
       name: true,
       topic: true,
-      nsfw: true,
-      toggles: true,
+      // toggles is always present (per Discordeno metadata)
     },
     messageReference: {
       messageId: true,
@@ -172,10 +171,10 @@ export async function getChannelMetadata(channelId: string): Promise<Omit<Channe
     const ch = await bot.helpers.getChannel(BigInt(channelId));
     const meta: ChannelMeta = {
       id: channelId,
-      name: (ch as any).name ?? "",
-      description: (ch as any).topic ?? "",
-      is_nsfw: !!(ch as any).nsfw,
-      type: channelTypeString((ch as any).type ?? 0),
+      name: ch.name ?? "",
+      description: ch.topic ?? "",
+      is_nsfw: ch.toggles?.nsfw ?? false,
+      type: channelTypeString(ch.type ?? 0),
       mention: `<#${channelId}>`,
       fetchedAt: Date.now(),
     };
@@ -195,9 +194,9 @@ export async function getGuildMetadata(guildId: string): Promise<Omit<GuildMeta,
     const g = await bot.helpers.getGuild(BigInt(guildId));
     const meta: GuildMeta = {
       id: guildId,
-      name: (g as any).name ?? "",
-      description: (g as any).description ?? "",
-      nsfw_level: guildNsfwLevelString((g as any).nsfwLevel ?? 0),
+      name: g.name ?? "",
+      description: g.description ?? "",
+      nsfw_level: guildNsfwLevelString(g.nsfwLevel ?? 0),
       fetchedAt: Date.now(),
     };
     guildMetaCache.set(guildId, meta);
@@ -375,8 +374,7 @@ bot.events.messageCreate = async (message) => {
     ?? message.author.username;
 
   // Extract member roles (BigInt[] → string[])
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const authorRoles: string[] = ((message as any).member?.roles ?? []).map((r: bigint) => r.toString());
+  const authorRoles: string[] = (message.member?.roles ?? []).map((r) => r.toString());
 
   debug("Message", {
     channel: channelId,
@@ -412,11 +410,11 @@ bot.events.messageCreate = async (message) => {
     msgData.stickers = message.stickerItems.map(s => ({
       id: s.id.toString(),
       name: s.name,
-      format_type: (s as any).formatType ?? 0,
+      format_type: s.formatType ?? 0,
     }));
   }
   if (hasAttachments) {
-    msgData.attachments = (message.attachments as any[]).map(a => ({
+    msgData.attachments = message.attachments!.map(a => ({
       filename: a.filename ?? "unknown",
       url: a.url ?? "",
       ...(a.contentType && { content_type: a.contentType }),
@@ -1357,8 +1355,7 @@ async function sendWelcomeDm(userId: bigint): Promise<void> {
   if (!content) return;
 
   // Create DM channel and send
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dmChannel = await bot.helpers.getDmChannel(userId) as any;
+  const dmChannel = await bot.helpers.getDmChannel(userId);
   await bot.helpers.sendMessage(dmChannel.id, {
     content: `**Welcome to Hologram!**\n\n${content}`,
   });
@@ -1388,8 +1385,7 @@ function getEditorsToNotify(entityId: number, ownerId: string | null, facts: str
 }
 
 async function notifyUserOfError(userId: string, entityName: string, errorMsg: string): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dmChannel = await bot.helpers.getDmChannel(BigInt(userId)) as any;
+  const dmChannel = await bot.helpers.getDmChannel(BigInt(userId));
   await bot.helpers.sendMessage(dmChannel.id, {
     content: `**Condition error in ${entityName}**\n\`\`\`\n${errorMsg}\n\`\`\`\nUse \`/edit ${entityName}\` to fix the condition.`,
   });
