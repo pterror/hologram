@@ -216,7 +216,7 @@ export async function registerCommands(bot: Bot) {
       options: cmd.options,
     };
     if (cmd.defaultMemberPermissions) {
-      def.defaultMemberPermissions = [cmd.defaultMemberPermissions];
+      def.defaultMemberPermissions = cmd.defaultMemberPermissions;
     }
     defs.push(def);
   }
