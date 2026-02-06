@@ -41,6 +41,10 @@ import {
   getGuildScopedEntities,
   getMessages,
   setChannelForgetTime,
+  resolveDiscordConfig,
+  getDiscordConfig,
+  setDiscordConfig,
+  deleteDiscordConfig,
 } from "../../db/discord";
 import { parsePermissionDirectives, matchesUserEntry, isUserBlacklisted, isUserAllowed, evaluateFacts, createBaseContext } from "../../logic/expr";
 import { formatEntityDisplay } from "../../ai/context";
@@ -138,6 +142,53 @@ function canUserView(entity: EntityWithFacts, userId: string, username: string, 
   if (permissions.viewList.some(u => matchesUserEntry(u, userId, username, userRoles))) return true;
 
   return false;
+}
+
+/**
+ * Check if a user can use an entity (persona / trigger permission).
+ * Owner always can. Blacklist blocks everyone except owner.
+ * Otherwise check $use directive. Default = everyone.
+ */
+function canUserUse(entity: EntityWithFacts, userId: string, username: string, userRoles: string[] = []): boolean {
+  if (entity.owned_by === userId) return true;
+  const facts = entity.facts.map(f => f.content);
+  const permissions = parsePermissionDirectives(facts, getPermissionDefaults(entity.id));
+  if (isUserBlacklisted(permissions, userId, username, entity.owned_by, userRoles)) return false;
+  return isUserAllowed(permissions, userId, username, entity.owned_by, userRoles);
+}
+
+/**
+ * Check if a user can bind entities in a location (server-side check).
+ * Uses resolveDiscordConfig for channel > guild > default precedence.
+ */
+function canUserBindInLocation(userId: string, username: string, userRoles: string[], channelId?: string, guildId?: string): boolean {
+  const config = resolveDiscordConfig(channelId, guildId);
+
+  // Check blacklist first (deny overrides allow)
+  if (config.blacklist?.some(entry => matchesUserEntry(entry, userId, username, userRoles))) return false;
+
+  // No bind restriction = everyone allowed
+  if (!config.bind) return true;
+
+  // Check allowlist
+  return config.bind.some(entry => matchesUserEntry(entry, userId, username, userRoles));
+}
+
+/**
+ * Check if a user can use personas in a location (server-side check).
+ * Uses resolveDiscordConfig for channel > guild > default precedence.
+ */
+function canUserPersonaInLocation(userId: string, username: string, userRoles: string[], channelId?: string, guildId?: string): boolean {
+  const config = resolveDiscordConfig(channelId, guildId);
+
+  // Check blacklist first (deny overrides allow)
+  if (config.blacklist?.some(entry => matchesUserEntry(entry, userId, username, userRoles))) return false;
+
+  // No persona restriction = everyone allowed
+  if (!config.persona) return true;
+
+  // Check allowlist
+  return config.persona.some(entry => matchesUserEntry(entry, userId, username, userRoles));
 }
 
 // =============================================================================
@@ -1209,19 +1260,49 @@ registerCommand({
     const target = options.target as string;
     const entityInput = options.entity as string;
 
-    // Find entity
-    let entity = null;
+    // Find entity (need facts for permission checks)
+    let entity: EntityWithFacts | null = null;
     const id = parseInt(entityInput);
     if (!isNaN(id)) {
-      entity = getEntity(id);
+      entity = getEntityWithFacts(id);
     }
     if (!entity) {
-      entity = getEntityByName(entityInput);
+      entity = getEntityWithFactsByName(entityInput);
     }
 
     if (!entity) {
       await respond(ctx.bot, ctx.interaction, `Entity not found: ${entityInput}`, true);
       return;
+    }
+
+    const isPersonaBind = target.startsWith("me:");
+
+    // Entity-side permission check
+    if (isPersonaBind) {
+      if (!canUserUse(entity, ctx.userId, ctx.username, ctx.userRoles)) {
+        await respond(ctx.bot, ctx.interaction, "You don't have permission to use this entity as a persona", true);
+        return;
+      }
+    } else {
+      if (!canUserEdit(entity, ctx.userId, ctx.username, ctx.userRoles)) {
+        await respond(ctx.bot, ctx.interaction, "You don't have permission to bind this entity", true);
+        return;
+      }
+    }
+
+    // Server-side permission check (skip for global persona — no location context)
+    if (target !== "me:global") {
+      if (isPersonaBind) {
+        if (!canUserPersonaInLocation(ctx.userId, ctx.username, ctx.userRoles, ctx.channelId, ctx.guildId)) {
+          await respond(ctx.bot, ctx.interaction, "You don't have permission to use personas here", true);
+          return;
+        }
+      } else {
+        if (!canUserBindInLocation(ctx.userId, ctx.username, ctx.userRoles, ctx.channelId, ctx.guildId)) {
+          await respond(ctx.bot, ctx.interaction, "You don't have permission to bind entities here", true);
+          return;
+        }
+      }
     }
 
     // Parse target into discordType and scope
@@ -1308,19 +1389,49 @@ registerCommand({
     const target = options.target as string;
     const entityInput = options.entity as string;
 
-    // Find entity
-    let entity = null;
+    // Find entity (need facts for permission checks)
+    let entity: EntityWithFacts | null = null;
     const id = parseInt(entityInput);
     if (!isNaN(id)) {
-      entity = getEntity(id);
+      entity = getEntityWithFacts(id);
     }
     if (!entity) {
-      entity = getEntityByName(entityInput);
+      entity = getEntityWithFactsByName(entityInput);
     }
 
     if (!entity) {
       await respond(ctx.bot, ctx.interaction, `Entity not found: ${entityInput}`, true);
       return;
+    }
+
+    const isPersonaBind = target.startsWith("me:");
+
+    // Entity-side permission check
+    if (isPersonaBind) {
+      if (!canUserUse(entity, ctx.userId, ctx.username, ctx.userRoles)) {
+        await respond(ctx.bot, ctx.interaction, "You don't have permission to unbind this persona", true);
+        return;
+      }
+    } else {
+      if (!canUserEdit(entity, ctx.userId, ctx.username, ctx.userRoles)) {
+        await respond(ctx.bot, ctx.interaction, "You don't have permission to unbind this entity", true);
+        return;
+      }
+    }
+
+    // Server-side permission check (skip for global persona)
+    if (target !== "me:global") {
+      if (isPersonaBind) {
+        if (!canUserPersonaInLocation(ctx.userId, ctx.username, ctx.userRoles, ctx.channelId, ctx.guildId)) {
+          await respond(ctx.bot, ctx.interaction, "You don't have permission to manage personas here", true);
+          return;
+        }
+      } else {
+        if (!canUserBindInLocation(ctx.userId, ctx.username, ctx.userRoles, ctx.channelId, ctx.guildId)) {
+          await respond(ctx.bot, ctx.interaction, "You don't have permission to manage bindings here", true);
+          return;
+        }
+      }
     }
 
     // Parse target into discordType and scope
@@ -1372,6 +1483,139 @@ registerCommand({
 
     await respond(ctx.bot, ctx.interaction, `${targetDesc} unbound from "${entity.name}"`, true);
   },
+});
+
+// =============================================================================
+// /config - Configure channel/server bind permissions
+// =============================================================================
+
+const CONFIG_FIELDS = ["bind", "persona", "blacklist"] as const;
+type ConfigField = (typeof CONFIG_FIELDS)[number];
+
+const CONFIG_LABELS: Record<ConfigField, string> = {
+  bind: "Bind access",
+  persona: "Persona access",
+  blacklist: "Blacklist",
+};
+
+const CONFIG_DESCRIPTIONS: Record<ConfigField, string> = {
+  bind: "Who can bind entities here. Blank = everyone.",
+  persona: "Who can use personas here. Blank = everyone.",
+  blacklist: "Blocked from all binding operations.",
+};
+
+function buildConfigLabels(discordId: string, discordType: "channel" | "guild"): unknown[] {
+  const config = getDiscordConfig(discordId, discordType);
+
+  return CONFIG_FIELDS.map(field => {
+    const rawValue = config?.[`config_${field}`] ?? null;
+    const parsed: string[] | null = rawValue ? JSON.parse(rawValue) : null;
+    const defaultValues = buildDefaultValues(parsed);
+
+    const select: Record<string, unknown> = {
+      type: MessageComponentTypes.MentionableSelect,
+      customId: `config_${field}`,
+      required: false,
+      minValues: 0,
+      maxValues: 25,
+    };
+    if (defaultValues.length > 0) {
+      select.defaultValues = defaultValues;
+    }
+
+    return {
+      type: MessageComponentTypes.Label,
+      label: CONFIG_LABELS[field],
+      description: CONFIG_DESCRIPTIONS[field],
+      component: select,
+    };
+  });
+}
+
+registerCommand({
+  name: "config",
+  description: "Configure channel or server bind permissions",
+  defaultMemberPermissions: "16", // MANAGE_CHANNELS
+  options: [
+    {
+      name: "scope",
+      description: "What to configure",
+      type: ApplicationCommandOptionTypes.String,
+      required: true,
+      choices: [
+        { name: "This channel", value: "channel" },
+        { name: "This server", value: "server" },
+      ],
+    },
+  ],
+  async handler(ctx, options) {
+    const scope = options.scope as string;
+
+    if (!ctx.guildId) {
+      await respond(ctx.bot, ctx.interaction, "This command is only available in servers", true);
+      return;
+    }
+
+    const discordId = scope === "server" ? ctx.guildId : ctx.channelId;
+    const discordType = scope === "server" ? "guild" as const : "channel" as const;
+    const title = scope === "server" ? "Server Bind Settings" : "Channel Bind Settings";
+
+    const labels = buildConfigLabels(discordId, discordType);
+    await respondWithV2Modal(ctx.bot, ctx.interaction, `config:${discordType}:${discordId}`, title, labels);
+  },
+});
+
+registerModalHandler("config", async (bot, interaction, _values) => {
+  const customId = interaction.data?.customId ?? "";
+  const parts = customId.split(":");
+  const discordType = parts[1] as "channel" | "guild";
+  const discordId = parts[2];
+
+  // Parse V2 components (same pattern as edit-permissions)
+  const resolved = interaction.data?.resolved;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const components: any[] = interaction.data?.components ?? [];
+
+  const selectValues: Record<string, string[]> = {};
+  for (const comp of components) {
+    const inner = comp.component;
+    if (inner?.customId) {
+      selectValues[inner.customId] = inner.values ?? [];
+    }
+    for (const child of comp.components ?? []) {
+      if (child.customId && child.values) {
+        selectValues[child.customId] = child.values;
+      }
+    }
+  }
+
+  const buildEntries = (values: string[]): string[] => {
+    return values.map(id => {
+      const isRole = resolved?.roles?.has?.(BigInt(id)) ?? false;
+      return isRole ? `role:${id}` : id;
+    });
+  };
+
+  const bindEntries = buildEntries(selectValues.config_bind ?? []);
+  const personaEntries = buildEntries(selectValues.config_persona ?? []);
+  const blacklistEntries = buildEntries(selectValues.config_blacklist ?? []);
+
+  // If all fields are empty, delete the row entirely
+  if (bindEntries.length === 0 && personaEntries.length === 0 && blacklistEntries.length === 0) {
+    deleteDiscordConfig(discordId, discordType);
+    const scopeLabel = discordType === "guild" ? "server" : "channel";
+    await respond(bot, interaction, `Cleared all bind settings for this ${scopeLabel} (everyone can bind)`, true);
+    return;
+  }
+
+  setDiscordConfig(discordId, discordType, {
+    config_bind: bindEntries.length > 0 ? JSON.stringify(bindEntries) : null,
+    config_persona: personaEntries.length > 0 ? JSON.stringify(personaEntries) : null,
+    config_blacklist: blacklistEntries.length > 0 ? JSON.stringify(blacklistEntries) : null,
+  });
+
+  const scopeLabel = discordType === "guild" ? "server" : "channel";
+  await respond(bot, interaction, `Updated bind settings for this ${scopeLabel}`, true);
 });
 
 // =============================================================================

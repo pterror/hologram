@@ -35,6 +35,7 @@ interface Command {
   name: string;
   description: string;
   options?: CommandOption[];
+  defaultMemberPermissions?: string;
   handler: CommandHandler;
 }
 
@@ -208,12 +209,16 @@ export async function registerCommands(bot: Bot) {
   const defs = [];
 
   for (const [_name, cmd] of commands) {
-    defs.push({
+    const def: Record<string, unknown> = {
       name: cmd.name,
       description: cmd.description,
       type: ApplicationCommandTypes.ChatInput,
       options: cmd.options,
-    });
+    };
+    if (cmd.defaultMemberPermissions) {
+      def.defaultMemberPermissions = [cmd.defaultMemberPermissions];
+    }
+    defs.push(def);
   }
 
   await bot.helpers.upsertGlobalApplicationCommands(defs);
@@ -335,7 +340,7 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
     const targetOption = options.find((o: { name: string }) => o.name === "target");
     const target = targetOption?.value as string | undefined;
 
-    // If target not yet selected, show all editable entities as fallback
+    // If target not yet selected, show entities user can edit or use as fallback
     if (!target) {
       const allResults = searchEntities(query, 100);
       const entitiesWithFacts = getEntitiesWithFacts(allResults.map(e => e.id));
@@ -348,6 +353,7 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
         if (isUserBlacklisted(permissions, userId, username, entity.owned_by, userRoles)) return false;
         if (permissions.editList === "@everyone") return true;
         if (permissions.editList?.some(u => matchesUserEntry(u, userId, username, userRoles))) return true;
+        if (isUserAllowed(permissions, userId, username, entity.owned_by, userRoles)) return true;
         return false;
       }).slice(0, 25);
     } else {
@@ -371,7 +377,8 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
       // Get all entities bound to this target (any scope)
       const boundEntityIds = getBoundEntityIds(discordId, discordType);
 
-      // Get entity details and filter by search query and edit permission
+      // Get entity details and filter by search query and edit/use permission
+      const isPersonaTarget = target.startsWith("me:");
       const entitiesWithFacts = getEntitiesWithFacts(boundEntityIds);
       const queryLower = query.toLowerCase();
       results = [];
@@ -379,14 +386,18 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
         // Filter by search query
         if (query && !entityWithFacts.name.toLowerCase().includes(queryLower)) continue;
 
-        // Check edit permission
+        // Check permission: edit for channel/server, use for persona
         if (entityWithFacts.owned_by !== userId) {
           const facts = entityWithFacts.facts.map(f => f.content);
           const permissions = parsePermissionDirectives(facts, getPermissionDefaults(entityId));
           if (isUserBlacklisted(permissions, userId, username, entityWithFacts.owned_by, userRoles)) continue;
-          if (permissions.editList !== "@everyone" &&
-              !permissions.editList?.some(u => matchesUserEntry(u, userId, username, userRoles))) {
-            continue;
+          if (isPersonaTarget) {
+            if (!isUserAllowed(permissions, userId, username, entityWithFacts.owned_by, userRoles)) continue;
+          } else {
+            if (permissions.editList !== "@everyone" &&
+                !permissions.editList?.some(u => matchesUserEntry(u, userId, username, userRoles))) {
+              continue;
+            }
           }
         }
 
@@ -394,8 +405,27 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
       }
       results = results.slice(0, 25);
     }
-  } else if (commandName === "edit" || commandName === "bind") {
-    // These commands require edit permission - batch load facts
+  } else if (commandName === "bind") {
+    // Bind needs edit permission (channel/server binds) OR use permission (persona binds)
+    // Since target isn't always known at autocomplete time, show the union
+    const allResults = searchEntities(query, 100);
+    const entitiesWithFacts = getEntitiesWithFacts(allResults.map(e => e.id));
+
+    results = allResults.filter(entity => {
+      if (entity.owned_by === userId) return true;
+      const entityWithFacts = entitiesWithFacts.get(entity.id);
+      if (!entityWithFacts) return false;
+      const facts = entityWithFacts.facts.map(f => f.content);
+      const permissions = parsePermissionDirectives(facts, getPermissionDefaults(entity.id));
+      if (isUserBlacklisted(permissions, userId, username, entity.owned_by, userRoles)) return false;
+      // Check edit OR use permission
+      if (permissions.editList === "@everyone") return true;
+      if (permissions.editList?.some(u => matchesUserEntry(u, userId, username, userRoles))) return true;
+      if (isUserAllowed(permissions, userId, username, entity.owned_by, userRoles)) return true;
+      return false;
+    }).slice(0, 25);
+  } else if (commandName === "edit") {
+    // Edit requires edit permission - batch load facts
     const allResults = searchEntities(query, 100);
     const entitiesWithFacts = getEntitiesWithFacts(allResults.map(e => e.id));
 

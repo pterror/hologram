@@ -7,7 +7,7 @@ Discord bot for collaborative worldbuilding and roleplay, built on an entity-fac
 - **Runtime**: Bun (native SQLite, TypeScript-first)
 - **Discord**: Discordeno (Bun-native)
 - **LLM**: AI SDK v6 with provider-agnostic `provider:model` spec (default: `google:gemini-3-flash-preview`)
-- **Database**: bun:sqlite (8 tables)
+- **Database**: bun:sqlite (9 tables)
 - **Linting**: oxlint
 - **Type checking**: tsgo
 
@@ -86,12 +86,13 @@ Facts:
 
 **Convenience macros:** `{{date}}`, `{{time}}`, `{{weekday}}`, `{{isodate}}`, `{{isotime}}`, `{{group}}`, `{{model}}`, `{{maxPrompt}}`, `{{idle_duration}}`, `{{lastMessage}}`, `{{lastUserMessage}}`, `{{lastCharMessage}}`, `{{charIfNotGroup}}`, `{{notChar}}`, `{{groupNotMuted}}`, `{{random: A,B,C}}`, `{{roll: 2d6}}`, `{{newline}}`, `{{space}}`, `{{noop}}`, `{{trim}}`
 
-### Database (8 tables)
+### Database (9 tables)
 
 ```sql
 entities         -- id, name, owned_by, created_at, template, system_template
 facts            -- id, entity_id, content, created_at, updated_at
 discord_entities -- discord_id, discord_type, entity_id, scope_guild_id, scope_channel_id
+discord_config   -- discord_id, discord_type, config_bind, config_persona, config_blacklist (bind permissions)
 fact_embeddings  -- (planned) vector search
 messages         -- channel_id, user_id, author_name, content, discord_message_id, data, created_at
 welcomed_users   -- discord_id, welcomed_at (onboarding DM tracking)
@@ -359,6 +360,12 @@ Discord channels/users/servers map to entities via `discord_entities`:
 - **Server binding**: Entity responds in all channels of that server
 - **User binding**: User speaks as that entity (persona)
 
+**Bind permissions (two-layer):**
+1. **Entity-side**: Channel/server binds require `edit` permission on the entity. Persona binds require `use` permission.
+2. **Server-side**: Per-channel/guild allowlists managed via `/config`. Stored in `discord_config` table. Channel config overrides guild config. No config = everyone can bind (default).
+
+`/config` requires Discord `MANAGE_CHANNELS` permission. Each scope (channel/server) has three fields: bind access, persona access, and blacklist (deny overrides allow). Unbind has the same permission checks as bind.
+
 ### Access Control
 
 Permissions are managed via `/edit entity type:permissions`, which presents Discord mentionable select menus (users and roles). Each field saves immediately on selection.
@@ -388,8 +395,9 @@ Permissions are managed via `/edit entity type:permissions`, which presents Disc
 | `/edit <entity> type:permissions` | Edit view, edit, use, blacklist |
 | `/delete <entity>` | Delete entity |
 | `/transfer <entity> <user>` | Transfer ownership |
-| `/bind <target> <entity>` | Bind channel/user |
-| `/unbind <target> <entity>` | Unbind channel/user |
+| `/bind <target> <entity>` | Bind channel/user (requires entity edit/use + location permission) |
+| `/unbind <target> <entity>` | Unbind channel/user (same permissions as bind) |
+| `/config <scope>` | Configure channel/server bind permissions (Manage Channels) |
 | `/debug [status]` | Channel state (default) |
 | `/debug prompt [entity]` | Show system prompt for entity |
 | `/debug context [entity]` | Show message context for entity |

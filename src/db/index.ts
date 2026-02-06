@@ -183,6 +183,18 @@ function initSchema(db: Database) {
     )
   `);
 
+  // Discord config - per-channel/guild bind permission settings
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS discord_config (
+      discord_id TEXT NOT NULL,
+      discord_type TEXT NOT NULL CHECK (discord_type IN ('channel', 'guild')),
+      config_bind TEXT,
+      config_persona TEXT,
+      config_blacklist TEXT,
+      PRIMARY KEY (discord_id, discord_type)
+    )
+  `);
+
   // Indexes
   db.exec(`CREATE INDEX IF NOT EXISTS idx_facts_entity ON facts(entity_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_discord_entities_lookup ON discord_entities(discord_id, discord_type)`);

@@ -286,6 +286,95 @@ export function getBoundEntityIds(
 }
 
 // =============================================================================
+// Discord Config (per-channel/guild bind permissions)
+// =============================================================================
+
+export interface DiscordConfig {
+  discord_id: string;
+  discord_type: "channel" | "guild";
+  config_bind: string | null;
+  config_persona: string | null;
+  config_blacklist: string | null;
+}
+
+export interface ResolvedDiscordConfig {
+  bind: string[] | null;
+  persona: string[] | null;
+  blacklist: string[] | null;
+}
+
+export function getDiscordConfig(discordId: string, discordType: "channel" | "guild"): DiscordConfig | null {
+  const db = getDb();
+  return db.prepare(`
+    SELECT * FROM discord_config WHERE discord_id = ? AND discord_type = ?
+  `).get(discordId, discordType) as DiscordConfig | null;
+}
+
+export function setDiscordConfig(
+  discordId: string,
+  discordType: "channel" | "guild",
+  config: { config_bind?: string | null; config_persona?: string | null; config_blacklist?: string | null }
+): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO discord_config (discord_id, discord_type, config_bind, config_persona, config_blacklist)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(discord_id, discord_type) DO UPDATE SET
+      config_bind = excluded.config_bind,
+      config_persona = excluded.config_persona,
+      config_blacklist = excluded.config_blacklist
+  `).run(
+    discordId,
+    discordType,
+    config.config_bind ?? null,
+    config.config_persona ?? null,
+    config.config_blacklist ?? null,
+  );
+}
+
+export function deleteDiscordConfig(discordId: string, discordType: "channel" | "guild"): boolean {
+  const db = getDb();
+  const result = db.prepare(`
+    DELETE FROM discord_config WHERE discord_id = ? AND discord_type = ?
+  `).run(discordId, discordType);
+  return result.changes > 0;
+}
+
+/**
+ * Resolve discord config with scope precedence: channel > guild > default.
+ * Returns parsed allowlists. null = no restriction (everyone allowed).
+ */
+export function resolveDiscordConfig(channelId: string | undefined, guildId: string | undefined): ResolvedDiscordConfig {
+  const defaultConfig: ResolvedDiscordConfig = { bind: null, persona: null, blacklist: null };
+
+  // Try channel-scoped first
+  if (channelId) {
+    const channelConfig = getDiscordConfig(channelId, "channel");
+    if (channelConfig) {
+      return {
+        bind: channelConfig.config_bind ? JSON.parse(channelConfig.config_bind) : null,
+        persona: channelConfig.config_persona ? JSON.parse(channelConfig.config_persona) : null,
+        blacklist: channelConfig.config_blacklist ? JSON.parse(channelConfig.config_blacklist) : null,
+      };
+    }
+  }
+
+  // Try guild-scoped
+  if (guildId) {
+    const guildConfig = getDiscordConfig(guildId, "guild");
+    if (guildConfig) {
+      return {
+        bind: guildConfig.config_bind ? JSON.parse(guildConfig.config_bind) : null,
+        persona: guildConfig.config_persona ? JSON.parse(guildConfig.config_persona) : null,
+        blacklist: guildConfig.config_blacklist ? JSON.parse(guildConfig.config_blacklist) : null,
+      };
+    }
+  }
+
+  return defaultConfig;
+}
+
+// =============================================================================
 // Message History
 // =============================================================================
 
