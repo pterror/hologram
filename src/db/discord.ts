@@ -128,13 +128,14 @@ export function getChannelScopedEntities(channelId: string): number[] {
 
 /**
  * Get guild-scoped entities directly (bypassing precedence).
+ * For guild bindings, discord_id is the guild ID itself, so no scope check needed.
  */
 export function getGuildScopedEntities(guildId: string): number[] {
   const db = getDb();
   const rows = db.prepare(`
     SELECT entity_id FROM discord_entities
-    WHERE discord_id = ? AND discord_type = 'guild' AND scope_guild_id = ? AND scope_channel_id IS NULL
-  `).all(guildId, guildId) as { entity_id: number }[];
+    WHERE discord_id = ? AND discord_type = 'guild'
+  `).all(guildId) as { entity_id: number }[];
   return rows.map(r => r.entity_id);
 }
 
