@@ -136,6 +136,12 @@ export async function* handleMessageStreaming(
       yield* streamMultiEntityNamePrefix(trackedStream, entities, streamMode, delimiter);
     }
 
+    // Empty/whitespace-only response is an error
+    const trimmedAccumulated = accumulatedText.trim();
+    if (!trimmedAccumulated) {
+      throw new InferenceError("Empty response from model", modelSpec);
+    }
+
     // Yield done event with accumulated text
     yield { type: "done", fullText: accumulatedText };
 

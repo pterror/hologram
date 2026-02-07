@@ -1217,6 +1217,8 @@ export async function sendResponse(
         lastResponseTime.set(channelId, Date.now());
         return;
       } catch (streamErr) {
+        // InferenceError = model/content issue, don't retry with non-streaming
+        if (streamErr instanceof InferenceError) throw streamErr;
         warn("Streaming failed, falling back to non-streaming", {
           error: streamErr instanceof Error ? streamErr.message : String(streamErr),
         });

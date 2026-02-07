@@ -99,12 +99,16 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
       memoriesRemoved,
     });
 
-    // Check for <none/> or "none" sentinel (LLM decided none should respond),
-    // and also skip blank/whitespace-only responses
+    // Check for <none/> or "none" sentinel (LLM decided none should respond)
     const trimmedText = result.text.trim().toLowerCase();
-    if (!trimmedText || trimmedText === "<none/>" || trimmedText === "none") {
-      debug("LLM returned none/blank - no response");
+    if (trimmedText === "<none/>" || trimmedText === "none") {
+      debug("LLM returned none sentinel - no response");
       return null;
+    }
+
+    // Empty/whitespace-only response is an error
+    if (!trimmedText) {
+      throw new InferenceError("Empty response from model", modelSpec);
     }
 
     // Strip "Name:" prefix from single-entity responses
