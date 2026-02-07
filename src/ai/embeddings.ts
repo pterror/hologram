@@ -182,3 +182,45 @@ export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   // If vectors are already normalized (which they should be), this simplifies
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
+
+/**
+ * Compute max dot-product similarity between two sets of embedding vectors.
+ * For each vector in `targets`, returns the maximum dot product across all
+ * vectors in `queries`. Assumes all vectors are L2-normalized (so dot product
+ * equals cosine similarity).
+ *
+ * Uses flat Float32Array matrices with index arithmetic for cache-friendly
+ * memory access. Scales to 1k+ × 1k+ at 384 dimensions.
+ *
+ * @param queries - Array of query embeddings (M vectors of D dimensions)
+ * @param targets - Array of target embeddings (N vectors of D dimensions)
+ * @returns Float32Array of length N with max similarity per target
+ */
+export function maxSimilarityMatrix(
+  queries: Float32Array[],
+  targets: Float32Array[],
+): Float32Array {
+  const M = queries.length;
+  const N = targets.length;
+  const D = queries[0].length;
+
+  // Stack into flat typed arrays: qMat[i*D..], tMat[j*D..]
+  const qMat = new Float32Array(M * D);
+  for (let i = 0; i < M; i++) qMat.set(queries[i], i * D);
+  const tMat = new Float32Array(N * D);
+  for (let j = 0; j < N; j++) tMat.set(targets[j], j * D);
+
+  const maxSims = new Float32Array(N).fill(-Infinity);
+
+  for (let i = 0; i < M; i++) {
+    const qOff = i * D;
+    for (let j = 0; j < N; j++) {
+      const tOff = j * D;
+      let dot = 0;
+      for (let d = 0; d < D; d++) dot += qMat[qOff + d] * tMat[tOff + d];
+      if (dot > maxSims[j]) maxSims[j] = dot;
+    }
+  }
+
+  return maxSims;
+}
