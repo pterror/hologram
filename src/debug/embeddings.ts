@@ -120,9 +120,9 @@ export async function testRagRetrieval(
 ): Promise<RagResult[]> {
   const results: RagResult[] = [];
 
-  // Memory search via existing pipeline
+  // Memory search via existing pipeline (wrap single query in array)
   const memoryResults = await searchMemoriesBySimilarity(
-    entityId, query, scope, channelId, guildId,
+    entityId, [query], scope, channelId, guildId,
   );
   for (const { memory, similarity } of memoryResults) {
     results.push({ content: memory.content, similarity, type: "memory", id: memory.id });

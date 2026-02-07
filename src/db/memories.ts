@@ -6,7 +6,7 @@
  */
 
 import { getDb } from "./index";
-import { embed, cosineSimilarity } from "../ai/embeddings";
+import { embed } from "../ai/embeddings";
 
 // =============================================================================
 // Types
@@ -330,38 +330,51 @@ export function getMemoryEmbedding(memoryId: number): Float32Array | null {
 
 /**
  * Search memories by semantic similarity.
- * Pre-filters by scope and frecency, then ranks by embedding similarity.
+ * Accepts multiple query texts (e.g. individual messages) and uses the max
+ * similarity across all queries for each memory — so a single relevant message
+ * is enough to surface a memory even if the rest are unrelated.
  */
 export async function searchMemoriesBySimilarity(
   entityId: number,
-  queryText: string,
+  queryTexts: string[],
   scope: MemoryScope,
   channelId?: string,
   guildId?: string,
 ): Promise<Array<{ memory: Memory; similarity: number }>> {
-  if (scope === "none") return [];
+  if (scope === "none" || queryTexts.length === 0) return [];
 
   // 1. Get all memories in scope
   const candidates = getMemoriesForScope(entityId, scope, channelId, guildId);
   if (candidates.length === 0) return [];
 
-  // 2. Generate query embedding
-  const queryEmbedding = await embed(queryText);
+  // 2. Embed all queries in parallel (cache makes repeated calls cheap)
+  const queryEmbeddings = await Promise.all(queryTexts.map(t => embed(t)));
 
-  // 3. Score each candidate by similarity
+  // 3. Load all memory embeddings
+  const memoryData: Array<{ memory: Memory; embedding: Float32Array }> = [];
+  for (const memory of candidates) {
+    const embedding = getMemoryEmbedding(memory.id);
+    if (embedding) memoryData.push({ memory, embedding });
+  }
+  if (memoryData.length === 0) return [];
+
+  // 4. Compute max similarity per memory across all query embeddings
+  //    For normalized vectors, cosine similarity = dot product
+  const D = queryEmbeddings[0].length;
   const scored: Array<{ memory: Memory; similarity: number }> = [];
 
-  for (const memory of candidates) {
-    const memoryEmbedding = getMemoryEmbedding(memory.id);
-    if (!memoryEmbedding) continue;
-
-    const similarity = cosineSimilarity(queryEmbedding, memoryEmbedding);
-    if (similarity >= MIN_SIMILARITY_THRESHOLD) {
-      scored.push({ memory, similarity });
+  for (const { memory, embedding: memEmb } of memoryData) {
+    let maxSim = -Infinity;
+    for (const qEmb of queryEmbeddings) {
+      let dot = 0;
+      for (let d = 0; d < D; d++) dot += qEmb[d] * memEmb[d];
+      if (dot > maxSim) maxSim = dot;
+    }
+    if (maxSim >= MIN_SIMILARITY_THRESHOLD) {
+      scored.push({ memory, similarity: maxSim });
     }
   }
 
-  // 4. Sort by similarity (all results pass threshold)
   scored.sort((a, b) => b.similarity - a.similarity);
   return scored;
 }
@@ -372,14 +385,14 @@ export async function searchMemoriesBySimilarity(
  */
 export async function retrieveRelevantMemories(
   entityId: number,
-  conversationContext: string,
+  messages: string[],
   scope: MemoryScope,
   channelId?: string,
   guildId?: string,
 ): Promise<Memory[]> {
   const results = await searchMemoriesBySimilarity(
     entityId,
-    conversationContext,
+    messages,
     scope,
     channelId,
     guildId,

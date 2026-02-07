@@ -9,7 +9,8 @@ import { isModelAllowed } from "../ai/models";
 import { retrieveRelevantMemories, type MemoryScope } from "../db/memories";
 import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, updateMessageByDiscordId, deleteMessageByDiscordId, trackWebhookMessage, getWebhookMessageEntity, getMessages, getFilteredMessages, formatMessagesForContext, recordEvalError, isOurWebhookUserId, countUnreadMessages, type MessageData } from "../db/discord";
 import { getEntity, getEntityWithFacts, getEntityConfig, getSystemEntity, getFactsForEntity, type EntityWithFacts } from "../db/entities";
-import { evaluateFacts, createBaseContext, parsePermissionDirectives, isUserBlacklisted, isUserAllowed, type EvaluatedFactsDefaults, type PermissionDefaults } from "../logic/expr";
+import { evaluateFacts, createBaseContext, parsePermissionDirectives, isUserBlacklisted, isUserAllowed, compileContextExpr, type EvaluatedFactsDefaults, type PermissionDefaults } from "../logic/expr";
+import { DEFAULT_CONTEXT_EXPR } from "../ai/context";
 import type { EntityConfig } from "../db/entities";
 import { executeWebhook, editWebhookMessage, setBot } from "./webhooks";
 import "./commands/commands"; // Register all commands
@@ -1125,18 +1126,36 @@ export async function sendResponse(
     // Retrieve memories for entities that have memory enabled
     const entityMemories = new Map<number, Array<{ content: string }>>();
     if (respondingEntities) {
-      // Build conversation context from recent messages for semantic search
-      const recentMessages = getMessages(channelId, 10);
-      const conversationContext = recentMessages
-        .slice().reverse()
-        .map(m => `${m.author_name}: ${m.content}`)
-        .join("\n");
+      // Get context-filtered messages for memory search (same messages the entity sees)
+      const contextExpr = respondingEntities.find(e => e.contextExpr !== null)?.contextExpr ?? DEFAULT_CONTEXT_EXPR;
+      const contextFilter = compileContextExpr(contextExpr);
+      const rawMessages = getMessages(channelId, 100);
+      const now = Date.now();
+      const contextMessages: string[] = [];
+      let totalChars = 0;
+
+      for (const m of rawMessages) {
+        const formatted = `${m.author_name}: ${m.content}`;
+        const len = formatted.length + 1;
+        const msgAge = now - new Date(m.created_at).getTime();
+        const shouldInclude = contextFilter({
+          chars: totalChars + len,
+          count: contextMessages.length,
+          age: msgAge,
+          age_h: msgAge / 3_600_000,
+          age_m: msgAge / 60_000,
+          age_s: msgAge / 1000,
+        });
+        if (!shouldInclude && contextMessages.length > 0) break;
+        contextMessages.push(m.content);
+        totalChars += len;
+      }
 
       for (const entity of respondingEntities) {
         if (entity.memoryScope !== "none") {
           const memories = await retrieveRelevantMemories(
             entity.id,
-            conversationContext,
+            contextMessages,
             entity.memoryScope as MemoryScope,
             channelId,
             guildId,
