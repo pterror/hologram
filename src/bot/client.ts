@@ -1140,7 +1140,6 @@ export async function sendResponse(
             entity.memoryScope as MemoryScope,
             channelId,
             guildId,
-            5 // limit
           );
           if (memories.length > 0) {
             entityMemories.set(entity.id, memories.map(m => ({ content: m.content })));

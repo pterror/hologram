@@ -338,7 +338,7 @@ export async function searchMemoriesBySimilarity(
   scope: MemoryScope,
   channelId?: string,
   guildId?: string,
-  limit: number = 5,
+  limit: number = 20,
   candidateLimit: number = 20
 ): Promise<Array<{ memory: Memory; similarity: number }>> {
   if (scope === "none") return [];
@@ -378,7 +378,7 @@ export async function retrieveRelevantMemories(
   scope: MemoryScope,
   channelId?: string,
   guildId?: string,
-  limit: number = 5
+  limit: number = 20
 ): Promise<Memory[]> {
   const results = await searchMemoriesBySimilarity(
     entityId,
