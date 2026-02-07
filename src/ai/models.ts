@@ -139,34 +139,35 @@ const GEMINI_25_BUDGET_MAP: Record<ThinkingLevel, number> = {
 
 /**
  * Build provider-specific `providerOptions` for thinking/reasoning.
- * Returns `undefined` when thinking is not explicitly configured (null level)
- * or when the provider has no known thinking support.
+ * Google models default to "minimal" to suppress their built-in thinking.
+ * Other providers only get thinking config when explicitly set via $thinking.
  */
 export function buildThinkingOptions(
   providerName: string,
   modelName: string,
   thinkingLevel: ThinkingLevel | null,
 ): Record<string, JSONObject> | undefined {
-  if (thinkingLevel == null) return undefined;
-
   switch (providerName) {
     case "google":
     case "google-vertex": {
+      const level = thinkingLevel ?? "minimal";
       const optionKey = providerName === "google-vertex" ? "vertex" : "google";
       // Gemini 2.5 uses thinkingBudget (token count), Gemini 3+ uses thinkingLevel (string)
       const isGemini25 = modelName.startsWith("gemini-2.5");
       const thinkingConfig = isGemini25
-        ? { thinkingBudget: GEMINI_25_BUDGET_MAP[thinkingLevel] }
-        : { thinkingLevel };
+        ? { thinkingBudget: GEMINI_25_BUDGET_MAP[level] }
+        : { thinkingLevel: level };
       return { [optionKey]: { thinkingConfig } };
     }
     case "anthropic":
+      if (thinkingLevel == null) return undefined;
       return {
         anthropic: {
           thinking: { type: "enabled", budgetTokens: 10_000 },
         },
       };
     case "openai":
+      if (thinkingLevel == null) return undefined;
       return {
         openai: {
           reasoningEffort: OPENAI_REASONING_MAP[thinkingLevel],
