@@ -129,6 +129,14 @@ const OPENAI_REASONING_MAP: Record<ThinkingLevel, string> = {
   high: "high",
 };
 
+/** Map abstract thinking levels to Gemini 2.5 thinkingBudget (token count) */
+const GEMINI_25_BUDGET_MAP: Record<ThinkingLevel, number> = {
+  minimal: 0,
+  low: 1024,
+  medium: 8192,
+  high: 24576,
+};
+
 /**
  * Build provider-specific `providerOptions` for thinking/reasoning.
  * Returns `undefined` when thinking is not explicitly configured (null level)
@@ -136,18 +144,22 @@ const OPENAI_REASONING_MAP: Record<ThinkingLevel, string> = {
  */
 export function buildThinkingOptions(
   providerName: string,
+  modelName: string,
   thinkingLevel: ThinkingLevel | null,
 ): Record<string, JSONObject> | undefined {
   if (thinkingLevel == null) return undefined;
 
   switch (providerName) {
     case "google":
-    case "google-vertex":
-      return {
-        [providerName === "google-vertex" ? "vertex" : "google"]: {
-          thinkingConfig: { thinkingLevel },
-        },
-      };
+    case "google-vertex": {
+      const optionKey = providerName === "google-vertex" ? "vertex" : "google";
+      // Gemini 2.5 uses thinkingBudget (token count), Gemini 3+ uses thinkingLevel (string)
+      const isGemini25 = modelName.startsWith("gemini-2.5");
+      const thinkingConfig = isGemini25
+        ? { thinkingBudget: GEMINI_25_BUDGET_MAP[thinkingLevel] }
+        : { thinkingLevel };
+      return { [optionKey]: { thinkingConfig } };
+    }
     case "anthropic":
       return {
         anthropic: {

@@ -62,7 +62,7 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
   let memoriesRemoved = 0;
 
   const modelSpec = evaluated[0]?.modelSpec ?? DEFAULT_MODEL;
-  const { providerName } = parseModelSpec(modelSpec);
+  const { providerName, modelName } = parseModelSpec(modelSpec);
   const thinkingLevel = evaluated[0]?.thinkingLevel;
 
   try {
@@ -72,7 +72,7 @@ export async function handleMessage(ctx: MessageContext): Promise<ResponseResult
     // Normalize messages for provider-specific restrictions (e.g., Google doesn't have system role)
     const normalizedMessages = normalizeMessagesForProvider(llmMessages, providerName);
 
-    const providerOptions = buildThinkingOptions(providerName, thinkingLevel);
+    const providerOptions = buildThinkingOptions(providerName, modelName, thinkingLevel);
 
     const result = await generateText({
       model,
