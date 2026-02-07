@@ -137,20 +137,30 @@ const GEMINI_25_BUDGET_MAP: Record<ThinkingLevel, number> = {
   high: 24576,
 };
 
+/** Map abstract thinking levels to Anthropic thinking budget (token count) */
+const ANTHROPIC_BUDGET_MAP: Record<ThinkingLevel, number> = {
+  minimal: 0,
+  low: 2048,
+  medium: 10_000,
+  high: 32_000,
+};
+
 /**
  * Build provider-specific `providerOptions` for thinking/reasoning.
- * Google models default to "minimal" to suppress their built-in thinking.
- * Other providers only get thinking config when explicitly set via $thinking.
+ * Defaults to "minimal" for all providers. For Google this actively suppresses
+ * built-in thinking; for Anthropic/OpenAI "minimal" means don't enable thinking
+ * (which is already their default state).
  */
 export function buildThinkingOptions(
   providerName: string,
   modelName: string,
   thinkingLevel: ThinkingLevel | null,
 ): Record<string, JSONObject> | undefined {
+  const level = thinkingLevel ?? "minimal";
+
   switch (providerName) {
     case "google":
     case "google-vertex": {
-      const level = thinkingLevel ?? "minimal";
       const optionKey = providerName === "google-vertex" ? "vertex" : "google";
       // Gemini 2.5 uses thinkingBudget (token count), Gemini 3+ uses thinkingLevel (string)
       const isGemini25 = modelName.startsWith("gemini-2.5");
@@ -159,20 +169,25 @@ export function buildThinkingOptions(
         : { thinkingLevel: level };
       return { [optionKey]: { thinkingConfig } };
     }
-    case "anthropic":
-      if (thinkingLevel == null) return undefined;
+    case "anthropic": {
+      // Anthropic thinking is off by default; "minimal" = don't enable
+      const budget = ANTHROPIC_BUDGET_MAP[level];
+      if (budget === 0) return undefined;
       return {
         anthropic: {
-          thinking: { type: "enabled", budgetTokens: 10_000 },
+          thinking: { type: "enabled", budgetTokens: budget },
         },
       };
-    case "openai":
-      if (thinkingLevel == null) return undefined;
+    }
+    case "openai": {
+      // OpenAI reasoning is off by default; "minimal" maps to "low"
+      if (level === "minimal") return undefined;
       return {
         openai: {
-          reasoningEffort: OPENAI_REASONING_MAP[thinkingLevel],
+          reasoningEffort: OPENAI_REASONING_MAP[level],
         },
       };
+    }
     default:
       return undefined;
   }
