@@ -1811,6 +1811,10 @@ async function handleInfoPrompt(ctx: CommandContext, options: Record<string, unk
   const entityInput = options.entity as string | undefined;
   const targetEntity = await resolveTargetEntity(ctx, entityInput, "prompt");
   if (!targetEntity) return;
+  if (!canUserView(targetEntity, ctx.userId, ctx.username, ctx.userRoles)) {
+    await respond(ctx.bot, ctx.interaction, "You don't have permission to view this entity", true);
+    return;
+  }
 
   // Fetch channel/server metadata for template context
   const channelMeta = await getChannelMetadata(ctx.channelId);
@@ -1833,6 +1837,10 @@ async function handleInfoContext(ctx: CommandContext, options: Record<string, un
   const entityInput = options.entity as string | undefined;
   const targetEntity = await resolveTargetEntity(ctx, entityInput, "context");
   if (!targetEntity) return;
+  if (!canUserView(targetEntity, ctx.userId, ctx.username, ctx.userRoles)) {
+    await respond(ctx.bot, ctx.interaction, "You don't have permission to view this entity", true);
+    return;
+  }
 
   // Fetch channel/server metadata for template context
   const channelMeta = await getChannelMetadata(ctx.channelId);
@@ -1856,6 +1864,10 @@ async function handleInfoRag(ctx: CommandContext, options: Record<string, unknow
   const query = options.query as string | undefined;
   const targetEntity = await resolveTargetEntity(ctx, entityInput, "rag");
   if (!targetEntity) return;
+  if (!canUserView(targetEntity, ctx.userId, ctx.username, ctx.userRoles)) {
+    await respond(ctx.bot, ctx.interaction, "You don't have permission to view this entity", true);
+    return;
+  }
 
   const lines: string[] = [];
 
