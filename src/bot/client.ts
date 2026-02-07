@@ -92,6 +92,9 @@ export const bot = createBot({
       channelId: true,
       guildId: true,
     },
+    messageSnapshot: {
+      message: true,
+    },
     sticker: {
       id: true,
       name: true,
@@ -308,11 +311,23 @@ bot.events.messageCreate = async (message) => {
   if (botUserId && message.author.id === botUserId) return;
   const hasEmbeds = (message.embeds?.length ?? 0) > 0;
   const hasAttachments = (message.attachments?.length ?? 0) > 0;
-  if (!message.content && !message.stickerItems?.length && !hasEmbeds && !hasAttachments) return;
+  const hasSnapshots = (message.messageSnapshots?.length ?? 0) > 0;
+  if (!message.content && !message.stickerItems?.length && !hasEmbeds && !hasAttachments && !hasSnapshots) return;
   if (!markProcessed(message.id)) return;
 
   // Store raw content — sticker/embed/attachment serialization happens at prompt time
-  const content = message.content ?? "";
+  // For forwarded messages, include snapshot content since Discord puts it in messageSnapshots, not content
+  let content = message.content ?? "";
+  if (hasSnapshots) {
+    const snapshotParts: string[] = [];
+    for (const snap of message.messageSnapshots!) {
+      if (snap.message.content) snapshotParts.push(snap.message.content);
+    }
+    if (snapshotParts.length > 0) {
+      const forwarded = snapshotParts.join("\n");
+      content = content ? `${content}\n${forwarded}` : forwarded;
+    }
+  }
 
   // mentionedUserIds is unreliable in Discordeno, parse from content as fallback
   const isBotMentioned = botUserId !== null && (
@@ -387,11 +402,15 @@ bot.events.messageCreate = async (message) => {
   });
 
   // Build structured message data blob
+  // Merge snapshot embeds/attachments/stickers with top-level ones (same Discordeno types)
+  const allEmbeds = [...(message.embeds ?? []), ...(message.messageSnapshots?.flatMap(s => s.message.embeds ?? []) ?? [])];
+  const allAttachments = [...(message.attachments ?? []), ...(message.messageSnapshots?.flatMap(s => s.message.attachments ?? []) ?? [])];
+  const allStickers = [...(message.stickerItems ?? []), ...(message.messageSnapshots?.flatMap(s => s.message.stickerItems ?? []) ?? [])];
   const isBot = !!message.author.toggles?.bot;
   const msgData: MessageData = {};
   if (isBot) msgData.is_bot = true;
-  if (hasEmbeds) {
-    msgData.embeds = message.embeds!.map(e => ({
+  if (allEmbeds.length > 0) {
+    msgData.embeds = allEmbeds.map(e => ({
       ...(e.title && { title: e.title }),
       ...(e.type && { type: e.type }),
       ...(e.description && { description: e.description }),
@@ -407,15 +426,15 @@ bot.events.messageCreate = async (message) => {
       ...(e.fields?.length && { fields: e.fields.map(f => ({ name: f.name, value: f.value, ...(f.inline != null && { inline: f.inline }) })) }),
     }));
   }
-  if (message.stickerItems?.length) {
-    msgData.stickers = message.stickerItems.map(s => ({
+  if (allStickers.length > 0) {
+    msgData.stickers = allStickers.map(s => ({
       id: s.id.toString(),
       name: s.name,
       format_type: s.formatType ?? 0,
     }));
   }
-  if (hasAttachments) {
-    msgData.attachments = message.attachments!.map(a => ({
+  if (allAttachments.length > 0) {
+    msgData.attachments = allAttachments.map(a => ({
       filename: a.filename ?? "unknown",
       url: a.url ?? "",
       ...(a.contentType && { content_type: a.contentType }),
