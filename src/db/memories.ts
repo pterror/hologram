@@ -26,6 +26,9 @@ export interface Memory {
 
 export type MemoryScope = "none" | "channel" | "guild" | "global";
 
+/** Minimum cosine similarity for a memory to be included in retrieval results */
+const MIN_SIMILARITY_THRESHOLD = 0.1;
+
 // =============================================================================
 // CRUD Operations
 // =============================================================================
@@ -360,9 +363,9 @@ export async function searchMemoriesBySimilarity(
     scored.push({ memory, similarity });
   }
 
-  // 4. Sort by similarity and return top results
+  // 4. Sort by similarity, filter below threshold, return top results
   scored.sort((a, b) => b.similarity - a.similarity);
-  return scored.slice(0, limit);
+  return scored.filter(s => s.similarity >= MIN_SIMILARITY_THRESHOLD).slice(0, limit);
 }
 
 /**
