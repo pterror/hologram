@@ -1,5 +1,5 @@
 import { streamText, stepCountIs } from "ai";
-import { getLanguageModel, DEFAULT_MODEL, InferenceError, parseModelSpec } from "./models";
+import { getLanguageModel, DEFAULT_MODEL, InferenceError, parseModelSpec, buildThinkingOptions } from "./models";
 import { debug, error } from "../logger";
 import {
   type EvaluatedEntity,
@@ -110,14 +110,7 @@ export async function* handleMessageStreaming(
     // Normalize messages for provider-specific restrictions (e.g., Google doesn't have system role)
     const normalizedMessages = normalizeMessagesForProvider(llmMessages, providerName);
 
-    // Build provider options (e.g., Google thinking config)
-    const providerOptions = providerName === "google" ? {
-      google: {
-        thinkingConfig: {
-          thinkingLevel: thinkingLevel ?? "minimal",
-        },
-      },
-    } : undefined;
+    const providerOptions = buildThinkingOptions(providerName, thinkingLevel);
 
     const result = streamText({
       model,

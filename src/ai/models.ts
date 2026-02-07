@@ -115,6 +115,57 @@ export function isModelAllowed(modelSpec: string): boolean {
 }
 
 // =============================================================================
+// Thinking / Reasoning
+// =============================================================================
+
+import type { JSONObject } from "@ai-sdk/provider";
+import type { ThinkingLevel } from "../logic/expr";
+
+/** Map abstract thinking levels to OpenAI reasoning effort */
+const OPENAI_REASONING_MAP: Record<ThinkingLevel, string> = {
+  minimal: "low",
+  low: "low",
+  medium: "medium",
+  high: "high",
+};
+
+/**
+ * Build provider-specific `providerOptions` for thinking/reasoning.
+ * Returns `undefined` when thinking is not explicitly configured (null level)
+ * or when the provider has no known thinking support.
+ */
+export function buildThinkingOptions(
+  providerName: string,
+  thinkingLevel: ThinkingLevel | null,
+): Record<string, JSONObject> | undefined {
+  if (thinkingLevel == null) return undefined;
+
+  switch (providerName) {
+    case "google":
+    case "google-vertex":
+      return {
+        [providerName === "google-vertex" ? "vertex" : "google"]: {
+          thinkingConfig: { thinkingLevel },
+        },
+      };
+    case "anthropic":
+      return {
+        anthropic: {
+          thinking: { type: "enabled", budgetTokens: 10_000 },
+        },
+      };
+    case "openai":
+      return {
+        openai: {
+          reasoningEffort: OPENAI_REASONING_MAP[thinkingLevel],
+        },
+      };
+    default:
+      return undefined;
+  }
+}
+
+// =============================================================================
 // Inference Error
 // =============================================================================
 
