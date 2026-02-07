@@ -137,11 +137,14 @@ export async function respondWithModal(
     placeholder?: string;
   }>
 ) {
+  // Discord modal titles are limited to 45 characters
+  const truncatedTitle = title.length > 45 ? title.slice(0, 42) + "..." : title;
+
   await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
     type: InteractionResponseTypes.Modal,
     data: {
       customId,
-      title,
+      title: truncatedTitle,
       components: components.map(c => {
         const textInput: TextInputComponent = {
           type: MessageComponentTypes.TextInput,
@@ -174,11 +177,13 @@ export async function respondWithV2Modal(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   labels: any[]
 ) {
+  const truncatedTitle = title.length > 45 ? title.slice(0, 42) + "..." : title;
+
   await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
     type: InteractionResponseTypes.Modal,
     data: {
       customId,
-      title,
+      title: truncatedTitle,
       components: labels,
     },
   });
