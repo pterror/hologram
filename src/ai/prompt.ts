@@ -17,6 +17,31 @@ import {
 } from "./context";
 
 // =============================================================================
+// Template-Safe Data Helpers
+// =============================================================================
+
+/** Add empty-string defaults for optional embed properties so templates can safely output them */
+function withEmbedDefaults(embeds: EmbedData[]): EmbedData[] {
+  return embeds.map(e => ({
+    title: "",
+    type: "",
+    description: "",
+    url: "",
+    ...e,
+  }));
+}
+
+/** Add empty-string defaults for optional attachment properties */
+function withAttachmentDefaults(attachments: AttachmentData[]): AttachmentData[] {
+  return attachments.map(a => ({
+    content_type: "",
+    title: "",
+    description: "",
+    ...a,
+  }));
+}
+
+// =============================================================================
 // JSON Serialization Helpers
 // =============================================================================
 
@@ -380,9 +405,9 @@ export function buildPromptAndMessages(
       content = applyStripPatterns(content, stripPatterns);
     }
 
-    const embeds = withToJSON(data?.embeds ?? []);
+    const embeds = withToJSON(withEmbedDefaults(data?.embeds ?? []));
     const stickers = withToJSON(data?.stickers ?? []);
-    const attachments = withToJSON(data?.attachments ?? []);
+    const attachments = withToJSON(withAttachmentDefaults(data?.attachments ?? []));
     const entry: HistoryEntry = {
       author: m.author_name,
       content,
