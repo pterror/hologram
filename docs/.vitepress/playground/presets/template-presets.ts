@@ -66,7 +66,7 @@ Other characters present:
 
 {% block history %}
 {% for msg in history %}
-{% call send_as(msg.role) -%}
+{% call send_as("assistant" if responders[msg.entity_id] else "user") -%}
   {{ msg.author }}: {{ msg.content }}
 {%- endcall %}
 {% endfor %}

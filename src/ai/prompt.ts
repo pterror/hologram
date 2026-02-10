@@ -368,7 +368,7 @@ export function buildPromptAndMessages(
     author_id: string;
     created_at: string;
     is_bot: boolean;
-    role: "user" | "assistant";
+    entity_id: number | null;
     embeds: EmbedData[] & { toJSON(): string };
     stickers: StickerData[] & { toJSON(): string };
     attachments: AttachmentData[] & { toJSON(): string };
@@ -380,8 +380,7 @@ export function buildPromptAndMessages(
 
   for (const m of rawHistory) {
     const data = parseMessageData(m.data);
-    const isEntity = !!m.discord_message_id && !!getWebhookMessageEntity(m.discord_message_id);
-    const role = isEntity ? "assistant" as const : "user" as const;
+    const webhookEntity = m.discord_message_id ? getWebhookMessageEntity(m.discord_message_id) : null;
 
     // Calculate char length for context expression
     const formattedContent = `${m.author_name}: ${m.content}`;
@@ -414,11 +413,11 @@ export function buildPromptAndMessages(
       author_id: m.author_id,
       created_at: m.created_at,
       is_bot: data?.is_bot ?? false,
-      role,
+      entity_id: webhookEntity?.entityId ?? null,
       embeds,
       stickers,
       attachments,
-      toJSON: () => JSON.stringify({ author: entry.author, content: entry.content, author_id: entry.author_id, created_at: entry.created_at, is_bot: entry.is_bot, role: entry.role, embeds: data?.embeds ?? [], stickers: data?.stickers ?? [], attachments: data?.attachments ?? [] }),
+      toJSON: () => JSON.stringify({ author: entry.author, content: entry.content, author_id: entry.author_id, created_at: entry.created_at, is_bot: entry.is_bot, entity_id: entry.entity_id, embeds: data?.embeds ?? [], stickers: data?.stickers ?? [], attachments: data?.attachments ?? [] }),
     };
     history.push(entry);
     totalChars += len;
@@ -465,6 +464,8 @@ export function buildPromptAndMessages(
   templateCtx.entity_names = respondingEntities.map(e => e.name).join(", ");
   templateCtx.freeform = respondingEntities.some(e => e.isFreeform);
   templateCtx.history = history;
+  const entityObjs = templateCtx.entities as Array<{ id: number; name: string; facts: string[] }>;
+  templateCtx.responders = Object.fromEntries(entityObjs.map(e => [e.id, e]));
   templateCtx._single_entity = isSingleEntity;
 
   // Evaluation metadata (computed during fact evaluation, available to templates)

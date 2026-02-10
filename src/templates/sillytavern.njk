@@ -56,7 +56,7 @@ Not everyone needs to respond to every message. Only respond as those who would 
   {{- "\n" -}}
   {% for msg in history %}
     {{- "\n" if not loop.first -}}
-    {% call send_as(msg.role) -%}
+    {% call send_as("assistant" if responders[msg.entity_id] else "user") -%}
       {{ msg.author }}: {{ msg.content }}
     {%- endcall %}
   {% endfor %}

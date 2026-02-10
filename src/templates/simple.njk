@@ -20,7 +20,7 @@ Write the next reply in a fictional chat between {{char}} and {{user}}.
 
 [Start a New Chat]
 {% for msg in history %}
-{% call send_as(msg.role) %}
+{% call send_as("assistant" if responders[msg.entity_id] else "user") %}
 {{ msg.author }}: {{ msg.content }}
 {% endcall %}
 {% endfor %}

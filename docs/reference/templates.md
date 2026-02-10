@@ -173,7 +173,7 @@ You are {{ entities[0].name }}.
 
 {#- History (send_as → proper roles) -#}
 {% for msg in history %}
-{% call send_as(msg.role) -%}
+{% call send_as("assistant" if responders[msg.entity_id] else "user") -%}
 {{ msg.author }}: {{ msg.content }}
 {%- endcall %}
 {% endfor %}
@@ -217,7 +217,7 @@ This controls the AI SDK `system` parameter — the top-level system instruction
 
 ### Full Prompt Control
 
-Templates produce structured message arrays using `send_as` for role designation. Unmarked text becomes system-role messages. The built-in default template uses `send_as(msg.role)` for history and unmarked text for entity definitions.
+Templates produce structured message arrays using `send_as` for role designation. Unmarked text becomes system-role messages. The built-in default template uses `responders[msg.entity_id]` to assign `assistant` role only to responding entities, and `user` role to everything else.
 
 ```
 {#- Unmarked text → system-role message -#}
@@ -225,7 +225,7 @@ You are {{ entities[0].name }}.
 {{ entities[0].facts }}
 {#- History → proper roles via send_as -#}
 {% for msg in history %}
-{% call send_as(msg.role) -%}
+{% call send_as("assistant" if responders[msg.entity_id] else "user") -%}
 {{ msg.author }}: {{ msg.content }}
 {%- endcall %}
 {% endfor %}
@@ -275,7 +275,7 @@ Write naturally with all characters.
 
 {# Message history with proper roles via send_as #}
 {% for msg in history %}
-{% call send_as(msg.role) -%}
+{% call send_as("assistant" if responders[msg.entity_id] else "user") -%}
 {{ msg.author }}: {{ msg.content }}
 {%- endcall %}
 {% endfor %}

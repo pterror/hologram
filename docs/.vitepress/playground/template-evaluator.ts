@@ -66,7 +66,7 @@ export function evaluateTemplate(input: TemplateInput): TemplateEvalResult {
     const history = input.history.map(msg => ({
       author: msg.author,
       content: msg.content,
-      role: msg.role,
+      entity_id: msg.role === 'assistant' ? (entities.find(e => e.name === msg.author)?.id ?? null) : null,
       author_id: '0',
       created_at: new Date().toISOString(),
       is_bot: msg.role === 'assistant',
@@ -90,6 +90,7 @@ export function evaluateTemplate(input: TemplateInput): TemplateEvalResult {
       entity_names: entities.map(e => e.name).join(', '),
       freeform: input.freeform,
       history,
+      responders: Object.fromEntries(entities.map(e => [e.id, e])),
       char,
       user,
       _single_entity: entities.length === 1,
