@@ -110,7 +110,7 @@ The `history` variable provides the raw message history as structured objects:
 | `author_id` | `string` | Discord user ID of the author |
 | `created_at` | `string` | ISO timestamp of the message |
 | `is_bot` | `boolean` | Whether the author is a Discord bot |
-| `role` | `"user" \| "assistant"` | `"assistant"` for entity messages, `"user"` for human messages |
+| `entity_id` | `number \| null` | Entity ID if sent by a responding entity, null otherwise. Use `responders[msg.entity_id]` to determine message role. |
 | `embeds` | `EmbedData[]` | Discord embed data (see below) |
 | `stickers` | `Array<{id, name, format_type}>` | Sticker data (format_type: 1=PNG, 2=APNG, 3=Lottie, 4=GIF) |
 | `attachments` | `AttachmentData[]` | File attachments (see below) |
