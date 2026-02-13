@@ -439,8 +439,12 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
       results = results.slice(0, 25);
     }
   } else if (commandName === "bind") {
-    // Bind needs edit permission (channel/server binds) OR use permission (persona binds)
-    // Since target isn't always known at autocomplete time, show the union
+    // Check if target is already selected to filter more precisely
+    const options = interaction.data?.options ?? [];
+    const targetOption = options.find((o: { name: string }) => o.name === "target");
+    const target = targetOption?.value as string | undefined;
+    const isPersonaTarget = target?.startsWith("me:");
+
     const allResults = searchEntities(query, 100);
     const entitiesWithFacts = getEntitiesWithFacts(allResults.map(e => e.id));
 
@@ -451,10 +455,14 @@ async function handleAutocomplete(bot: Bot, interaction: Interaction) {
       const facts = entityWithFacts.facts.map(f => f.content);
       const permissions = parsePermissionDirectives(facts, getPermissionDefaults(entity.id));
       if (isUserBlacklisted(permissions, userId, username, entity.owned_by, userRoles)) return false;
-      // Check edit OR use permission
+
+      if (isPersonaTarget) {
+        // Persona bind: check use permission
+        return isUserAllowed(permissions, userId, username, entity.owned_by, userRoles);
+      }
+      // Channel/server bind (or target not yet selected): check edit permission
       if (permissions.editList === "@everyone") return true;
       if (permissions.editList?.some(u => matchesUserEntry(u, userId, username, userRoles))) return true;
-      if (isUserAllowed(permissions, userId, username, entity.owned_by, userRoles)) return true;
       return false;
     }).slice(0, 25);
   } else if (commandName === "edit") {
