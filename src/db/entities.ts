@@ -2,6 +2,13 @@ import { getDb } from "./index";
 import { getActiveEffectFacts } from "./effects";
 import type { EvaluatedFactsDefaults, MemoryScope, ThinkingLevel } from "../logic/expr";
 
+/** Parse JSON with a fallback value on failure (handles corrupted DB data) */
+function safeParseFallback<T>(json: string | null, fallback: T): T {
+  if (!json) return fallback;
+  try { return JSON.parse(json) as T; }
+  catch { return fallback; }
+}
+
 // =============================================================================
 // Entity Operations
 // =============================================================================
@@ -137,10 +144,10 @@ export function getPermissionDefaults(entityId: number): {
   const config = getEntityConfig(entityId);
   if (!config) return { editList: null, viewList: null, useList: null, blacklist: [] };
   return {
-    editList: config.config_edit ? JSON.parse(config.config_edit) : null,
-    viewList: config.config_view ? JSON.parse(config.config_view) : null,
-    useList: config.config_use ? JSON.parse(config.config_use) : null,
-    blacklist: config.config_blacklist ? JSON.parse(config.config_blacklist) : [],
+    editList: safeParseFallback<string[] | "@everyone" | null>(config.config_edit, null),
+    viewList: safeParseFallback<string[] | "@everyone" | null>(config.config_view, null),
+    useList: safeParseFallback<string[] | "@everyone" | null>(config.config_use, null),
+    blacklist: safeParseFallback<string[]>(config.config_blacklist, []),
   };
 }
 
@@ -153,10 +160,10 @@ export function getEntityEvalDefaults(entityId: number): EvaluatedFactsDefaults 
     modelSpec: config.config_model,
     avatarUrl: config.config_avatar,
     streamMode: config.config_stream_mode as "lines" | "full" | null,
-    streamDelimiter: config.config_stream_delimiters ? JSON.parse(config.config_stream_delimiters) : null,
+    streamDelimiter: safeParseFallback(config.config_stream_delimiters, null),
     memoryScope: (config.config_memory as MemoryScope) ?? "none",
     isFreeform: !!config.config_freeform,
-    stripPatterns: config.config_strip ? JSON.parse(config.config_strip) : null,
+    stripPatterns: safeParseFallback(config.config_strip, null),
     shouldRespond: config.config_respond === "true" ? true : config.config_respond === "false" ? false : null,
     thinkingLevel: config.config_thinking as ThinkingLevel | null,
   };

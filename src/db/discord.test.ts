@@ -32,6 +32,7 @@ import {
   getFilteredMessages,
   updateMessageByDiscordId,
   deleteMessageByDiscordId,
+  mergeMessageData,
   clearMessages,
   formatMessagesForContext,
   countUnreadMessages,
@@ -950,6 +951,34 @@ describe("updateMessageByDiscordId", () => {
     const data = parseMessageData(messages[0].data);
     expect(data!.is_bot).toBe(true);
     expect(data!.embeds![0].title).toBe("E");
+  });
+});
+
+describe("mergeMessageData", () => {
+  beforeEach(() => {
+    testDb = new Database(":memory:");
+    createTestSchema(testDb);
+  });
+
+  test("merges embed data without overwriting content", () => {
+    addMessage("chan-1", "u1", "Alice", "original content", "msg-1");
+    mergeMessageData("msg-1", { embeds: [{ title: "Embed Title", description: "desc" }] });
+    const messages = getMessages("chan-1");
+    expect(messages[0].content).toBe("original content");
+    const data = parseMessageData(messages[0].data);
+    expect(data!.embeds![0].title).toBe("Embed Title");
+  });
+
+  test("merges with existing data preserving other fields", () => {
+    addMessage("chan-1", "u1", "Alice", "text", "msg-1", { is_bot: true });
+    mergeMessageData("msg-1", { embeds: [{ title: "E" }] });
+    const data = parseMessageData(getMessages("chan-1")[0].data);
+    expect(data!.is_bot).toBe(true);
+    expect(data!.embeds![0].title).toBe("E");
+  });
+
+  test("returns false for missing message", () => {
+    expect(mergeMessageData("nonexistent", { embeds: [] })).toBe(false);
   });
 });
 

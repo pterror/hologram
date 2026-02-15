@@ -512,6 +512,27 @@ export function updateMessageByDiscordId(
   return result.changes > 0;
 }
 
+/**
+ * Merge new data into an existing message without touching content.
+ * Used for embed-only MESSAGE_UPDATE events where content is unchanged.
+ */
+export function mergeMessageData(
+  discordMessageId: string,
+  newData: MessageData
+): boolean {
+  const db = getDb();
+  const existing = db.prepare(`
+    SELECT data FROM messages WHERE discord_message_id = ?
+  `).get(discordMessageId) as { data: string | null } | undefined;
+  if (!existing) return false;
+  const existingData = existing.data ? parseMessageData(existing.data) : {};
+  const mergedData = { ...existingData, ...newData };
+  const result = db.prepare(`
+    UPDATE messages SET data = ? WHERE discord_message_id = ?
+  `).run(JSON.stringify(mergedData), discordMessageId);
+  return result.changes > 0;
+}
+
 export function deleteMessageByDiscordId(discordMessageId: string): boolean {
   const db = getDb();
   const result = db.prepare(`

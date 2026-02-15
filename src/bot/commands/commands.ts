@@ -583,8 +583,13 @@ registerCommand({
       if (config?.config_stream_mode) {
         streamDisplay = config.config_stream_mode;
         if (config.config_stream_delimiters) {
-          const delims = JSON.parse(config.config_stream_delimiters) as string[];
-          streamDisplay += " " + delims.map(d => `"${d}"`).join(" ");
+          try {
+            const delims = JSON.parse(config.config_stream_delimiters) as string[];
+            streamDisplay += " " + delims.map(d => `"${d}"`).join(" ");
+          } catch {
+            // Corrupted delimiter data — show raw value for manual fix
+            streamDisplay += " " + config.config_stream_delimiters;
+          }
         }
       }
 

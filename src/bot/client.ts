@@ -1,4 +1,6 @@
 import { createBot, Intents } from "@discordeno/bot";
+import type { DiscordMessage, DiscordEmbed } from "@discordeno/types";
+import type { EmbedData } from "../db/discord";
 import { info, debug, warn, error } from "../logger";
 import { registerCommands, handleInteraction } from "./commands";
 import { handleMessage } from "../ai/handler";
@@ -7,7 +9,7 @@ import { InferenceError } from "../ai/models";
 import type { EvaluatedEntity } from "../ai/context";
 import { isModelAllowed } from "../ai/models";
 import { retrieveRelevantMemories, type MemoryScope } from "../db/memories";
-import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, updateMessageByDiscordId, deleteMessageByDiscordId, trackWebhookMessage, getWebhookMessageEntity, getMessages, getFilteredMessages, formatMessagesForContext, recordEvalError, isOurWebhookUserId, countUnreadMessages, type MessageData } from "../db/discord";
+import { resolveDiscordEntity, resolveDiscordEntities, isNewUser, markUserWelcomed, addMessage, updateMessageByDiscordId, mergeMessageData, deleteMessageByDiscordId, trackWebhookMessage, getWebhookMessageEntity, getMessages, getFilteredMessages, formatMessagesForContext, recordEvalError, isOurWebhookUserId, countUnreadMessages, type MessageData } from "../db/discord";
 import { getEntity, getEntityWithFacts, getEntityConfig, getSystemEntity, getFactsForEntity, type EntityWithFacts } from "../db/entities";
 import { evaluateFacts, createBaseContext, parsePermissionDirectives, isUserBlacklisted, isUserAllowed, compileContextExpr, ExprError, type EvaluatedFactsDefaults, type PermissionDefaults } from "../logic/expr";
 import { DEFAULT_CONTEXT_EXPR } from "../ai/context";
@@ -155,6 +157,44 @@ function channelTypeString(type: number): string {
   }
 }
 
+/** Serialize a Discordeno Embed to our compact storage format */
+function serializeEmbed(e: { title?: string; type?: string; description?: string; url?: string; timestamp?: number; color?: number; footer?: { text: string; iconUrl?: string }; image?: { url: string; height?: number; width?: number }; thumbnail?: { url: string; height?: number; width?: number }; video?: { url?: string; height?: number; width?: number }; provider?: { name?: string; url?: string }; author?: { name: string; url?: string; iconUrl?: string }; fields?: Array<{ name: string; value: string; inline?: boolean }> }): EmbedData {
+  return {
+    ...(e.title && { title: e.title }),
+    ...(e.type && { type: e.type }),
+    ...(e.description && { description: e.description }),
+    ...(e.url && { url: e.url }),
+    ...(e.timestamp && { timestamp: e.timestamp }),
+    ...(e.color != null && { color: e.color }),
+    ...(e.footer && { footer: { text: e.footer.text, ...(e.footer.iconUrl && { icon_url: e.footer.iconUrl }) } }),
+    ...(e.image && { image: { url: e.image.url, ...(e.image.height != null && { height: e.image.height }), ...(e.image.width != null && { width: e.image.width }) } }),
+    ...(e.thumbnail && { thumbnail: { url: e.thumbnail.url, ...(e.thumbnail.height != null && { height: e.thumbnail.height }), ...(e.thumbnail.width != null && { width: e.thumbnail.width }) } }),
+    ...(e.video && { video: { ...(e.video.url && { url: e.video.url }), ...(e.video.height != null && { height: e.video.height }), ...(e.video.width != null && { width: e.video.width }) } }),
+    ...(e.provider && { provider: { ...(e.provider.name && { name: e.provider.name }), ...(e.provider.url && { url: e.provider.url }) } }),
+    ...(e.author && { author: { name: e.author.name, ...(e.author.url && { url: e.author.url }), ...(e.author.iconUrl && { icon_url: e.author.iconUrl }) } }),
+    ...(e.fields?.length && { fields: e.fields.map(f => ({ name: f.name, value: f.value, ...(f.inline != null && { inline: f.inline }) })) }),
+  };
+}
+
+/** Serialize a raw Discord API embed (snake_case) to our storage format */
+function serializeDiscordEmbed(e: DiscordEmbed): EmbedData {
+  return {
+    ...(e.title && { title: e.title }),
+    ...(e.type && { type: e.type }),
+    ...(e.description && { description: e.description }),
+    ...(e.url && { url: e.url }),
+    ...(e.timestamp && { timestamp: Date.parse(e.timestamp) }),
+    ...(e.color != null && { color: e.color }),
+    ...(e.footer && { footer: { text: e.footer.text, ...(e.footer.icon_url && { icon_url: e.footer.icon_url }) } }),
+    ...(e.image && { image: { url: e.image.url, ...(e.image.height != null && { height: e.image.height }), ...(e.image.width != null && { width: e.image.width }) } }),
+    ...(e.thumbnail && { thumbnail: { url: e.thumbnail.url, ...(e.thumbnail.height != null && { height: e.thumbnail.height }), ...(e.thumbnail.width != null && { width: e.thumbnail.width }) } }),
+    ...(e.video && { video: { ...(e.video.url && { url: e.video.url }), ...(e.video.height != null && { height: e.video.height }), ...(e.video.width != null && { width: e.video.width }) } }),
+    ...(e.provider && { provider: { ...(e.provider.name && { name: e.provider.name }), ...(e.provider.url && { url: e.provider.url }) } }),
+    ...(e.author && { author: { name: e.author.name, ...(e.author.url && { url: e.author.url }), ...(e.author.icon_url && { icon_url: e.author.icon_url }) } }),
+    ...(e.fields?.length && { fields: e.fields.map(f => ({ name: f.name, value: f.value, ...(f.inline != null && { inline: f.inline }) })) }),
+  };
+}
+
 /** Map GuildNsfwLevel enum to string */
 function guildNsfwLevelString(level: number): string {
   switch (level) {
@@ -219,6 +259,13 @@ const MAX_RESPONSE_CHAIN = process.env.MAX_RESPONSE_CHAIN
 // Pending retry timers per channel:entity
 const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+/** Parse JSON with a fallback value on failure (handles corrupted DB data) */
+function safeJsonParse<T>(json: string | null, fallback: T): T {
+  if (!json) return fallback;
+  try { return JSON.parse(json) as T; }
+  catch { return fallback; }
+}
+
 /** Convert entity config columns to evaluateFacts defaults */
 function configToDefaults(config: EntityConfig | null): EvaluatedFactsDefaults {
   if (!config) return {};
@@ -227,10 +274,10 @@ function configToDefaults(config: EntityConfig | null): EvaluatedFactsDefaults {
     modelSpec: config.config_model,
     avatarUrl: config.config_avatar,
     streamMode: config.config_stream_mode as "lines" | "full" | null,
-    streamDelimiter: config.config_stream_delimiters ? JSON.parse(config.config_stream_delimiters) : null,
+    streamDelimiter: safeJsonParse(config.config_stream_delimiters, null),
     memoryScope: (config.config_memory as "none" | "channel" | "guild" | "global") ?? "none",
     isFreeform: !!config.config_freeform,
-    stripPatterns: config.config_strip ? JSON.parse(config.config_strip) : null,
+    stripPatterns: safeJsonParse(config.config_strip, null),
     shouldRespond: config.config_respond === "true" ? true : config.config_respond === "false" ? false : null,
     thinkingLevel: config.config_thinking as import("../logic/expr").ThinkingLevel | null,
   };
@@ -240,10 +287,10 @@ function configToDefaults(config: EntityConfig | null): EvaluatedFactsDefaults {
 function configToPermissionDefaults(config: EntityConfig | null): PermissionDefaults {
   if (!config) return {};
   return {
-    editList: config.config_edit ? JSON.parse(config.config_edit) : null,
-    viewList: config.config_view ? JSON.parse(config.config_view) : null,
-    useList: config.config_use ? JSON.parse(config.config_use) : null,
-    blacklist: config.config_blacklist ? JSON.parse(config.config_blacklist) : [],
+    editList: safeJsonParse(config.config_edit, null),
+    viewList: safeJsonParse(config.config_view, null),
+    useList: safeJsonParse(config.config_use, null),
+    blacklist: safeJsonParse(config.config_blacklist, []),
   };
 }
 
@@ -412,21 +459,7 @@ bot.events.messageCreate = async (message) => {
   if (isBot) msgData.is_bot = true;
   if (isForward) msgData.is_forward = true;
   if (allEmbeds.length > 0) {
-    msgData.embeds = allEmbeds.map(e => ({
-      ...(e.title && { title: e.title }),
-      ...(e.type && { type: e.type }),
-      ...(e.description && { description: e.description }),
-      ...(e.url && { url: e.url }),
-      ...(e.timestamp && { timestamp: e.timestamp }),
-      ...(e.color != null && { color: e.color }),
-      ...(e.footer && { footer: { text: e.footer.text, ...(e.footer.iconUrl && { icon_url: e.footer.iconUrl }) } }),
-      ...(e.image && { image: { url: e.image.url, ...(e.image.height != null && { height: e.image.height }), ...(e.image.width != null && { width: e.image.width }) } }),
-      ...(e.thumbnail && { thumbnail: { url: e.thumbnail.url, ...(e.thumbnail.height != null && { height: e.thumbnail.height }), ...(e.thumbnail.width != null && { width: e.thumbnail.width }) } }),
-      ...(e.video && { video: { ...(e.video.url && { url: e.video.url }), ...(e.video.height != null && { height: e.video.height }), ...(e.video.width != null && { width: e.video.width }) } }),
-      ...(e.provider && { provider: { ...(e.provider.name && { name: e.provider.name }), ...(e.provider.url && { url: e.provider.url }) } }),
-      ...(e.author && { author: { name: e.author.name, ...(e.author.url && { url: e.author.url }), ...(e.author.iconUrl && { icon_url: e.author.iconUrl }) } }),
-      ...(e.fields?.length && { fields: e.fields.map(f => ({ name: f.name, value: f.value, ...(f.inline != null && { inline: f.inline }) })) }),
-    }));
+    msgData.embeds = allEmbeds.map(serializeEmbed);
   }
   if (allStickers.length > 0) {
     msgData.stickers = allStickers.map(s => ({
@@ -1475,27 +1508,11 @@ bot.events.messageUpdate = async (message) => {
   // Skip own webhook messages
   if (isOwnWebhookMessage(discordMessageId)) return;
 
-  // Build updated data blob if embeds arrived (common for URL previews)
+  // Build updated data blob if embeds arrived
   const hasEmbeds = (message.embeds?.length ?? 0) > 0;
   let newData: MessageData | undefined;
   if (hasEmbeds) {
-    newData = {
-      embeds: message.embeds!.map(e => ({
-        ...(e.title && { title: e.title }),
-        ...(e.type && { type: e.type }),
-        ...(e.description && { description: e.description }),
-        ...(e.url && { url: e.url }),
-        ...(e.timestamp && { timestamp: e.timestamp }),
-        ...(e.color != null && { color: e.color }),
-        ...(e.footer && { footer: { text: e.footer.text, ...(e.footer.iconUrl && { icon_url: e.footer.iconUrl }) } }),
-        ...(e.image && { image: { url: e.image.url, ...(e.image.height != null && { height: e.image.height }), ...(e.image.width != null && { width: e.image.width }) } }),
-        ...(e.thumbnail && { thumbnail: { url: e.thumbnail.url, ...(e.thumbnail.height != null && { height: e.thumbnail.height }), ...(e.thumbnail.width != null && { width: e.thumbnail.width }) } }),
-        ...(e.video && { video: { ...(e.video.url && { url: e.video.url }), ...(e.video.height != null && { height: e.video.height }), ...(e.video.width != null && { width: e.video.width }) } }),
-        ...(e.provider && { provider: { ...(e.provider.name && { name: e.provider.name }), ...(e.provider.url && { url: e.provider.url }) } }),
-        ...(e.author && { author: { name: e.author.name, ...(e.author.url && { url: e.author.url }), ...(e.author.iconUrl && { icon_url: e.author.iconUrl }) } }),
-        ...(e.fields?.length && { fields: e.fields.map(f => ({ name: f.name, value: f.value, ...(f.inline != null && { inline: f.inline }) })) }),
-      })),
-    };
+    newData = { embeds: message.embeds!.map(serializeEmbed) };
   }
 
   // Skip if no content and no embeds to update
@@ -1522,6 +1539,33 @@ bot.events.messageDelete = async (payload) => {
 
 bot.events.interactionCreate = async (interaction) => {
   await handleInteraction(bot, interaction);
+};
+
+// Override MESSAGE_UPDATE gateway handler to also capture embed-only updates.
+// Discordeno's default handler filters out events without edited_timestamp,
+// which silently drops embeds added by Discord (URL previews, late bot embeds).
+const origMessageUpdateHandler = bot.handlers.MESSAGE_UPDATE;
+bot.handlers.MESSAGE_UPDATE = (bot, data, shardId) => {
+  const payload = data.d as DiscordMessage;
+
+  // If it has edited_timestamp, use the default handler (handles full edits)
+  if (payload.edited_timestamp) {
+    return origMessageUpdateHandler(bot, data, shardId);
+  }
+
+  // For non-edit updates: capture embed data directly from the raw payload
+  if (payload.embeds?.length && payload.id) {
+    const messageId = payload.id;
+    if (isOwnWebhookMessage(messageId)) return;
+
+    const serialized = payload.embeds.map(serializeDiscordEmbed);
+    if (serialized.length > 0) {
+      const updated = mergeMessageData(messageId, { embeds: serialized });
+      if (updated) {
+        debug("Embed-only update captured", { messageId, embedCount: serialized.length });
+      }
+    }
+  }
 };
 
 export async function startBot() {
