@@ -161,20 +161,23 @@ All history entries and their `embeds`, `stickers`, `attachments`, and `componen
 
 #### Component Fields (Components v2)
 
-Bots using Discord's Components v2 system (`flags: 32768`) send visual content via a recursive component tree instead of embeds. The raw component data is stored as-is from the gateway.
+Bots using Discord's Components v2 system (`flags: 32768`) send visual content via a recursive component tree instead of embeds. Component data is stored in camelCase matching the Discordeno transformer output.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `type` | `number` | Component type (9=Section, 10=TextDisplay, 12=MediaGallery, 14=Separator, 17=Container, etc.) |
 | `content` | `string?` | Text content (for TextDisplay) |
 | `components` | `DiscordComponentData[]?` | Nested child components |
-| `items` | `DiscordComponentData[]?` | Items array (for MediaGallery, etc.) |
+| `items` | `Array<{media?, description?, spoiler?}>?` | Items array (for MediaGallery) |
 | `media` | `{url}?` | Media reference |
-| `accent_color` | `number?` | Container accent color |
+| `accessory` | `DiscordComponentData?` | Accessory component (for Section) |
+| `accentColor` | `number?` | Container accent color |
 | `spoiler` | `boolean?` | Whether content is spoilered |
 | `label` | `string?` | Button/option label |
 | `url` | `string?` | Link URL |
 | `style` | `number?` | Button style |
+| `divider` | `boolean?` | Show divider line (for Separator) |
+| `spacing` | `number?` | Spacing size (for Separator) |
 
 Components are best accessed via `toJSON()` since the structure is recursive and varies by type.
 

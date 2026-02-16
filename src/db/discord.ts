@@ -458,26 +458,32 @@ export interface AttachmentData {
   duration_secs?: number;
 }
 
-/** Raw Discord component data (recursive, matches gateway snake_case format) */
+/** Discord component data (recursive, matches Discordeno's camelCase transformer output) */
 export interface DiscordComponentData {
   type: number;
   id?: number;
   content?: string;
-  accent_color?: number;
+  accentColor?: number;
   spoiler?: boolean;
   components?: DiscordComponentData[];
-  items?: DiscordComponentData[];
+  items?: Array<{ media?: { url: string }; description?: string; spoiler?: boolean }>;
   media?: { url: string };
+  accessory?: DiscordComponentData;
   description?: string;
   url?: string;
   label?: string;
   style?: number;
-  custom_id?: string;
+  customId?: string;
   disabled?: boolean;
   emoji?: { id?: string; name?: string; animated?: boolean };
+  divider?: boolean;
+  spacing?: number;
+  file?: { url: string };
+  name?: string;
+  size?: number;
   placeholder?: string;
-  min_values?: number;
-  max_values?: number;
+  minValues?: number;
+  maxValues?: number;
   options?: Array<{ label: string; value: string; description?: string; emoji?: { id?: string; name?: string; animated?: boolean }; default?: boolean }>;
 }
 
