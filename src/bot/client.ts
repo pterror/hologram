@@ -360,7 +360,9 @@ bot.events.messageCreate = async (message) => {
   const hasEmbeds = (message.embeds?.length ?? 0) > 0;
   const hasAttachments = (message.attachments?.length ?? 0) > 0;
   const hasSnapshots = (message.messageSnapshots?.length ?? 0) > 0;
-  if (!message.content && !message.stickerItems?.length && !hasEmbeds && !hasAttachments && !hasSnapshots) return;
+  const isBot = !!message.author.toggles?.bot;
+  // Always store bot messages — embeds often arrive late via MESSAGE_UPDATE
+  if (!isBot && !message.content && !message.stickerItems?.length && !hasEmbeds && !hasAttachments && !hasSnapshots) return;
   if (!markProcessed(message.id)) return;
 
   // Store raw content — sticker/embed/attachment serialization happens at prompt time
@@ -454,7 +456,6 @@ bot.events.messageCreate = async (message) => {
   const allEmbeds = [...(message.embeds ?? []), ...(message.messageSnapshots?.flatMap(s => s.message.embeds ?? []) ?? [])];
   const allAttachments = [...(message.attachments ?? []), ...(message.messageSnapshots?.flatMap(s => s.message.attachments ?? []) ?? [])];
   const allStickers = [...(message.stickerItems ?? []), ...(message.messageSnapshots?.flatMap(s => s.message.stickerItems ?? []) ?? [])];
-  const isBot = !!message.author.toggles?.bot;
   const msgData: MessageData = {};
   if (isBot) msgData.is_bot = true;
   if (isForward) msgData.is_forward = true;
