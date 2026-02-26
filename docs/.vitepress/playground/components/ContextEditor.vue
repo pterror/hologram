@@ -6,6 +6,7 @@ export interface ContextValues {
   replied: boolean
   is_forward: boolean
   is_self: boolean
+  is_hologram: boolean
   content: string
   author: string
   name: string
@@ -72,6 +73,14 @@ function update(field: keyof ContextValues, value: unknown) {
           @change="update('is_self', ($event.target as HTMLInputElement).checked)"
         />
         <label>is_self</label>
+      </div>
+      <div class="context-field context-field-toggle">
+        <input
+          type="checkbox"
+          :checked="modelValue.is_hologram"
+          @change="update('is_hologram', ($event.target as HTMLInputElement).checked)"
+        />
+        <label>is_hologram</label>
       </div>
       <div class="context-field">
         <label>content</label>

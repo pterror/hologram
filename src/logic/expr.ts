@@ -68,6 +68,8 @@ export interface ExprContext {
   is_forward: boolean;
   /** Whether the message is from this entity's own webhook (self-triggered) */
   is_self: boolean;
+  /** Whether the message is from any hologram entity (our webhook) */
+  is_hologram: boolean;
   /** Check if a name is mentioned in dialogue (excludes XML tags like <Name>) */
   mentioned_in_dialogue: (name: string) => boolean;
   /** Message content (alias for messages(1, "%m")) */
@@ -511,6 +513,7 @@ const EXPR_CONTEXT_REFERENCE: ExprContext = {
   replied_to: "",
   is_forward: false,
   is_self: false,
+  is_hologram: false,
   mentioned_in_dialogue: () => false,
   content: "",
   author: "",
@@ -1993,6 +1996,8 @@ export interface BaseContextOptions {
   is_forward: boolean;
   /** Whether the message is from this entity's own webhook */
   is_self: boolean;
+  /** Whether the message is from any hologram entity (our webhook) */
+  is_hologram: boolean;
   interaction_type: string;
   /** This entity's name */
   name: string;
@@ -2072,6 +2077,7 @@ export function createBaseContext(options: BaseContextOptions): ExprContext {
     replied_to: options.replied_to,
     is_forward: options.is_forward,
     is_self: options.is_self,
+    is_hologram: options.is_hologram,
     mentioned_in_dialogue: (name: string) => checkMentionedInDialogue(messages(1, "%m"), name),
     content: messages(1, "%m"),
     author: messages(1, "%a"),

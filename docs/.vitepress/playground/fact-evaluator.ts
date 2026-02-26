@@ -13,6 +13,7 @@ export interface FactContextOverrides {
   replied?: boolean
   is_forward?: boolean
   is_self?: boolean
+  is_hologram?: boolean
   content?: string
   author?: string
   name?: string
@@ -63,6 +64,7 @@ export function evaluateFactsInBrowser(
       replied_to: '',
       is_forward: overrides.is_forward ?? false,
       is_self: overrides.is_self ?? false,
+      is_hologram: overrides.is_hologram ?? false,
       interaction_type: '',
       name: overrides.name ?? 'Entity',
       chars: overrides.chars ?? ['Entity'],

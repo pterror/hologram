@@ -108,6 +108,7 @@ export function evaluateTemplate(input: TemplateInput): TemplateEvalResult {
       replied: false,
       is_forward: false,
       is_self: false,
+      is_hologram: false,
       content: history.length > 0 ? history[history.length - 1].content : '',
       author: history.length > 0 ? history[history.length - 1].author : '',
       time: { hour, is_day: hour >= 6 && hour < 18, is_night: hour < 6 || hour >= 18 },

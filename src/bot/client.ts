@@ -633,17 +633,14 @@ bot.events.messageCreate = async (message) => {
 
   // Track response chain depth to prevent infinite self-response loops
   const isWebhookMessage = !!message.webhookId;
-  if (isWebhookMessage) {
-    // Check if this is one of our own webhook messages (in-memory first, then DB)
-    const msgId = message.id.toString();
-    if (isOwnWebhookMessage(msgId)) {
-      // This is our own webhook - increment chain depth
-      const depth = (responseChainDepth.get(channelId) ?? 0) + 1;
-      responseChainDepth.set(channelId, depth);
-      if (MAX_RESPONSE_CHAIN > 0 && depth > MAX_RESPONSE_CHAIN) {
-        debug("Response chain limit reached", { channel: channelId, depth, max: MAX_RESPONSE_CHAIN });
-        return;
-      }
+  const isHologram = isWebhookMessage && isOwnWebhookMessage(message.id.toString());
+  if (isHologram) {
+    // This is our own webhook - increment chain depth
+    const depth = (responseChainDepth.get(channelId) ?? 0) + 1;
+    responseChainDepth.set(channelId, depth);
+    if (MAX_RESPONSE_CHAIN > 0 && depth > MAX_RESPONSE_CHAIN) {
+      debug("Response chain limit reached", { channel: channelId, depth, max: MAX_RESPONSE_CHAIN });
+      return;
     }
   }
 
@@ -786,6 +783,7 @@ bot.events.messageCreate = async (message) => {
       replied_to: repliedToWebhookEntity?.entityName ?? "",
       is_forward: isForward,
       is_self: isSelf,
+      is_hologram: isHologram,
       interaction_type: "",
       name: entity.name,
       chars: channelEntities.map(e => e.name),
@@ -950,6 +948,7 @@ async function processEntityRetry(
     replied_to: "",
     is_forward: false,
     is_self: false, // Retry is never self-triggered
+    is_hologram: false, // Retry re-evaluates without original message context
     interaction_type: "",
     name: entity.name,
     chars: allChannelEntities.map(e => e.name),

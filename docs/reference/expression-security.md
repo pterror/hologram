@@ -55,6 +55,7 @@ All expose `String.prototype` (see [String Methods](#string-methods) below).
 | `replied` | System |
 | `is_forward` | System |
 | `is_self` | System |
+| `is_hologram` | System |
 
 `Boolean.prototype` has only `toString()` and `valueOf()`. **SAFE.**
 

@@ -44,6 +44,7 @@ $if content.includes(hello): $respond
 |----------|------|-------------|
 | `mentioned` | boolean | Bot was @mentioned |
 | `is_self` | boolean | Message is from this entity's own webhook |
+| `is_hologram` | boolean | Message is from any hologram entity (our webhook) |
 | `content` | string | Message content (alias for `messages(1, "%m")`) |
 | `author` | string | Message author name (alias for `messages(1, "%a")`) |
 | `response_ms` | number | Milliseconds since last response |
