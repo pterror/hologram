@@ -265,6 +265,23 @@ Do not:
 - Use `as any` type assertions or `type Foo = any` aliases - they hide type errors and indicate missing/wrong types. Fix the underlying type issue instead (add proper desiredProperties, use correct property paths like `toggles.nsfw` instead of `nsfw`, etc.). For Discordeno types, use `typeof bot` from `src/bot/client.ts` to get the fully-resolved `Bot<TProps, TBehavior>` without manually threading generics.
 - **Never downgrade fidelity.** When storing or rendering Discord data (embeds, components, attachments, etc.), preserve the full structure. Never flatten rich data to "just text" — store the complete data and render it properly in templates.
 
+## Session Handoff
+
+Use plan mode as a handoff mechanism when:
+- A task is fully complete (committed, pushed, docs updated)
+- The session has drifted from its original purpose
+- Context has accumulated enough that a fresh start would help
+
+Before entering plan mode:
+- Update TODO.md with any remaining work
+- Update memory files with anything worth preserving across sessions
+
+Then enter plan mode and write a plan file that either:
+- Proposes the next task if it's clear: "next up: X — see TODO.md"
+- Flags that direction is needed: "task complete / session drifted — see TODO.md"
+
+ExitPlanMode hands control back to the user to approve, redirect, or stop.
+
 ## Commits
 
 **ALWAYS COMMIT AFTER EVERY TASK. DO NOT WAIT TO BE ASKED.**
